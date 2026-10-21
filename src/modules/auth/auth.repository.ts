@@ -16,6 +16,7 @@ export interface AuthRepository {
   revokeSession(id: string, at: Date): Promise<void>;
   touchSession(id: string, at: Date): Promise<void>;
   changePassword(userId: number, hash: string, at: Date): Promise<void>;
+  changeEmail(userId: number, email: string, at: Date): Promise<void>;
 }
 
 /** PostgreSQL repository: all values are parameterized by postgres.js. */
@@ -32,4 +33,5 @@ export class PostgresAuthRepository implements AuthRepository {
   async revokeSession(id: string, at: Date): Promise<void> { await this.sql`update auth_sessions set revoked_at=coalesce(revoked_at, ${at}) where id=${id}`; }
   async touchSession(id: string, at: Date): Promise<void> { await this.sql`update auth_sessions set last_used_at=${at} where id=${id} and (last_used_at is null or last_used_at < ${new Date(at.getTime() - 300_000)})`; }
   async changePassword(userId: number, hash: string, at: Date): Promise<void> { await this.sql`update users set password_hash=${hash},must_change_password=false,temporary_password_expires_at=null,updated_at=${at} where id=${userId}`; await this.revokeUserSessions(userId, at); }
+  async changeEmail(userId: number, email: string, at: Date): Promise<void> { await this.sql`update users set email=${email},updated_at=${at} where id=${userId}`; await this.revokeUserSessions(userId, at); }
 }
