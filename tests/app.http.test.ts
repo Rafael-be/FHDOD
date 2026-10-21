@@ -24,6 +24,11 @@ describe("HTTP boundary", () => {
     await request(app).post("/api/auth/login").send({ email: "not-an-email" }).expect(400).expect({ error: { code: "VALIDATION_ERROR", message: "Dados de entrada inválidos." } });
   });
 
+  it("limits failed logins by IP even when identifiers change", async () => {
+    for (let index = 0; index < 5; index += 1) await request(app).post("/api/auth/login").send({ email: `unknown-${index}@hospital.test`, password: "invalid-password" }).expect(401);
+    await request(app).post("/api/auth/login").send({ email: "other@hospital.test", password: "invalid-password" }).expect(429).expect({ error: { code: "LOGIN_FAILED_RATE_LIMITED", message: "Muitas tentativas. Aguarde alguns minutos." } });
+  });
+
   it("returns the standard not-found envelope for unmatched routes", async () => {
     await request(app).get("/api/does-not-exist").expect(404).expect({ error: { code: "NOT_FOUND", message: "Recurso não encontrado." } });
   });

@@ -4,7 +4,7 @@ export const openapiDocument = {
   paths: {
     "/health": { get: { summary: "Verifica disponibilidade do processo", responses: { "200": { description: "API disponível" } } } },
     "/health/ready": { get: { summary: "Verifica disponibilidade do banco", responses: { "200": { description: "API e banco disponíveis" }, "503": { description: "Banco indisponível" } } } },
-    "/api/auth/login": { post: { summary: "Inicia uma sessão", requestBody: { required: true }, responses: { "200": { description: "Sessão iniciada" }, "401": { description: "Credenciais inválidas" } } } },
+    "/api/auth/login": { post: { summary: "Inicia uma sessão", requestBody: { required: true }, responses: { "200": { description: "Sessão iniciada" }, "401": { description: "Credenciais inválidas" }, "429": { description: "Limite de tentativas atingido" } } } },
     "/api/auth/refresh": { post: { summary: "Rotaciona o refresh token", responses: { "200": { description: "Tokens renovados" }, "409": { description: "Conflito de renovação" } } } },
     "/api/auth/csrf": { get: { summary: "Recupera token CSRF da sessão", responses: { "200": { description: "Token CSRF" } } } },
     "/api/auth/change-temporary-password": { post: { summary: "Troca a senha temporária e revoga as sessões", responses: { "204": { description: "Senha trocada" }, "403": { description: "Senha temporária inválida ou CSRF inválido" } } } },
