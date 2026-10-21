@@ -10,5 +10,6 @@ export const openapiDocument = {
     "/api/managers/{id}": { patch: { summary: "Edita gestor", responses: { "200": { description: "Gestor editado" } } } },
     "/api/sectors": { get: { summary: "Lista setores autorizados", responses: { "200": { description: "Lista de setores" } } }, post: { summary: "Cria setor", responses: { "201": { description: "Setor criado em preparação" } } } },
     "/api/sectors/{id}": { patch: { summary: "Renomeia setor (código imutável)", responses: { "200": { description: "Setor editado" } } } },
+    "/api/audit-logs": { get: { summary: "Consulta auditoria com cursor", responses: { "200": { description: "Registros de auditoria" }, "403": { description: "Somente superusuário" } } } },
   },
 };

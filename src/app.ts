@@ -11,9 +11,11 @@ import { authenticate } from "./modules/auth/auth.middleware.js";
 import { openapiDocument } from "./docs/openapi.js";
 import type { AdminService } from "./modules/admin/admin.service.js";
 import { adminRoutes } from "./modules/admin/admin.routes.js";
+import type { AuditService } from "./modules/audit/audit.service.js";
+import { auditRoutes } from "./modules/audit/audit.routes.js";
 
 /** Creates the HTTP boundary; domain dependencies are composed explicitly in server.ts. */
-export function createApp(config: AppConfig, authService: AuthService, adminService?: AdminService) {
+export function createApp(config: AppConfig, authService: AuthService, adminService?: AdminService, auditService?: AuditService) {
   const app = express();
   app.disable("x-powered-by");
   app.use(helmet());
@@ -22,6 +24,7 @@ export function createApp(config: AppConfig, authService: AuthService, adminServ
   app.get("/health", (_request, response) => response.status(200).json({ data: { status: "ok" } }));
   app.use("/api/auth", authenticate(authService), authRoutes(authService, config));
   if (adminService) app.use("/api", authenticate(authService), adminRoutes(adminService, authService));
+  if (auditService) app.use("/api", authenticate(authService), auditRoutes(auditService));
   app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openapiDocument, { explorer: false }));
   app.use(errorHandler); return app;
 }
