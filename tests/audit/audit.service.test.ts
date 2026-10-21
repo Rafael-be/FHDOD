@@ -1,6 +1,6 @@
-import { AuditService, decodeAuditCursor } from "../src/modules/audit/audit.service.js";
-import type { AuditRepository } from "../src/modules/audit/audit.repository.js";
-import type { AuthIdentity } from "../src/modules/auth/auth.service.js";
+import { AuditService, decodeAuditCursor } from "../../src/modules/audit/audit.service.js";
+import type { AuditRepository } from "../../src/modules/audit/audit.repository.js";
+import type { AuthIdentity } from "../../src/modules/auth/auth.service.js";
 
 const admin: AuthIdentity={userId:1,sessionId:"session",role:"superuser",mustChangePassword:false};
 const manager: AuthIdentity={userId:2,sessionId:"session",role:"sector_manager",mustChangePassword:false};

@@ -1,4 +1,4 @@
-import { openapiDocument } from "../src/docs/openapi.js";
+import { openapiDocument } from "../../src/docs/openapi.js";
 
 describe("OpenAPI request contracts", () => {
   it("describes login fields with a non-production example", () => {

@@ -1,7 +1,7 @@
 import "dotenv/config";
 import postgres from "postgres";
 import { randomUUID } from "node:crypto";
-import { AdminRepository } from "../src/modules/admin/admin.repository.js";
+import { AdminRepository } from "../../src/modules/admin/admin.repository.js";
 
 const testUrl = process.env.DATABASE_URL_TEST;
 const runtimeUrl = process.env.DATABASE_URL;

@@ -1,7 +1,7 @@
-import { AdminService } from "../src/modules/admin/admin.service.js";
-import type { AuthIdentity } from "../src/modules/auth/auth.service.js";
-import type { Clock } from "../src/shared/core.js";
-import type { AdminRepository } from "../src/modules/admin/admin.repository.js";
+import { AdminService } from "../../src/modules/admin/admin.service.js";
+import type { AuthIdentity } from "../../src/modules/auth/auth.service.js";
+import type { Clock } from "../../src/shared/core.js";
+import type { AdminRepository } from "../../src/modules/admin/admin.repository.js";
 
 const clock: Clock = { now: () => new Date("2026-01-01T00:00:00Z") };
 const manager: AuthIdentity = { userId: 10, sessionId: "session", role: "sector_manager", mustChangePassword: false };

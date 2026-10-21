@@ -1,4 +1,4 @@
-import { LoginAttemptLimiter } from "../src/modules/auth/login-attempt-limiter.js";
+import { LoginAttemptLimiter } from "../../src/modules/auth/login-attempt-limiter.js";
 
 describe("LoginAttemptLimiter", () => {
   it("limits five failed attempts per IP across different identifiers", async () => {

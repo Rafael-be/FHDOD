@@ -1,9 +1,9 @@
 import request from "supertest";
-import { createApp } from "../src/app.js";
-import type { AppConfig } from "../src/config/env.js";
-import type { AuthRepository } from "../src/modules/auth/auth.repository.js";
-import { AuthService } from "../src/modules/auth/auth.service.js";
-import type { Clock } from "../src/shared/core.js";
+import { createApp } from "../../src/app.js";
+import type { AppConfig } from "../../src/config/env.js";
+import type { AuthRepository } from "../../src/modules/auth/auth.repository.js";
+import { AuthService } from "../../src/modules/auth/auth.service.js";
+import type { Clock } from "../../src/shared/core.js";
 
 const config: AppConfig = { NODE_ENV: "test", PORT: 3000, DATABASE_URL: "postgres://api:pass@localhost/fhdod", DATABASE_URL_MIGRATIONS: "postgres://admin:pass@localhost/fhdod", ALLOWED_ORIGIN: "http://localhost:5173", JWT_SECRET: "12345678901234567890123456789012", JWT_ISSUER: "fhdod-api", JWT_AUDIENCE: "fhdod-web" };
 const repository: AuthRepository = {

@@ -1,7 +1,7 @@
 import "dotenv/config";
 import { randomUUID } from "node:crypto";
 import postgres from "postgres";
-import { PostgresAuthRepository } from "../src/modules/auth/auth.repository.js";
+import { PostgresAuthRepository } from "../../src/modules/auth/auth.repository.js";
 
 const testUrl=process.env.DATABASE_URL_TEST;const runtimeUrl=process.env.DATABASE_URL;
 const integration=testUrl&&runtimeUrl&&new URL(testUrl).href!==new URL(runtimeUrl).href?describe:describe.skip;

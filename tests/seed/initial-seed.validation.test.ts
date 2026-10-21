@@ -1,5 +1,5 @@
 import type postgres from "postgres";
-import { seedInitialData } from "../src/db/seed/initial-seed.js";
+import { seedInitialData } from "../../src/db/seed/initial-seed.js";
 
 describe("initial seed credential validation", () => {
   it("rejects an invalid email before any database access", async () => {

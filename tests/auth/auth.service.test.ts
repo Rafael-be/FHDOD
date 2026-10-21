@@ -1,8 +1,8 @@
 import argon2 from "argon2";
-import { AuthService } from "../src/modules/auth/auth.service.js";
-import type { AuthRepository, AuthUser, RefreshToken, Session } from "../src/modules/auth/auth.repository.js";
-import type { AppConfig } from "../src/config/env.js";
-import type { Clock } from "../src/shared/core.js";
+import { AuthService } from "../../src/modules/auth/auth.service.js";
+import type { AuthRepository, AuthUser, RefreshToken, Session } from "../../src/modules/auth/auth.repository.js";
+import type { AppConfig } from "../../src/config/env.js";
+import type { Clock } from "../../src/shared/core.js";
 
 class FakeClock implements Clock { constructor(private value=new Date("2026-01-01T00:00:00Z")) {} now(){return this.value;} advance(milliseconds:number){this.value=new Date(this.value.getTime()+milliseconds);} }
 class FakeRepository implements AuthRepository {

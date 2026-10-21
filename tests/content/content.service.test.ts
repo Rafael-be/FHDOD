@@ -1,6 +1,6 @@
-import { ContentService } from "../src/modules/content/content.service.js";
-import type { ContentRepository } from "../src/modules/content/content.repository.js";
-import type { AuthIdentity } from "../src/modules/auth/auth.service.js";
+import { ContentService } from "../../src/modules/content/content.service.js";
+import type { ContentRepository } from "../../src/modules/content/content.repository.js";
+import type { AuthIdentity } from "../../src/modules/auth/auth.service.js";
 
 const superuser:AuthIdentity={userId:1,sessionId:"session",role:"superuser",mustChangePassword:false};const manager:AuthIdentity={userId:2,sessionId:"session",role:"sector_manager",mustChangePassword:false};
 describe("ContentService",()=>{

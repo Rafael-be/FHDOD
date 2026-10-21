@@ -2,7 +2,7 @@ import "dotenv/config";
 import { randomUUID } from "node:crypto";
 import argon2 from "argon2";
 import postgres from "postgres";
-import { seedInitialData } from "../src/db/seed/initial-seed.js";
+import { seedInitialData } from "../../src/db/seed/initial-seed.js";
 
 const testUrl = process.env.DATABASE_URL_TEST;
 const runtimeUrl = process.env.DATABASE_URL;
