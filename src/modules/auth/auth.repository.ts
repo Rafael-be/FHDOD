@@ -5,6 +5,7 @@ export interface AuthUser { id: number; email: string; passwordHash: string; rol
 export interface Session { id: string; userId: number; csrfToken: string; createdAt: Date; lastUsedAt: Date | null; expiresAt: Date; revokedAt: Date | null; }
 export interface RefreshToken { id: string; sessionId: string; tokenHash: string; expiresAt: Date; consumedAt: Date | null; }
 export interface AuthRepository {
+  transaction<T>(work: (repository: AuthRepository) => Promise<T>): Promise<T>;
   findUserByEmail(email: string): Promise<AuthUser | null>;
   findUserById(id: number): Promise<AuthUser | null>;
   findSession(id: string): Promise<Session | null>;
@@ -22,6 +23,7 @@ export interface AuthRepository {
 /** PostgreSQL repository: all values are parameterized by postgres.js. */
 export class PostgresAuthRepository implements AuthRepository {
   constructor(private readonly sql: postgres.Sql) {}
+  async transaction<T>(work: (repository: AuthRepository) => Promise<T>): Promise<T> { return this.sql.begin(async (tx) => work(new PostgresAuthRepository(tx as unknown as postgres.Sql))) as Promise<T>; }
   async findUserByEmail(email: string): Promise<AuthUser | null> { const rows = await this.sql<AuthUser[]>`select u.id, u.email, u.password_hash as "passwordHash", r.code as role, u.deleted_at as "deletedAt", u.must_change_password as "mustChangePassword", u.temporary_password_expires_at as "temporaryPasswordExpiresAt" from users u join roles r on r.id=u.role_id where lower(btrim(u.email))=lower(btrim(${email})) limit 1`; return rows[0] ?? null; }
   async findUserById(id: number): Promise<AuthUser | null> { const rows = await this.sql<AuthUser[]>`select u.id, u.email, u.password_hash as "passwordHash", r.code as role, u.deleted_at as "deletedAt", u.must_change_password as "mustChangePassword", u.temporary_password_expires_at as "temporaryPasswordExpiresAt" from users u join roles r on r.id=u.role_id where u.id=${id} limit 1`; return rows[0] ?? null; }
   async findSession(id: string): Promise<Session | null> { const rows = await this.sql<Session[]>`select id, user_id as "userId", csrf_token as "csrfToken", created_at as "createdAt", last_used_at as "lastUsedAt", expires_at as "expiresAt", revoked_at as "revokedAt" from auth_sessions where id=${id}`; return rows[0] ?? null; }
