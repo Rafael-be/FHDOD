@@ -4,7 +4,7 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import swaggerUi from "swagger-ui-express";
 import type { AppConfig } from "./config/env.js";
-import { errorHandler } from "./shared/core.js";
+import { errorHandler, notFoundHandler } from "./shared/core.js";
 import type { AuthService } from "./modules/auth/auth.service.js";
 import { authRoutes } from "./modules/auth/auth.routes.js";
 import { authenticate } from "./modules/auth/auth.middleware.js";
@@ -23,7 +23,7 @@ export function createApp(config: AppConfig, authService: AuthService, adminServ
   const app = express();
   app.disable("x-powered-by");
   app.use(helmet());
-  app.use(cors({ origin: config.ALLOWED_ORIGIN, credentials: true, methods: ["GET", "POST", "PATCH", "DELETE"] }));
+  app.use(cors({ origin: (origin, callback) => callback(null, !origin || origin === config.ALLOWED_ORIGIN), credentials: true, methods: ["GET", "POST", "PATCH", "DELETE"] }));
   app.use(express.json({ limit: "32kb" })); app.use(cookieParser());
   if (healthService) app.use(healthRoutes(healthService));
   else app.get("/health", (_request, response) => response.status(200).json({ data: { status: "ok" } }));
@@ -32,5 +32,7 @@ export function createApp(config: AppConfig, authService: AuthService, adminServ
   if (auditService) app.use("/api", authenticate(authService), auditRoutes(auditService));
   if (contentService) app.use("/api", contentRoutes(contentService, authService));
   app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openapiDocument, { explorer: false }));
-  app.use(errorHandler); return app;
+  app.use(notFoundHandler);
+  app.use(errorHandler);
+  return app;
 }

@@ -1,5 +1,6 @@
 export const openapiDocument = {
   openapi: "3.0.3", info: { title: "FHDOD API", version: "0.1.0", description: "Endpoints implementados na Fase 1." },
+  components: { schemas: { ErrorEnvelope: { type: "object", required: ["error"], properties: { error: { type: "object", required: ["code", "message"], properties: { code: { type: "string", example: "VALIDATION_ERROR" }, message: { type: "string", example: "Dados de entrada inválidos." } } } } } } },
   paths: {
     "/health": { get: { summary: "Verifica disponibilidade do processo", responses: { "200": { description: "API disponível" } } } },
     "/health/ready": { get: { summary: "Verifica disponibilidade do banco", responses: { "200": { description: "API e banco disponíveis" }, "503": { description: "Banco indisponível" } } } },
