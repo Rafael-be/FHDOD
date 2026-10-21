@@ -13,15 +13,18 @@ import type { AdminService } from "./modules/admin/admin.service.js";
 import { adminRoutes } from "./modules/admin/admin.routes.js";
 import type { AuditService } from "./modules/audit/audit.service.js";
 import { auditRoutes } from "./modules/audit/audit.routes.js";
+import type { HealthService } from "./modules/health/health.service.js";
+import { healthRoutes } from "./modules/health/health.routes.js";
 
 /** Creates the HTTP boundary; domain dependencies are composed explicitly in server.ts. */
-export function createApp(config: AppConfig, authService: AuthService, adminService?: AdminService, auditService?: AuditService) {
+export function createApp(config: AppConfig, authService: AuthService, adminService?: AdminService, auditService?: AuditService, healthService?: HealthService) {
   const app = express();
   app.disable("x-powered-by");
   app.use(helmet());
   app.use(cors({ origin: config.ALLOWED_ORIGIN, credentials: true, methods: ["GET", "POST", "PATCH", "DELETE"] }));
   app.use(express.json({ limit: "32kb" })); app.use(cookieParser());
-  app.get("/health", (_request, response) => response.status(200).json({ data: { status: "ok" } }));
+  if (healthService) app.use(healthRoutes(healthService));
+  else app.get("/health", (_request, response) => response.status(200).json({ data: { status: "ok" } }));
   app.use("/api/auth", authenticate(authService), authRoutes(authService, config));
   if (adminService) app.use("/api", authenticate(authService), adminRoutes(adminService, authService));
   if (auditService) app.use("/api", authenticate(authService), auditRoutes(auditService));

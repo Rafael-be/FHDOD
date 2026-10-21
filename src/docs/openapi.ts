@@ -1,7 +1,8 @@
 export const openapiDocument = {
   openapi: "3.0.3", info: { title: "FHDOD API", version: "0.1.0", description: "Endpoints implementados na Fase 1." },
   paths: {
-    "/health": { get: { summary: "Verifica disponibilidade da API", responses: { "200": { description: "API disponível" } } } },
+    "/health": { get: { summary: "Verifica disponibilidade do processo", responses: { "200": { description: "API disponível" } } } },
+    "/health/ready": { get: { summary: "Verifica disponibilidade do banco", responses: { "200": { description: "API e banco disponíveis" }, "503": { description: "Banco indisponível" } } } },
     "/api/auth/login": { post: { summary: "Inicia uma sessão", requestBody: { required: true }, responses: { "200": { description: "Sessão iniciada" }, "401": { description: "Credenciais inválidas" } } } },
     "/api/auth/refresh": { post: { summary: "Rotaciona o refresh token", responses: { "200": { description: "Tokens renovados" }, "409": { description: "Conflito de renovação" } } } },
     "/api/auth/csrf": { get: { summary: "Recupera token CSRF da sessão", responses: { "200": { description: "Token CSRF" } } } },

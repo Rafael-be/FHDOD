@@ -9,9 +9,11 @@ import { AdminRepository } from "./modules/admin/admin.repository.js";
 import { AdminService } from "./modules/admin/admin.service.js";
 import { AuditRepository } from "./modules/audit/audit.repository.js";
 import { AuditService } from "./modules/audit/audit.service.js";
+import { HealthRepository } from "./modules/health/health.repository.js";
+import { HealthService } from "./modules/health/health.service.js";
 
 const config = loadConfig(); const database = createDatabase(config);
 const auth = new AuthService(new PostgresAuthRepository(database.client), new NoopTransactionManager(), new SystemClock(), config);
-const app = createApp(config, auth, new AdminService(new AdminRepository(database.client), new SystemClock()), new AuditService(new AuditRepository(database.client)));
+const app = createApp(config, auth, new AdminService(new AdminRepository(database.client), new SystemClock()), new AuditService(new AuditRepository(database.client)), new HealthService(new HealthRepository(database.client)));
 const server = app.listen(config.PORT, () => console.info(`FHDOD API iniciada na porta ${config.PORT}`));
 for (const signal of ["SIGINT", "SIGTERM"] as const) process.on(signal, () => server.close(() => void database.close()));
