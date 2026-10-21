@@ -17,4 +17,10 @@ describe("AdminService manager sector scope", () => {
     const repository = { manager: async () => ({ id: 11 }), managerSectors: async () => [] } as unknown as AdminRepository;
     await expect(new AdminService(repository, clock).listManagerSectors(superuser, 11)).resolves.toEqual([]);
   });
+  it("calculates preparation requirements and rejects a manager outside the sector scope", async () => {
+    const repository = { sector: async () => ({ id: 7 }), readiness: async () => ({ hasShiftRanges: false, hasNps: false }), managerSectors: async () => [] } as unknown as AdminRepository;
+    const service = new AdminService(repository, clock);
+    await expect(service.sectorStatus(superuser, 7)).resolves.toEqual({ sectorId: 7, status: "preparing", missingRequirements: ["shift_ranges", "nps"] });
+    await expect(service.sectorStatus(manager, 7)).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
 });

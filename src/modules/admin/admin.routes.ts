@@ -16,6 +16,7 @@ export function adminRoutes(service:AdminService, auth:AuthService){const router
  router.put("/managers/:managerId/sectors/:sectorId",csrf,async(req,res,next)=>{try{await service.assignment(req.identity!,id.parse(req.params.managerId),id.parse(req.params.sectorId),true);res.status(204).end();}catch(e){next(e);}});
  router.delete("/managers/:managerId/sectors/:sectorId",csrf,async(req,res,next)=>{try{await service.assignment(req.identity!,id.parse(req.params.managerId),id.parse(req.params.sectorId),false);res.status(204).end();}catch(e){next(e);}});
  router.get("/sectors",async(req,res,next)=>{try{res.json({data:await service.listSectors(req.identity!,req.query.deleted==="true")});}catch(e){next(e);}});
+ router.get("/sectors/:id/status",async(req,res,next)=>{try{res.json({data:await service.sectorStatus(req.identity!,id.parse(req.params.id))});}catch(e){next(e);}});
  router.post("/sectors",csrf,async(req,res,next)=>{try{res.status(201).json({data:await service.createSector(req.identity!,sector.parse(req.body))});}catch(e){next(e);}});
  router.patch("/sectors/:id",csrf,async(req,res,next)=>{try{res.json({data:await service.updateSector(req.identity!,id.parse(req.params.id),z.object({name:sector.shape.name}).parse(req.body).name)});}catch(e){next(e);}});
  router.post("/sectors/:id/deactivate",csrf,async(req,res,next)=>{try{await service.deactivateSector(req.identity!,id.parse(req.params.id),true);res.status(204).end();}catch(e){next(e);}});
