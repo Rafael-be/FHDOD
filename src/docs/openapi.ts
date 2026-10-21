@@ -12,5 +12,6 @@ export const openapiDocument = {
     "/api/sectors": { get: { summary: "Lista setores autorizados", responses: { "200": { description: "Lista de setores" } } }, post: { summary: "Cria setor", responses: { "201": { description: "Setor criado em preparação" } } } },
     "/api/sectors/{id}": { patch: { summary: "Renomeia setor (código imutável)", responses: { "200": { description: "Setor editado" } } } },
     "/api/audit-logs": { get: { summary: "Consulta auditoria com cursor", responses: { "200": { description: "Registros de auditoria" }, "403": { description: "Somente superusuário" } } } },
+    "/api/pages/{slug}": { get: { summary: "Obtém a versão pública vigente de uma página", responses: { "200": { description: "Conteúdo publicado" }, "404": { description: "Conteúdo indisponível" } } }, put: { summary: "Publica nova versão imutável da página", responses: { "200": { description: "Versão publicada" }, "403": { description: "Somente superusuário; requer CSRF" } } } },
   },
 };

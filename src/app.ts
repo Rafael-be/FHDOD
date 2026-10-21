@@ -15,9 +15,11 @@ import type { AuditService } from "./modules/audit/audit.service.js";
 import { auditRoutes } from "./modules/audit/audit.routes.js";
 import type { HealthService } from "./modules/health/health.service.js";
 import { healthRoutes } from "./modules/health/health.routes.js";
+import type { ContentService } from "./modules/content/content.service.js";
+import { contentRoutes } from "./modules/content/content.routes.js";
 
 /** Creates the HTTP boundary; domain dependencies are composed explicitly in server.ts. */
-export function createApp(config: AppConfig, authService: AuthService, adminService?: AdminService, auditService?: AuditService, healthService?: HealthService) {
+export function createApp(config: AppConfig, authService: AuthService, adminService?: AdminService, auditService?: AuditService, healthService?: HealthService, contentService?: ContentService) {
   const app = express();
   app.disable("x-powered-by");
   app.use(helmet());
@@ -28,6 +30,7 @@ export function createApp(config: AppConfig, authService: AuthService, adminServ
   app.use("/api/auth", authenticate(authService), authRoutes(authService, config));
   if (adminService) app.use("/api", authenticate(authService), adminRoutes(adminService, authService));
   if (auditService) app.use("/api", authenticate(authService), auditRoutes(auditService));
+  if (contentService) app.use("/api", contentRoutes(contentService, authService));
   app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openapiDocument, { explorer: false }));
   app.use(errorHandler); return app;
 }
