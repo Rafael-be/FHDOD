@@ -8,6 +8,7 @@ const manager=z.object({fullName:z.string().trim().min(2).max(160),email:z.strin
 const managerPatch=manager.pick({fullName:true,email:true}); const sector=z.object({code:z.string().trim().min(2).max(50),name:z.string().trim().min(2).max(160)});
 export function adminRoutes(service:AdminService, auth:AuthService){const router=Router();router.use(requireRole("superuser","sector_manager")); const csrf=csrfProtection(auth);
  router.get("/managers",async(req,res,next)=>{try{res.json({data:await service.listManagers(req.identity!,req.query.deleted==="true")});}catch(e){next(e);}});
+ router.get("/managers/:id",async(req,res,next)=>{try{res.json({data:await service.getManager(req.identity!,id.parse(req.params.id),req.query.deleted==="true")});}catch(e){next(e);}});
  router.post("/managers",csrf,async(req,res,next)=>{try{res.status(201).json({data:await service.createManager(req.identity!,manager.parse(req.body))});}catch(e){next(e);}});
  router.patch("/managers/:id",csrf,async(req,res,next)=>{try{res.json({data:await service.updateManager(req.identity!,id.parse(req.params.id),managerPatch.parse(req.body))});}catch(e){next(e);}});
  router.post("/managers/:id/deactivate",csrf,async(req,res,next)=>{try{await service.deactivateManager(req.identity!,id.parse(req.params.id));res.status(204).end();}catch(e){next(e);}});

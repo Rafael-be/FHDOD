@@ -8,7 +8,7 @@ export const openapiDocument = {
     "/api/auth/csrf": { get: { summary: "Recupera token CSRF da sessão", responses: { "200": { description: "Token CSRF" } } } },
     "/api/auth/change-temporary-password": { post: { summary: "Troca a senha temporária e revoga as sessões", responses: { "204": { description: "Senha trocada" }, "403": { description: "Senha temporária inválida ou CSRF inválido" } } } },
     "/api/managers": { get: { summary: "Lista gestores", responses: { "200": { description: "Lista de gestores" }, "403": { description: "Somente superusuário" } } }, post: { summary: "Cria gestor com senha temporária", responses: { "201": { description: "Gestor criado" }, "409": { description: "E-mail já reservado" } } } },
-    "/api/managers/{id}": { patch: { summary: "Edita gestor", responses: { "200": { description: "Gestor editado" } } } },
+    "/api/managers/{id}": { get: { summary: "Consulta gestor e seus vínculos ativos", responses: { "200": { description: "Gestor e setores vinculados" }, "404": { description: "Gestor não encontrado" } } }, patch: { summary: "Edita gestor", responses: { "200": { description: "Gestor editado" }, "409": { description: "E-mail já reservado" } } } },
     "/api/sectors": { get: { summary: "Lista setores autorizados", responses: { "200": { description: "Lista de setores" } } }, post: { summary: "Cria setor", responses: { "201": { description: "Setor criado em preparação" } } } },
     "/api/sectors/{id}": { patch: { summary: "Renomeia setor (código imutável)", responses: { "200": { description: "Setor editado" } } } },
     "/api/audit-logs": { get: { summary: "Consulta auditoria com cursor", responses: { "200": { description: "Registros de auditoria" }, "403": { description: "Somente superusuário" } } } },
