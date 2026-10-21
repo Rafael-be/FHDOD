@@ -2,12 +2,14 @@ import "dotenv/config";
 import argon2 from "argon2";
 import postgres from "postgres";
 import { loadConfig } from "../../config/env.js";
+import { loginCredentialsSchema } from "../../modules/auth/auth.schemas.js";
 
 const required = ["INITIAL_SUPERUSER_NAME", "INITIAL_SUPERUSER_EMAIL", "INITIAL_SUPERUSER_PASSWORD"] as const;
 export interface InitialSeedInput { name: string; email: string; password: string; }
 
 /** Runs inside a caller-owned transaction and creates only the initial superuser and an unpublished LGPD placeholder. */
 export async function seedInitialData(sql: postgres.Sql, input: InitialSeedInput): Promise<{ createdUser: boolean; createdLgpdPage: boolean }> {
+    if (!loginCredentialsSchema.safeParse({ email: input.email, password: input.password }).success) throw new Error("Credenciais iniciais inválidas: informe e-mail válido e senha não vazia.");
     const role = await sql<{ id: number }[]>`select id from roles where code='superuser'`;
     if (!role[0]) throw new Error("Papel superuser ausente: aplique o bootstrap primeiro.");
     const existing = await sql<{ id: number }[]>`select id from users where lower(btrim(email))=lower(btrim(${input.email}))`;

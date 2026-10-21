@@ -6,6 +6,7 @@ describe("OpenAPI request contracts", () => {
     expect(login.requestBody.content["application/json"].schema.$ref).toBe("#/components/schemas/LoginRequest");
     expect(openapiDocument.components.schemas.LoginRequest.required).toEqual(["email", "password"]);
     expect(login.requestBody.content["application/json"].example).toEqual({ email: "admin@example.test", password: "senha-de-desenvolvimento" });
+    expect(login.responses).toEqual(expect.objectContaining({ "200": expect.anything(), "400": expect.anything(), "401": expect.anything(), "403": expect.anything(), "429": expect.anything() }));
   });
 
   it("documents every Fase 1 JSON body with a schema", () => {
