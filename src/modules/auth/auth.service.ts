@@ -1,0 +1,37 @@
+import argon2 from "argon2";
+import { createHash, randomBytes, randomUUID } from "node:crypto";
+import { SignJWT, jwtVerify } from "jose";
+import type { AppConfig } from "../../config/env.js";
+import type { Clock, TransactionManager } from "../../shared/core.js";
+import { DomainError, normalizeEmail } from "../../shared/core.js";
+import type { AuthRepository, AuthUser, Role, Session } from "./auth.repository.js";
+
+const HOUR = 3_600_000;
+export interface AuthIdentity { userId: number; sessionId: string; role: Role; mustChangePassword: boolean; }
+export interface AuthResult { accessToken: string; refreshToken: string; csrfToken: string; expiresAt: Date; }
+const hashToken = (value: string) => createHash("sha256").update(value).digest("hex");
+const opaqueToken = () => randomBytes(48).toString("base64url");
+
+/** Applies the session, JWT, refresh and temporary-password invariants. */
+export class AuthService {
+  private readonly key: Uint8Array;
+  constructor(private readonly repository: AuthRepository, private readonly transactionManager: TransactionManager, private readonly clock: Clock, private readonly config: AppConfig) { this.key = new TextEncoder().encode(config.JWT_SECRET); }
+  private async accessToken(user: AuthUser, sessionId: string): Promise<string> { return new SignJWT({ role: user.role, sid: sessionId, mcp: user.mustChangePassword }).setProtectedHeader({ alg: "HS256" }).setIssuer(this.config.JWT_ISSUER).setAudience(this.config.JWT_AUDIENCE).setSubject(String(user.id)).setIssuedAt().setExpirationTime("10m").sign(this.key); }
+  private valid(session: Session, now: Date): boolean { return !session.revokedAt && session.expiresAt > now && (session.lastUsedAt ?? session.createdAt).getTime() + 12 * HOUR > now.getTime(); }
+  async login(email: string, password: string): Promise<AuthResult> {
+    const user = await this.repository.findUserByEmail(normalizeEmail(email));
+    const accepted = user && !user.deletedAt && await argon2.verify(user.passwordHash, password);
+    if (!accepted || !user) throw new DomainError("INVALID_CREDENTIALS", "E-mail ou senha inválidos.", 401);
+    const now = this.clock.now(); const sessionId = randomUUID(); const refreshToken = opaqueToken(); const csrfToken = randomBytes(32).toString("base64url"); const expiresAt = new Date(now.getTime() + 24 * HOUR);
+    await this.transactionManager.transaction(async () => { await this.repository.revokeUserSessions(user.id, now); await this.repository.createSession({ id: sessionId, userId: user.id, csrfToken, createdAt: now, lastUsedAt: now, expiresAt, revokedAt: null }); await this.repository.createRefresh({ id: randomUUID(), sessionId, tokenHash: hashToken(refreshToken), expiresAt, consumedAt: null }); });
+    return { accessToken: await this.accessToken(user, sessionId), refreshToken, csrfToken, expiresAt };
+  }
+  async authenticate(token: string): Promise<AuthIdentity> { try { const { payload, protectedHeader } = await jwtVerify(token, this.key, { algorithms: ["HS256"], issuer: this.config.JWT_ISSUER, audience: this.config.JWT_AUDIENCE, requiredClaims: ["sub", "sid", "iat", "exp"] }); if (protectedHeader.alg !== "HS256" || typeof payload.sub !== "string" || typeof payload.sid !== "string" || typeof payload.role !== "string") throw new Error(); const session = await this.repository.findSession(payload.sid); const now = this.clock.now(); if (!session || !this.valid(session, now)) throw new Error(); await this.repository.touchSession(session.id, now); return { userId: Number(payload.sub), sessionId: session.id, role: payload.role as Role, mustChangePassword: payload.mcp === true }; } catch { throw new DomainError("UNAUTHENTICATED", "Sessão inválida ou expirada.", 401); } }
+  async refresh(value: string): Promise<AuthResult> { const now = this.clock.now(); const current = await this.repository.findRefresh(hashToken(value)); if (!current || current.consumedAt || current.expiresAt <= now) throw new DomainError("INVALID_REFRESH_TOKEN", "Sessão inválida ou expirada.", 401); const session = await this.repository.findSession(current.sessionId); if (!session || !this.valid(session, now)) throw new DomainError("INVALID_REFRESH_TOKEN", "Sessão inválida ou expirada.", 401); const user = await this.repository.findUserById(session.userId); if (!user || user.deletedAt) throw new DomainError("INVALID_REFRESH_TOKEN", "Sessão inválida ou expirada.", 401); const replacementId = randomUUID(), refreshToken = opaqueToken(); await this.transactionManager.transaction(async () => { if (!(await this.repository.consumeRefresh(current.id, replacementId, now))) throw new DomainError("REFRESH_CONFLICT", "A renovação já foi processada; tente novamente.", 409); await this.repository.createRefresh({ id: replacementId, sessionId: session.id, tokenHash: hashToken(refreshToken), expiresAt: session.expiresAt, consumedAt: null }); }); return { accessToken: await this.accessToken(user, session.id), refreshToken, csrfToken: session.csrfToken, expiresAt: session.expiresAt }; }
+  async logout(sessionId: string): Promise<void> { await this.repository.revokeSession(sessionId, this.clock.now()); }
+  /** Replaces a valid temporary password and revokes every existing session. */
+  async changeTemporaryPassword(identity: AuthIdentity, currentPassword: string, nextPassword: string): Promise<void> { const user=await this.repository.findUserById(identity.userId); const now=this.clock.now(); if(!user || !user.mustChangePassword || !user.temporaryPasswordExpiresAt || user.temporaryPasswordExpiresAt<=now || !await argon2.verify(user.passwordHash,currentPassword)) throw new DomainError("TEMPORARY_PASSWORD_INVALID","Senha temporária inválida ou expirada.",403); const hash=await argon2.hash(nextPassword,{type:argon2.argon2id,memoryCost:19456,timeCost:2,parallelism:1,hashLength:32}); await this.transactionManager.transaction(()=>this.repository.changePassword(user.id,hash,now)); }
+  /** Changes an established password after reauthentication and revokes all sessions. */
+  async changeOwnPassword(identity: AuthIdentity, currentPassword: string, nextPassword: string): Promise<void> { const user=await this.repository.findUserById(identity.userId); if(!user || user.deletedAt || user.mustChangePassword || !await argon2.verify(user.passwordHash,currentPassword)) throw new DomainError("INVALID_CURRENT_PASSWORD","Senha atual inválida.",403); const now=this.clock.now(); const hash=await argon2.hash(nextPassword,{type:argon2.argon2id,memoryCost:19456,timeCost:2,parallelism:1,hashLength:32}); await this.transactionManager.transaction(()=>this.repository.changePassword(user.id,hash,now)); }
+  async recoverCsrf(refresh: string): Promise<string> { const token = await this.repository.findRefresh(hashToken(refresh)); if (!token || token.consumedAt) throw new DomainError("UNAUTHENTICATED", "Sessão inválida ou expirada.", 401); const session = await this.repository.findSession(token.sessionId); if (!session || !this.valid(session, this.clock.now())) throw new DomainError("UNAUTHENTICATED", "Sessão inválida ou expirada.", 401); return session.csrfToken; }
+}
