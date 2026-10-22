@@ -2,6 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 
 const SENSITIVE_VALUE = /((?:password|pass|token|secret|hash|cookie|authorization|email)[\s=:]+)([^\s,;}]*)/gi;
 export type AuthenticationFailureReason = "jwt_invalid" | "jwt_expired" | "jwt_claim_invalid" | "jwt_subject_invalid" | "session_id_invalid" | "session_not_found" | "session_subject_mismatch" | "session_revoked" | "session_expired" | "session_idle_expired" | "user_inactive" | "csrf_invalid" | "database_query_failed";
+export type LoginRateLimitEvent = "auth.login_failure_counted" | "auth.login_failure_limit_reached" | "auth.login_failure_blocked" | "auth.login_failure_window_expired";
 
 function safeMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : String(error);
@@ -65,4 +66,14 @@ export function logAuthenticationFailure(reason: AuthenticationFailureReason, er
     reason,
     error: details,
   })}\n`);
+}
+
+/** Records login-rate-limit state without retaining an address or an identifier in logs. */
+export function logLoginRateLimit(event: LoginRateLimitEvent, details: { count?: number; limit: number; windowMs: number; status?: number; scope?: "ip" | "identifier" }): void {
+  process.stderr.write(`${JSON.stringify({ level: "warn", event, ...details })}\n`);
+}
+
+/** Emits opt-in, monotonic timing data without request or credential values. */
+export function logPerformanceMeasurement(operation: string, stage: string, durationMs: number): void {
+  process.stdout.write(`${JSON.stringify({ level: "info", event: "performance.measurement", operation, stage, durationMs: Number(durationMs.toFixed(2)) })}\n`);
 }

@@ -8,3 +8,9 @@
 Para testes, `DATABASE_URL_TEST` deve apontar para um destino diferente de `DATABASE_URL`. A suíte usa exclusivamente essa variável para integração e reverte os dados sintéticos de teste por transação.
 
 Nenhum comando deste repositório aplica o bootstrap ou migrations automaticamente.
+
+## Limite de falhas de login
+
+São contabilizadas somente falhas de credenciais válidas no formato esperado (`401 INVALID_CREDENTIALS`). A quinta falha efetiva de um mesmo IP em uma janela deslizante de 15 minutos ainda retorna `401`; a sexta requisição é bloqueada antes da verificação de credenciais com `429 LOGIN_FAILED_RATE_LIMITED`. A janela é renovada a cada nova falha e expira 15 minutos após a última delas. Um login bem-sucedido limpa apenas o atraso progressivo associado ao identificador, nunca a contagem por IP.
+
+O contador atual usa memória do processo. Portanto, é reiniciado quando a API reinicia e não é compartilhado entre instâncias. Em produção com múltiplas réplicas, adote um armazenamento compartilhado para esse estado antes de tratar o bloqueio como proteção global.

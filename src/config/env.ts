@@ -9,6 +9,7 @@ const environmentSchema = z.object({
   JWT_SECRET: z.string().min(32, "JWT_SECRET deve ter pelo menos 32 caracteres"),
   JWT_ISSUER: z.string().min(1),
   JWT_AUDIENCE: z.string().min(1),
+  PERFORMANCE_MEASUREMENTS: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
 });
 
 export type AppConfig = z.infer<typeof environmentSchema>;

@@ -18,6 +18,7 @@ import type { HealthService } from "./modules/health/health.service.js";
 import { healthRoutes } from "./modules/health/health.routes.js";
 import type { ContentService } from "./modules/content/content.service.js";
 import { contentRoutes } from "./modules/content/content.routes.js";
+import { performanceRequestLogger } from "./shared/performance.js";
 
 /** Creates the HTTP boundary; domain dependencies are composed explicitly in server.ts. */
 export function createApp(config: AppConfig, authService: AuthService, adminService?: AdminService, auditService?: AuditService, healthService?: HealthService, contentService?: ContentService) {
@@ -27,9 +28,10 @@ export function createApp(config: AppConfig, authService: AuthService, adminServ
   app.use(helmet());
   app.use(cors({ origin: (origin, callback) => callback(null, !origin || origin === config.ALLOWED_ORIGIN), credentials: true, methods: ["GET", "POST", "PATCH", "DELETE"] }));
   app.use(express.json({ limit: "32kb" })); app.use(cookieParser());
+  app.use(performanceRequestLogger(config.PERFORMANCE_MEASUREMENTS));
   if (healthService) app.use(healthRoutes(healthService));
   else app.get("/health", (_request, response) => response.status(200).json({ data: { status: "ok" } }));
-  app.use("/api/auth", authenticate(authService), authRoutes(authService, config));
+  app.use("/api/auth", authRoutes(authService, config));
   if (adminService) app.use("/api", authenticate(authService), adminRoutes(adminService, authService));
   if (auditService) app.use("/api", authenticate(authService), auditRoutes(auditService));
   if (contentService) app.use("/api", contentRoutes(contentService, authService));
