@@ -1,4 +1,5 @@
 import request from "supertest";
+import { jest } from "@jest/globals";
 import { createApp } from "../../src/app.js";
 import type { AppConfig } from "../../src/config/env.js";
 import type { AuthRepository } from "../../src/modules/auth/auth.repository.js";
@@ -35,5 +36,23 @@ describe("HTTP boundary", () => {
 
   it("serves the OpenAPI interface", async () => {
     await request(app).get("/api-docs/").expect(200).expect("content-type", /html/);
+  });
+
+  it("logs internal failures without exposing sensitive values", async () => {
+    const stderrWrite = jest.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const failingRepository: AuthRepository = { ...repository, findUserByEmail: async () => { throw Object.assign(new Error("password=senha-super-secreta token=abc123 email=person@example.com"), { code: "23505" }); } };
+    const failingApp = createApp(config, new AuthService(failingRepository, clock, config));
+    try {
+      await request(failingApp).post("/api/auth/login").send({ email: "person@example.com", password: "senha-super-secreta" }).expect(500).expect({ error: { code: "INTERNAL_ERROR", message: "Ocorreu um erro interno." } });
+      const output = stderrWrite.mock.calls.at(-1)?.[0];
+      expect(typeof output).toBe("string");
+      expect(output).toContain('"code":"23505"');
+      expect(output).toContain("POST /api/auth/login");
+      expect(output).not.toContain("senha-super-secreta");
+      expect(output).not.toContain("abc123");
+      expect(output).not.toContain("person@example.com");
+    } finally {
+      stderrWrite.mockRestore();
+    }
   });
 });

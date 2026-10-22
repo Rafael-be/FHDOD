@@ -13,6 +13,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src tests",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest --runInBand",
+    "migrate": "drizzle-kit migrate --config drizzle.config.ts",
     "seed": "tsx src/db/seed/initial-seed.ts"
   },
   "dependencies": {
