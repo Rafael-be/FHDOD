@@ -44,6 +44,11 @@ export function logRequestRejection(code: string, status: number, request: Pick<
   process.stderr.write(`${JSON.stringify({ level: "warn", event: "http.request_rejected", operation: `${request.method} ${request.path}`, code, status })}\n`);
 }
 
+/** Records schema failures by field and rule only; never serializes parsed input or invalid values. */
+export function logValidationFailure(request: Pick<Request, "method" | "path">, fields: string[], issues: string[]): void {
+  process.stderr.write(`${JSON.stringify({ level: "warn", event: "http.validation_failed", operation: `${request.method} ${request.path}`, fields, issues })}\n`);
+}
+
 export function logServerStarted(port: number): void { process.stdout.write(`${JSON.stringify({ level: "info", event: "server.started", port })}\n`); }
 
 /** Logs authentication diagnostics without recording credentials or session identifiers. */

@@ -1,6 +1,6 @@
 import type { NextFunction, Request, Response } from "express";
 import { ZodError } from "zod";
-import { logInternalError, logRequestRejection } from "./logger.js";
+import { logInternalError, logRequestRejection, logValidationFailure } from "./logger.js";
 
 export class DomainError extends Error { constructor(public readonly code: string, message: string, public readonly status = 400) { super(message); } }
 export const forbidden = (message = "Você não possui permissão para esta operação.") => new DomainError("FORBIDDEN", message, 403);
@@ -9,7 +9,7 @@ export const notFound = (message = "Recurso não encontrado.") => new DomainErro
 export function notFoundHandler(_request: Request, _response: Response, next: NextFunction): void { next(notFound()); }
 export function errorHandler(error: unknown, request: Request, response: Response, _next: NextFunction): void {
   if (error instanceof DomainError) { logRequestRejection(error.code, error.status, request); response.status(error.status).json({ error: { code: error.code, message: error.message } }); return; }
-  if (error instanceof ZodError) { logRequestRejection("VALIDATION_ERROR", 400, request); response.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Dados de entrada inválidos." } }); return; }
+  if (error instanceof ZodError) { const fields=[...new Set(error.issues.map(issue=>issue.path.join(".") || "body"))]; const issues=[...new Set(error.issues.map(issue=>issue.code==="too_small" ? "min_length" : issue.code))]; logValidationFailure(request,fields,issues); response.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Dados de entrada inválidos." } }); return; }
   logInternalError(error, request);
   response.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Ocorreu um erro interno." } });
 }

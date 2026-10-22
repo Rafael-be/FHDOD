@@ -60,6 +60,29 @@ describe("POST /api/auth/login validation", () => {
     }
   });
 
+  it("accepts a legacy short current password but requires a compliant new password", async () => {
+    const changeTemporaryPassword = jest.fn(async () => undefined);
+    const auth = { login: async () => { throw new Error("unused"); }, authenticate: async () => ({ userId: 1, sessionId: "session", role: "superuser" as const, mustChangePassword: true }), recoverCsrf: async () => "csrf", changeTemporaryPassword } as unknown as AuthService;
+    await request(createApp(config, auth)).post("/api/auth/change-temporary-password").set("Cookie", "access_token=access; refresh_token=refresh").set("X-CSRF-Token", "csrf").send({ currentPassword: "short123", newPassword: "new-password-safe" }).expect(204);
+    expect(changeTemporaryPassword).toHaveBeenCalledWith(expect.objectContaining({ userId: 1 }), "short123", "new-password-safe");
+  });
+
+  it.each([{ currentPassword: "short123", newPassword: "short123" }, { currentPassword: "short123" }, { currentPassword: 123, newPassword: true }])("rejects invalid temporary-password body %# before changing the password", async (body) => {
+    const changeTemporaryPassword = jest.fn(async () => undefined);
+    const stderrWrite = jest.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const auth = { login: async () => { throw new Error("unused"); }, authenticate: async () => ({ userId: 1, sessionId: "session", role: "superuser" as const, mustChangePassword: true }), recoverCsrf: async () => "csrf", changeTemporaryPassword } as unknown as AuthService;
+    try {
+      await request(createApp(config, auth)).post("/api/auth/change-temporary-password").set("Cookie", "access_token=access; refresh_token=refresh").set("X-CSRF-Token", "csrf").send(body).expect(400).expect({ error: { code: "VALIDATION_ERROR", message: "Dados de entrada inválidos." } });
+      expect(changeTemporaryPassword).not.toHaveBeenCalled();
+      const output = String(stderrWrite.mock.calls.at(-1)?.[0]);
+      expect(output).toContain('"event":"http.validation_failed"');
+      expect(output).not.toContain("short123");
+      if (body.newPassword === "short123") expect(output).toContain('"fields":["newPassword"]');
+    } finally {
+      stderrWrite.mockRestore();
+    }
+  });
+
   it.each([{ password: "senha" }, { email: validBody.email }, { userEmail: validBody.email, userPassword: "senha" }, { email: 123, password: true }, { email: "invalido", password: "senha" }])("rejects invalid JSON body %# with 400", async (body) => {
     await request(makeApp(async () => { throw new Error("must not authenticate"); })).post("/api/auth/login").set("Content-Type", "application/json").send(body).expect(400).expect({ error: { code: "VALIDATION_ERROR", message: "Dados de entrada inválidos." } });
   });
