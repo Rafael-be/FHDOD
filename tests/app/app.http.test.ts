@@ -9,7 +9,7 @@ import type { Clock } from "../../src/shared/core.js";
 const config: AppConfig = { NODE_ENV: "test", PORT: 3000, DATABASE_URL: "postgres://api:pass@localhost/fhdod", DATABASE_URL_MIGRATIONS: "postgres://admin:pass@localhost/fhdod", ALLOWED_ORIGIN: "http://localhost:5173", JWT_SECRET: "12345678901234567890123456789012", JWT_ISSUER: "fhdod-api", JWT_AUDIENCE: "fhdod-web" };
 const repository: AuthRepository = {
   transaction: async (work) => work(repository), findUserByEmail: async () => null, findUserById: async () => null, findSession: async () => null, findAuthenticatedSession: async () => null, findRefresh: async () => null,
-  revokeUserSessions: async () => undefined, createSession: async () => undefined, createRefresh: async () => undefined, consumeRefresh: async () => false, revokeSession: async () => undefined, touchSession: async () => undefined, changePassword: async () => undefined, changeEmail: async () => undefined,
+  revokeUserSessions: async () => undefined, createSession: async () => undefined, createRefresh: async () => undefined, consumeRefresh: async () => false, linkRefreshReplacement: async () => undefined, revokeSession: async () => undefined, touchSession: async () => undefined, changePassword: async () => undefined, changeEmail: async () => undefined,
 };
 const clock: Clock = { now: () => new Date("2026-01-01T00:00:00Z") };
 const app = createApp(config, new AuthService(repository, clock, config));

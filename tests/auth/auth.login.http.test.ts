@@ -39,6 +39,12 @@ describe("POST /api/auth/login validation", () => {
     expect(cookies).toEqual(expect.arrayContaining([expect.stringMatching(/^access_token=; Path=\/api;/), expect.stringMatching(/^access_token=; Path=\/api\/auth;/), expect.stringMatching(/^refresh_token=; Path=\/api\/auth;/)]));
   });
 
+  it("does not disguise a database failure during authentication as an unauthenticated request", async () => {
+    const failure = Object.assign(new Error("permission denied"), { code: "42501" });
+    const auth = { login: async () => { throw new Error("unused"); }, authenticate: async () => { throw failure; }, recoverCsrf: async () => "csrf" } as unknown as AuthService;
+    await request(createApp(config, auth)).get("/api/auth/csrf").set("Cookie", "access_token=valid; refresh_token=refresh").expect(500).expect({ error: { code: "INTERNAL_ERROR", message: "Ocorreu um erro interno." } });
+  });
+
   it.each([{ password: "senha" }, { email: validBody.email }, { userEmail: validBody.email, userPassword: "senha" }, { email: 123, password: true }, { email: "invalido", password: "senha" }])("rejects invalid JSON body %# with 400", async (body) => {
     await request(makeApp(async () => { throw new Error("must not authenticate"); })).post("/api/auth/login").set("Content-Type", "application/json").send(body).expect(400).expect({ error: { code: "VALIDATION_ERROR", message: "Dados de entrada inválidos." } });
   });
