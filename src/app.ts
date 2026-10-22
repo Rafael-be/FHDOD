@@ -5,6 +5,7 @@ import cookieParser from "cookie-parser";
 import swaggerUi from "swagger-ui-express";
 import type { AppConfig } from "./config/env.js";
 import { errorHandler, notFoundHandler } from "./shared/core.js";
+import { httpRequestLogger } from "./shared/logger.js";
 import type { AuthService } from "./modules/auth/auth.service.js";
 import { authRoutes } from "./modules/auth/auth.routes.js";
 import { authenticate } from "./modules/auth/auth.middleware.js";
@@ -22,6 +23,7 @@ import { contentRoutes } from "./modules/content/content.routes.js";
 export function createApp(config: AppConfig, authService: AuthService, adminService?: AdminService, auditService?: AuditService, healthService?: HealthService, contentService?: ContentService) {
   const app = express();
   app.disable("x-powered-by");
+  if (config.NODE_ENV !== "test") app.use(httpRequestLogger);
   app.use(helmet());
   app.use(cors({ origin: (origin, callback) => callback(null, !origin || origin === config.ALLOWED_ORIGIN), credentials: true, methods: ["GET", "POST", "PATCH", "DELETE"] }));
   app.use(express.json({ limit: "32kb" })); app.use(cookieParser());

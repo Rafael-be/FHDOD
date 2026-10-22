@@ -18,6 +18,7 @@ integration("authentication lifecycle PostgreSQL integration", () => {
   it("persists, validates, revokes and renews a temporary-password session", async () => {
     const sql = postgres(testUrl!, { max: 1 });
     const email = `auth-lifecycle-${randomUUID().slice(0, 12)}@test.invalid`;
+    const changedEmail = `auth-lifecycle-email-${randomUUID().slice(0, 12)}@test.invalid`;
     try {
       const [role] = await sql<{ id: number }[]>`select id from roles where code = 'superuser'`;
       const passwordHash = await argon2.hash("temporary-password", { type: argon2.argon2id });
@@ -36,14 +37,20 @@ integration("authentication lifecycle PostgreSQL integration", () => {
       expect(revoked!.active).toBe(0);
 
       await agent.post("/api/auth/login").send({ email, password: "replacement-password" }).expect(200);
+      const establishedCsrf = await agent.get("/api/auth/csrf").expect(200);
+      await agent.post("/api/auth/change-password").set("X-CSRF-Token", establishedCsrf.body.data.csrfToken).send({ currentPassword: "replacement-password", newPassword: "established-password" }).expect(204);
+      await agent.post("/api/auth/login").send({ email, password: "established-password" }).expect(200);
+      const emailCsrf = await agent.get("/api/auth/csrf").expect(200);
+      await agent.post("/api/auth/change-email").set("X-CSRF-Token", emailCsrf.body.data.csrfToken).send({ currentPassword: "established-password", email: changedEmail }).expect(204);
+      await agent.post("/api/auth/login").send({ email: changedEmail, password: "established-password" }).expect(200);
       const refreshed = await agent.post("/api/auth/refresh").expect(200);
       await agent.post("/api/auth/logout").set("X-CSRF-Token", refreshed.body.data.csrfToken).expect(204);
       const [afterLogout] = await sql<{ active: number }[]>`select count(*) filter (where revoked_at is null)::int as active from auth_sessions where user_id=${user!.id}`;
       expect(afterLogout!.active).toBe(0);
     } finally {
-      await sql`delete from auth_refresh_tokens where session_id in (select id from auth_sessions where user_id in (select id from users where email=${email}))`;
-      await sql`delete from auth_sessions where user_id in (select id from users where email=${email})`;
-      await sql`delete from users where email=${email}`;
+      await sql`delete from auth_refresh_tokens where session_id in (select id from auth_sessions where user_id in (select id from users where email in (${email}, ${changedEmail})))`;
+      await sql`delete from auth_sessions where user_id in (select id from users where email in (${email}, ${changedEmail}))`;
+      await sql`delete from users where email in (${email}, ${changedEmail})`;
       await sql.end({ timeout: 5 });
     }
   }, 30_000);

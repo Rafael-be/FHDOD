@@ -21,6 +21,21 @@ describe("HTTP boundary", () => {
     expect(response.headers["access-control-allow-origin"]).toBeUndefined();
   });
 
+  it("writes a safe completion log for successful development requests", async () => {
+    const stdoutWrite = jest.spyOn(process.stdout, "write").mockImplementation(() => true);
+    try {
+      await request(createApp({ ...config, NODE_ENV: "development" }, new AuthService(repository, clock, config))).get("/health").expect(200);
+      const output = String(stdoutWrite.mock.calls.at(-1)?.[0]);
+      expect(output).toContain('"event":"http.request_completed"');
+      expect(output).toContain('"operation":"GET /health"');
+      expect(output).toContain('"status":200');
+      expect(output).not.toContain("cookie");
+      expect(output).not.toContain("authorization");
+    } finally {
+      stdoutWrite.mockRestore();
+    }
+  });
+
   it("returns the documented validation envelope for invalid input", async () => {
     await request(app).post("/api/auth/login").send({ email: "not-an-email" }).expect(400).expect({ error: { code: "VALIDATION_ERROR", message: "Dados de entrada inválidos." } });
   });
@@ -48,6 +63,7 @@ describe("HTTP boundary", () => {
       expect(typeof output).toBe("string");
       expect(output).toContain('"code":"23505"');
       expect(output).toContain("POST /api/auth/login");
+      expect(output).toContain('"stack":');
       expect(output).not.toContain("senha-super-secreta");
       expect(output).not.toContain("abc123");
       expect(output).not.toContain("person@example.com");

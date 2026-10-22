@@ -45,6 +45,21 @@ describe("POST /api/auth/login validation", () => {
     await request(createApp(config, auth)).get("/api/auth/csrf").set("Cookie", "access_token=valid; refresh_token=refresh").expect(500).expect({ error: { code: "INTERNAL_ERROR", message: "Ocorreu um erro interno." } });
   });
 
+  it("logs a CSRF rejection without recording request credentials", async () => {
+    const stderrWrite = jest.spyOn(process.stderr, "write").mockImplementation(() => true);
+    const auth = { login: async () => { throw new Error("unused"); }, authenticate: async () => ({ userId: 1, sessionId: "session", role: "superuser" as const, mustChangePassword: true }), recoverCsrf: async () => "csrf", changeTemporaryPassword: async () => undefined } as unknown as AuthService;
+    try {
+      await request(createApp(config, auth)).post("/api/auth/change-temporary-password").set("Cookie", "access_token=access-secret; refresh_token=refresh-secret").send({ currentPassword: "current-secret", newPassword: "new-password-safe" }).expect(403).expect({ error: { code: "CSRF_INVALID", message: "Token CSRF inválido." } });
+      const output = String(stderrWrite.mock.calls.at(-1)?.[0]);
+      expect(output).toContain('"reason":"csrf_invalid"');
+      expect(output).not.toContain("access-secret");
+      expect(output).not.toContain("refresh-secret");
+      expect(output).not.toContain("current-secret");
+    } finally {
+      stderrWrite.mockRestore();
+    }
+  });
+
   it.each([{ password: "senha" }, { email: validBody.email }, { userEmail: validBody.email, userPassword: "senha" }, { email: 123, password: true }, { email: "invalido", password: "senha" }])("rejects invalid JSON body %# with 400", async (body) => {
     await request(makeApp(async () => { throw new Error("must not authenticate"); })).post("/api/auth/login").set("Content-Type", "application/json").send(body).expect(400).expect({ error: { code: "VALIDATION_ERROR", message: "Dados de entrada inválidos." } });
   });
