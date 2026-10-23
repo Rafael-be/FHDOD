@@ -1,0 +1,24 @@
+import { Router } from "express";
+import { z } from "zod";
+import { csrfProtection, requireRole } from "../auth/auth.middleware.js";
+import type { AuthService } from "../auth/auth.service.js";
+import type { AdminService } from "./admin.service.js";
+const id=z.coerce.number().int().positive();
+const manager=z.object({fullName:z.string().trim().min(2).max(160),email:z.string().email().max(254),temporaryPassword:z.string().min(12).max(256),sectorIds:z.array(id).max(100).default([])});
+const managerPatch=manager.pick({fullName:true,email:true}); const sector=z.object({code:z.string().trim().min(2).max(50),name:z.string().trim().min(2).max(160)});
+export function adminRoutes(service:AdminService, auth:AuthService){const router=Router();router.use(requireRole("superuser","sector_manager")); const csrf=csrfProtection(auth);
+ router.get("/managers",async(req,res,next)=>{try{res.json({data:await service.listManagers(req.identity!,req.query.deleted==="true")});}catch(e){next(e);}});
+ router.get("/managers/:id",async(req,res,next)=>{try{res.json({data:await service.getManager(req.identity!,id.parse(req.params.id),req.query.deleted==="true")});}catch(e){next(e);}});
+ router.post("/managers",csrf,async(req,res,next)=>{try{res.status(201).json({data:await service.createManager(req.identity!,manager.parse(req.body))});}catch(e){next(e);}});
+ router.patch("/managers/:id",csrf,async(req,res,next)=>{try{res.json({data:await service.updateManager(req.identity!,id.parse(req.params.id),managerPatch.parse(req.body))});}catch(e){next(e);}});
+ router.post("/managers/:id/deactivate",csrf,async(req,res,next)=>{try{await service.deactivateManager(req.identity!,id.parse(req.params.id));res.status(204).end();}catch(e){next(e);}});
+ router.post("/managers/:id/reactivate",csrf,async(req,res,next)=>{try{const body=z.object({temporaryPassword:z.string().min(12).max(256)}).parse(req.body);await service.reactivateManager(req.identity!,id.parse(req.params.id),body.temporaryPassword);res.status(204).end();}catch(e){next(e);}});
+ router.get("/managers/:id/sectors",async(req,res,next)=>{try{res.json({data:await service.listManagerSectors(req.identity!,id.parse(req.params.id))});}catch(e){next(e);}});
+ router.put("/managers/:managerId/sectors/:sectorId",csrf,async(req,res,next)=>{try{await service.assignment(req.identity!,id.parse(req.params.managerId),id.parse(req.params.sectorId),true);res.status(204).end();}catch(e){next(e);}});
+ router.delete("/managers/:managerId/sectors/:sectorId",csrf,async(req,res,next)=>{try{await service.assignment(req.identity!,id.parse(req.params.managerId),id.parse(req.params.sectorId),false);res.status(204).end();}catch(e){next(e);}});
+ router.get("/sectors",async(req,res,next)=>{try{res.json({data:await service.listSectors(req.identity!,req.query.deleted==="true")});}catch(e){next(e);}});
+ router.get("/sectors/:id/status",async(req,res,next)=>{try{res.json({data:await service.sectorStatus(req.identity!,id.parse(req.params.id))});}catch(e){next(e);}});
+ router.post("/sectors",csrf,async(req,res,next)=>{try{res.status(201).json({data:await service.createSector(req.identity!,sector.parse(req.body))});}catch(e){next(e);}});
+ router.patch("/sectors/:id",csrf,async(req,res,next)=>{try{res.json({data:await service.updateSector(req.identity!,id.parse(req.params.id),z.object({name:sector.shape.name}).parse(req.body).name)});}catch(e){next(e);}});
+ router.post("/sectors/:id/deactivate",csrf,async(req,res,next)=>{try{await service.deactivateSector(req.identity!,id.parse(req.params.id),true);res.status(204).end();}catch(e){next(e);}});
+ router.post("/sectors/:id/reactivate",csrf,async(req,res,next)=>{try{await service.deactivateSector(req.identity!,id.parse(req.params.id),false);res.status(204).end();}catch(e){next(e);}});return router;}
