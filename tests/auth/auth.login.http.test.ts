@@ -6,7 +6,7 @@ import type { AuthService } from "../../src/modules/auth/auth.service.js";
 import { loginCredentialsSchema } from "../../src/modules/auth/auth.schemas.js";
 import { DomainError } from "../../src/shared/core.js";
 
-const config: AppConfig = { NODE_ENV: "test", PORT: 3000, DATABASE_URL: "postgres://api:pass@localhost/fhdod", DATABASE_URL_MIGRATIONS: "postgres://admin:pass@localhost/fhdod", ALLOWED_ORIGIN: "http://localhost:5173", JWT_SECRET: "12345678901234567890123456789012", JWT_ISSUER: "fhdod-api", JWT_AUDIENCE: "fhdod-web", PERFORMANCE_MEASUREMENTS: false };
+const config: AppConfig = { NODE_ENV: "test", PORT: 3000, DATABASE_URL: "postgres://api:pass@localhost/fhdod", ALLOWED_ORIGIN: "http://localhost:5173", JWT_SECRET: "12345678901234567890123456789012", JWT_ISSUER: "fhdod-api", JWT_AUDIENCE: "fhdod-web", PERFORMANCE_MEASUREMENTS: false };
 const validBody = { email: "admin@example.test", password: "senha-de-desenvolvimento" };
 
 function makeApp(login: (email: string, password: string) => Promise<unknown>) {

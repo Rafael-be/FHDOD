@@ -56,6 +56,23 @@ describe("LoginAttemptLimiter", () => {
     await expect(limiter.check("203.0.113.11", "other-client@hospital.test")).resolves.toBeUndefined();
   });
 
+  it("removes expired keys that are never queried again", async () => {
+    let now = 1_000;
+    const limiter = new LoginAttemptLimiter(() => now, noDelay, noLog);
+    limiter.failure("203.0.113.10", "first@hospital.test");
+    limiter.failure("203.0.113.11", "second@hospital.test");
+
+    now += LOGIN_FAILURE_WINDOW_MS;
+    await limiter.check("203.0.113.12", "new@hospital.test");
+
+    const internal = limiter as unknown as {
+      failuresByIp: Map<string, unknown>;
+      failuresByIdentifier: Map<string, unknown>;
+    };
+    expect(internal.failuresByIp.size).toBe(0);
+    expect(internal.failuresByIdentifier.size).toBe(0);
+  });
+
   it("emits only aggregate, non-sensitive rate-limit metadata", () => {
     const entries: unknown[] = [];
     const limiter = new LoginAttemptLimiter(() => 1_000, noDelay, (event, details) => { entries.push({ event, details }); });

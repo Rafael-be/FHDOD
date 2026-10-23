@@ -26,9 +26,33 @@ export class AuthService {
     const measured = (stage: string, work: () => Promise<unknown>) => measurePerformance(this.config.PERFORMANCE_MEASUREMENTS, "auth.login", stage, work);
     const user = await measured("user_lookup", () => this.repository.findUserByEmail(normalizeEmail(email))) as AuthUser | null;
     const accepted = user && !user.deletedAt && await measured("password_verify", () => argon2.verify(user.passwordHash, password));
-    if (!accepted || !user) throw new DomainError("INVALID_CREDENTIALS", "E-mail ou senha inválidos.", 401);
-    const now = this.clock.now(); const sessionId = randomUUID(); const refreshToken = opaqueToken(); const csrfToken = randomBytes(32).toString("base64url"); const expiresAt = new Date(now.getTime() + 24 * HOUR);
-    await measured("session_transaction", () => this.repository.transaction(async repository => { await repository.revokeUserSessions(user.id, now); await repository.createSession({ id: sessionId, userId: user.id, csrfToken, createdAt: now, lastUsedAt: now, expiresAt, revokedAt: null }); await repository.createRefresh({ id: randomUUID(), sessionId, tokenHash: hashToken(refreshToken), expiresAt, consumedAt: null }); }));
+    const now = this.clock.now();
+    const temporaryPasswordExpired = user?.mustChangePassword && (
+      !user.temporaryPasswordExpiresAt || user.temporaryPasswordExpiresAt <= now
+    );
+
+    if (!accepted || !user || temporaryPasswordExpired) {
+      throw new DomainError("INVALID_CREDENTIALS", "E-mail ou senha inválidos.", 401);
+    }
+
+    const sessionId = randomUUID();
+    const refreshToken = opaqueToken();
+    const csrfToken = randomBytes(32).toString("base64url");
+    const expiresAt = new Date(now.getTime() + 24 * HOUR);
+    await measured("session_transaction", () => this.repository.transaction(async repository => {
+      const lockedUser = await repository.lockUser(user.id);
+      const lockedTemporaryPasswordExpired = lockedUser?.mustChangePassword && (
+        !lockedUser.temporaryPasswordExpiresAt || lockedUser.temporaryPasswordExpiresAt <= now
+      );
+
+      if (!lockedUser || lockedUser.deletedAt || lockedUser.passwordHash !== user.passwordHash || lockedTemporaryPasswordExpired) {
+        throw new DomainError("INVALID_CREDENTIALS", "E-mail ou senha inválidos.", 401);
+      }
+
+      await repository.revokeUserSessions(lockedUser.id, now);
+      await repository.createSession({ id: sessionId, userId: lockedUser.id, csrfToken, createdAt: now, lastUsedAt: now, expiresAt, revokedAt: null });
+      await repository.createRefresh({ id: randomUUID(), sessionId, tokenHash: hashToken(refreshToken), expiresAt, consumedAt: null });
+    }));
     return { accessToken: await measured("jwt_generation", () => this.accessToken(user, sessionId)) as string, refreshToken, csrfToken, expiresAt };
   }
   private rejectAuthentication(reason: AuthenticationFailureReason): never { logAuthenticationFailure(reason); throw new DomainError("UNAUTHENTICATED", "Sessão inválida ou expirada.", 401); }

@@ -6,9 +6,9 @@ import type { AuthRepository } from "../../src/modules/auth/auth.repository.js";
 import { AuthService } from "../../src/modules/auth/auth.service.js";
 import type { Clock } from "../../src/shared/core.js";
 
-const config: AppConfig = { NODE_ENV: "test", PORT: 3000, DATABASE_URL: "postgres://api:pass@localhost/fhdod", DATABASE_URL_MIGRATIONS: "postgres://admin:pass@localhost/fhdod", ALLOWED_ORIGIN: "http://localhost:5173", JWT_SECRET: "12345678901234567890123456789012", JWT_ISSUER: "fhdod-api", JWT_AUDIENCE: "fhdod-web", PERFORMANCE_MEASUREMENTS: false };
+const config: AppConfig = { NODE_ENV: "test", PORT: 3000, DATABASE_URL: "postgres://api:pass@localhost/fhdod", ALLOWED_ORIGIN: "http://localhost:5173", JWT_SECRET: "12345678901234567890123456789012", JWT_ISSUER: "fhdod-api", JWT_AUDIENCE: "fhdod-web", PERFORMANCE_MEASUREMENTS: false };
 const repository: AuthRepository = {
-  transaction: async (work) => work(repository), findUserByEmail: async () => null, findUserById: async () => null, findSession: async () => null, findAuthenticatedSession: async () => null, findRefresh: async () => null,
+  transaction: async (work) => work(repository), findUserByEmail: async () => null, findUserById: async () => null, lockUser: async () => null, findSession: async () => null, findAuthenticatedSession: async () => null, findRefresh: async () => null,
   revokeUserSessions: async () => undefined, createSession: async () => undefined, createRefresh: async () => undefined, consumeRefresh: async () => false, linkRefreshReplacement: async () => undefined, revokeSession: async () => undefined, touchSession: async () => undefined, changePassword: async () => undefined, changeEmail: async () => undefined,
 };
 const clock: Clock = { now: () => new Date("2026-01-01T00:00:00Z") };
@@ -38,6 +38,22 @@ describe("HTTP boundary", () => {
 
   it("returns the documented validation envelope for invalid input", async () => {
     await request(app).post("/api/auth/login").send({ email: "not-an-email" }).expect(400).expect({ error: { code: "VALIDATION_ERROR", message: "Dados de entrada inválidos." } });
+  });
+
+  it("returns client errors for malformed JSON and oversized JSON bodies", async () => {
+    await request(app)
+      .post("/api/auth/login")
+      .set("Content-Type", "application/json")
+      .send('{"email":')
+      .expect(400)
+      .expect({ error: { code: "INVALID_JSON", message: "JSON inválido." } });
+
+    await request(app)
+      .post("/api/auth/login")
+      .set("Content-Type", "application/json")
+      .send({ padding: "x".repeat(33 * 1024) })
+      .expect(413)
+      .expect({ error: { code: "PAYLOAD_TOO_LARGE", message: "Corpo da requisição excede o limite permitido." } });
   });
 
   it("limits failed logins by IP even when identifiers change", async () => {

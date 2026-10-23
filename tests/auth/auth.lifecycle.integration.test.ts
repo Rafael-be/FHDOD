@@ -41,8 +41,6 @@ const config: AppConfig = {
   PORT: 3000,
 
   DATABASE_URL: "postgres://test:pass@localhost/fhdod_test",
-  DATABASE_URL_MIGRATIONS:
-    "postgres://admin:pass@localhost/fhdod_test",
 
   ALLOWED_ORIGIN: "http://localhost:5173",
 

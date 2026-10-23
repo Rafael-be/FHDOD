@@ -2,7 +2,7 @@ import "dotenv/config";
 import argon2 from "argon2";
 import postgres from "postgres";
 import { z } from "zod";
-import { loadConfig } from "../../config/env.js";
+import { loadMigrationConfig } from "../../config/env.js";
 import { normalizeEmail } from "../../shared/core.js";
 
 const required = ["INITIAL_SUPERUSER_NAME", "INITIAL_SUPERUSER_EMAIL", "INITIAL_SUPERUSER_PASSWORD"] as const;
@@ -110,7 +110,7 @@ export async function seedInitialData(
 }
 
 export async function runInitialSeed(): Promise<void> {
-  const config = loadConfig();
+  const config = loadMigrationConfig();
   const missing = required.filter((key) => !process.env[key]?.trim());
   if (missing.length) {
     throw new Error(`Seed requer ${missing.join(", ")}.`);

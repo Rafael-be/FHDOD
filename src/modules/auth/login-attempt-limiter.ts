@@ -11,6 +11,7 @@ type RateLimitLogger = typeof logLoginRateLimit;
 export class LoginAttemptLimiter {
   private readonly failuresByIp = new Map<string, AttemptState>();
   private readonly failuresByIdentifier = new Map<string, AttemptState>();
+  private nextCleanupAt = 0;
   constructor(
     private readonly now: () => number = Date.now,
     private readonly delay: (milliseconds: number) => Promise<void> = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds)),
@@ -19,6 +20,7 @@ export class LoginAttemptLimiter {
 
   async check(ip: string, identifier: string): Promise<void> {
     const timestamp = this.now();
+    this.cleanupExpired(timestamp);
     const ipState = this.active(this.failuresByIp, ip, timestamp, "ip");
     if (ipState?.count && ipState.count >= MAX_LOGIN_FAILURES_PER_IP) {
       this.log("auth.login_failure_blocked", { count: ipState.count, limit: MAX_LOGIN_FAILURES_PER_IP, windowMs: LOGIN_FAILURE_WINDOW_MS, status: 429, scope: "ip" });
@@ -30,12 +32,36 @@ export class LoginAttemptLimiter {
 
   failure(ip: string, identifier: string): void {
     const timestamp = this.now();
+    this.cleanupExpired(timestamp);
     const count = this.increment(this.failuresByIp, ip, timestamp, "ip");
     this.increment(this.failuresByIdentifier, identifier, timestamp, "identifier");
     this.log("auth.login_failure_counted", { count, limit: MAX_LOGIN_FAILURES_PER_IP, windowMs: LOGIN_FAILURE_WINDOW_MS, status: 401, scope: "ip" });
     if (count === MAX_LOGIN_FAILURES_PER_IP) this.log("auth.login_failure_limit_reached", { count, limit: MAX_LOGIN_FAILURES_PER_IP, windowMs: LOGIN_FAILURE_WINDOW_MS, status: 401, scope: "ip" });
   }
   success(identifier: string): void { this.failuresByIdentifier.delete(identifier); }
+  /** Bounds local state even when expired keys are never seen again. */
+  private cleanupExpired(timestamp: number): void {
+    if (timestamp < this.nextCleanupAt) return;
+
+    for (const [states, scope] of [
+      [this.failuresByIp, "ip"],
+      [this.failuresByIdentifier, "identifier"],
+    ] as const) {
+      for (const [key, state] of states) {
+        if (state.expiresAt <= timestamp) {
+          states.delete(key);
+          this.log("auth.login_failure_window_expired", {
+            count: state.count,
+            limit: MAX_LOGIN_FAILURES_PER_IP,
+            scope,
+            windowMs: LOGIN_FAILURE_WINDOW_MS,
+          });
+        }
+      }
+    }
+
+    this.nextCleanupAt = timestamp + LOGIN_FAILURE_WINDOW_MS;
+  }
   private active(states: Map<string, AttemptState>, key: string, timestamp: number, scope: AttemptScope): AttemptState | undefined {
     const state = states.get(key);
     if (state && state.expiresAt <= timestamp) {

@@ -25,6 +25,7 @@ export interface AuthRepository {
   transaction<T>(work: (repository: AuthRepository) => Promise<T>): Promise<T>;
   findUserByEmail(email: string): Promise<AuthUser | null>;
   findUserById(id: number): Promise<AuthUser | null>;
+  lockUser(id: number): Promise<AuthUser | null>;
   findSession(id: string): Promise<Session | null>;
   findAuthenticatedSession(id: string): Promise<AuthenticatedSession | null>;
   findRefresh(hash: string): Promise<RefreshToken | null>;
@@ -45,6 +46,8 @@ export class PostgresAuthRepository implements AuthRepository {
   async transaction<T>(work: (repository: AuthRepository) => Promise<T>): Promise<T> { return this.sql.begin(async (tx) => work(new PostgresAuthRepository(tx as unknown as postgres.Sql))) as Promise<T>; }
   async findUserByEmail(email: string): Promise<AuthUser | null> { const rows = await this.sql<RawAuthUser[]>`select u.id, u.email, u.password_hash as "passwordHash", r.code as role, u.deleted_at as "deletedAt", u.must_change_password as "mustChangePassword", u.temporary_password_expires_at as "temporaryPasswordExpiresAt" from users u join roles r on r.id=u.role_id where lower(btrim(u.email))=lower(btrim(${email})) limit 1`; return rows[0] ? authUser(rows[0]) : null; }
   async findUserById(id: number): Promise<AuthUser | null> { const rows = await this.sql<RawAuthUser[]>`select u.id, u.email, u.password_hash as "passwordHash", r.code as role, u.deleted_at as "deletedAt", u.must_change_password as "mustChangePassword", u.temporary_password_expires_at as "temporaryPasswordExpiresAt" from users u join roles r on r.id=u.role_id where u.id=${id} limit 1`; return rows[0] ? authUser(rows[0]) : null; }
+  /** Serializes session replacement for one account inside the caller's transaction. */
+  async lockUser(id: number): Promise<AuthUser | null> { const rows = await this.sql<RawAuthUser[]>`select u.id, u.email, u.password_hash as "passwordHash", r.code as role, u.deleted_at as "deletedAt", u.must_change_password as "mustChangePassword", u.temporary_password_expires_at as "temporaryPasswordExpiresAt" from users u join roles r on r.id=u.role_id where u.id=${id} for update of u`; return rows[0] ? authUser(rows[0]) : null; }
   async findSession(id: string): Promise<Session | null> { const rows = await this.sql<RawSession[]>`select id, user_id as "userId", csrf_token as "csrfToken", created_at as "createdAt", last_used_at as "lastUsedAt", expires_at as "expiresAt", revoked_at as "revokedAt" from auth_sessions where id=${id}`; return rows[0] ? session(rows[0]) : null; }
   /** Reads the current account authorization context on every protected request. */
   async findAuthenticatedSession(id: string): Promise<AuthenticatedSession | null> { const rows = await this.sql<RawAuthenticatedSession[]>`select s.id,s.user_id as "userId",s.csrf_token as "csrfToken",s.created_at as "createdAt",s.last_used_at as "lastUsedAt",s.expires_at as "expiresAt",s.revoked_at as "revokedAt",r.code as role,u.deleted_at as "deletedAt",u.must_change_password as "mustChangePassword" from auth_sessions s join users u on u.id=s.user_id join roles r on r.id=u.role_id where s.id=${id}`; return rows[0] ? authenticatedSession(rows[0]) : null; }
