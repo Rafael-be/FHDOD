@@ -39,6 +39,26 @@ describe("HTTP boundary", () => {
     expect(response.headers["access-control-allow-origin"]).toBeUndefined();
   });
 
+  it("authorizes PUT preflight only for the configured CORS origin", async () => {
+    const preflight = await request(app)
+      .options("/api/pages/")
+      .set("Origin", config.ALLOWED_ORIGIN)
+      .set("Access-Control-Request-Method", "PUT")
+      .expect(204)
+      .expect("access-control-allow-origin", config.ALLOWED_ORIGIN);
+
+    expect(preflight.headers["access-control-allow-methods"])
+      .toContain("PUT");
+
+    const untrusted = await request(app)
+      .options("/api/pages/")
+      .set("Origin", "https://untrusted.example")
+      .set("Access-Control-Request-Method", "PUT");
+
+    expect(untrusted.headers["access-control-allow-origin"]).toBeUndefined();
+    expect(untrusted.headers["access-control-allow-methods"]).toBeUndefined();
+  });
+
   it("writes a safe completion log for successful development requests", async () => {
     const stdoutWrite = jest.spyOn(process.stdout, "write").mockImplementation(() => true);
     try {

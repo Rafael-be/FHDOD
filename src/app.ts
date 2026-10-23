@@ -63,7 +63,7 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
   app.disable("x-powered-by");
   if (config.NODE_ENV !== "test") app.use(httpRequestLogger);
   app.use(helmet());
-  app.use(cors({ origin: (origin, callback) => callback(null, !origin || origin === config.ALLOWED_ORIGIN), credentials: true, methods: ["GET", "POST", "PATCH", "DELETE"] }));
+  app.use(cors({ origin: (origin, callback) => callback(null, !origin || origin === config.ALLOWED_ORIGIN), credentials: true, methods: ["GET", "POST", "PUT", "PATCH", "DELETE"] }));
   app.use(express.json({ limit: "32kb" })); app.use(cookieParser());
   app.use(performanceRequestLogger(config.PERFORMANCE_MEASUREMENTS));
   if (healthService) app.use(healthRoutes(healthService));
