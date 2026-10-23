@@ -53,7 +53,7 @@ export class QuestionsRepository {
       where ((q.question_kind='sector' and q.sector_id=${sectorId})
         or (q.question_kind='standard' and q.is_nps=false and a.id is not null)
         or (q.is_nps=true and n.id is not null)) ${deleted}
-      order by q.is_nps, q.question_kind desc, "displayOrder", q.id`;
+      order by q.is_nps, case when q.question_kind='sector' then 0 else 1 end, "displayOrder", q.id`;
   }
 
   async createStandard(text: string, scope: "all_sectors" | "selected_sectors", sectorIds: number[], order: number, actorId: number): Promise<QuestionRow> {
