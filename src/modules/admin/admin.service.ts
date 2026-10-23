@@ -27,6 +27,12 @@ interface SectorInput {
   name: string;
 }
 
+interface PostgresError {
+  code?: string;
+  table_name?: string;
+  constraint_name?: string;
+}
+
 function requireSuperuser(actor: AuthIdentity): void {
   if (actor.role !== "superuser") {
     throw new DomainError("FORBIDDEN", "Somente superusuário pode executar esta operação.", 403);
@@ -43,6 +49,13 @@ function sectorStatus(readiness: SectorReadiness) {
     status: missingRequirements.length === 0 ? "active" as const : "preparing" as const,
     missingRequirements,
   };
+}
+
+function isSectorCodeConflict(error: unknown): boolean {
+  const databaseError = error as PostgresError;
+  return databaseError.code === "23505"
+    && databaseError.table_name === "sectors"
+    && databaseError.constraint_name === "sectors_code_key";
 }
 
 export class AdminService {
@@ -203,27 +216,34 @@ export class AdminService {
   async createSector(actor: AuthIdentity, input: SectorInput) {
     requireSuperuser(actor);
 
-    return measurePerformance(
-      this.performanceMeasurements,
-      "admin.create_sector",
-      "database_transaction",
-      () => this.repository.transaction(async (repository) => {
-        const sector = await repository.createSector(
-          normalizeSectorCode(input.code),
-          input.name.trim(),
-          actor.userId,
-        );
-        await repository.audit(
-          actor.userId,
-          "sector.created",
-          "sector",
-          sector.id,
-          null,
-          { code: sector.code },
-        );
-        return sector;
-      }),
-    );
+    try {
+      return await measurePerformance(
+        this.performanceMeasurements,
+        "admin.create_sector",
+        "database_transaction",
+        () => this.repository.transaction(async (repository) => {
+          const sector = await repository.createSector(
+            normalizeSectorCode(input.code),
+            input.name.trim(),
+            actor.userId,
+          );
+          await repository.audit(
+            actor.userId,
+            "sector.created",
+            "sector",
+            sector.id,
+            null,
+            { code: sector.code },
+          );
+          return sector;
+        }),
+      );
+    } catch (error) {
+      if (isSectorCodeConflict(error)) {
+        throw new DomainError("SECTOR_CODE_ALREADY_EXISTS", "Este código de setor já está em uso.", 409);
+      }
+      throw error;
+    }
   }
 
   async listSectors(actor: AuthIdentity, deleted = false) {

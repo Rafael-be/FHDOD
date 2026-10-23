@@ -40,4 +40,32 @@ describe("AdminService manager sector scope", () => {
     expect(revoked).toBe(false);
     expect(audited).toBe(false);
   });
+
+  it("returns a sector-code conflict only for the sector code constraint", async () => {
+    const duplicateCode = Object.assign(new Error("duplicate"), {
+      code: "23505",
+      table_name: "sectors",
+      constraint_name: "sectors_code_key",
+    });
+    const repository = {
+      transaction: async () => { throw duplicateCode; },
+    } as unknown as AdminRepository;
+
+    await expect(new AdminService(repository, clock).createSector(superuser, { code: "UTI", name: "UTI" }))
+      .rejects.toMatchObject({ code: "SECTOR_CODE_ALREADY_EXISTS", status: 409 });
+  });
+
+  it("does not relabel unrelated unique violations as sector-code conflicts", async () => {
+    const unrelatedViolation = Object.assign(new Error("duplicate"), {
+      code: "23505",
+      table_name: "sectors",
+      constraint_name: "other_constraint",
+    });
+    const repository = {
+      transaction: async () => { throw unrelatedViolation; },
+    } as unknown as AdminRepository;
+
+    await expect(new AdminService(repository, clock).createSector(superuser, { code: "UTI", name: "UTI" }))
+      .rejects.toBe(unrelatedViolation);
+  });
 });
