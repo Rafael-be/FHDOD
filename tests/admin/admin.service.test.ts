@@ -24,4 +24,20 @@ describe("AdminService manager sector scope", () => {
     await expect(service.sectorStatus(superuser, 7)).resolves.toEqual({ sectorId: 7, status: "preparing", missingRequirements: ["shift_ranges", "nps"] });
     await expect(service.sectorStatus(manager, 7)).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
+
+  it("does not revoke sessions or audit when the target is not a sector manager", async () => {
+    let revoked = false;
+    let audited = false;
+    const repository = {
+      transaction: async (work: (repository: AdminRepository) => Promise<void>) => work(repository as unknown as AdminRepository),
+      deactivateManager: async () => false,
+      revokeSessions: async () => { revoked = true; },
+      audit: async () => { audited = true; },
+    } as unknown as AdminRepository;
+
+    await expect(new AdminService(repository, clock).deactivateManager(superuser, 1))
+      .rejects.toMatchObject({ code: "NOT_FOUND" });
+    expect(revoked).toBe(false);
+    expect(audited).toBe(false);
+  });
 });
