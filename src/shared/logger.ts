@@ -52,6 +52,30 @@ export function logValidationFailure(request: Pick<Request, "method" | "path">, 
 
 export function logServerStarted(port: number): void { process.stdout.write(`${JSON.stringify({ level: "info", event: "server.started", port })}\n`); }
 
+export function logServerStartupFailed(error: unknown): void {
+  process.stderr.write(`${JSON.stringify({
+    level: "error",
+    event: "server.startup_failed",
+    error: { message: safeMessage(error) },
+  })}\n`);
+}
+
+export function logServerStopping(signal: string): void {
+  process.stdout.write(`${JSON.stringify({ level: "info", event: "server.stopping", signal })}\n`);
+}
+
+export function logServerStopped(): void {
+  process.stdout.write(`${JSON.stringify({ level: "info", event: "server.stopped" })}\n`);
+}
+
+export function logServerShutdownTimedOut(timeoutMs: number): void {
+  process.stderr.write(`${JSON.stringify({
+    level: "error",
+    event: "server.shutdown_timed_out",
+    timeoutMs,
+  })}\n`);
+}
+
 /** Logs authentication diagnostics without recording credentials or session identifiers. */
 export function logAuthenticationFailure(reason: AuthenticationFailureReason, error?: unknown): void {
   const candidate = error as { code?: unknown; name?: unknown } | undefined;
