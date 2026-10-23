@@ -94,14 +94,17 @@ export class QuestionsService {
   }
 
   async setDeleted(actor: AuthIdentity, id: number, deleted: boolean) {
-    const question = await this.repository.findSectorQuestion(id);
-    if (!question || question.sectorId === null) throw notFound();
-    await this.authorize(actor, question.sectorId);
+    const question = await this.repository.findQuestion(id);
+    if (!question) throw notFound();
+    if (question.questionKind === "sector" && question.sectorId !== null) await this.authorize(actor, question.sectorId);
+    else this.requireSuperuser(actor);
+    if (!deleted && question.questionKind !== "sector") throw new DomainError("REACTIVATION_SCOPE_REQUIRED", "A reativação de pergunta padrão ou NPS exige reconciliação explícita de escopo.", 409);
     if (!deleted && await this.repository.hasActiveOrderConflict(question)) {
       throw new DomainError("QUESTION_ORDER_CONFLICT", "A posição da pergunta já está ocupada.", 409);
     }
     return this.repository.transaction(async (repository) => {
       if (!await repository.setDeleted(id, deleted)) throw new DomainError("CONFLICT", "A pergunta já está nesse estado.", 409);
+      if (deleted) await repository.endAssignments(id, question.isNps);
       await repository.audit(actor.userId, deleted ? "question.deactivated" : "question.reactivated", id);
     });
   }

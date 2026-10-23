@@ -146,6 +146,14 @@ export class QuestionsRepository {
     return rows[0] ?? null;
   }
 
+  async findQuestion(id: number): Promise<QuestionRow | null> {
+    const rows = await this.sql<QuestionRow[]>`
+      select q.id,q.question_kind as "questionKind",q.scope,q.sector_id as "sectorId",q.is_nps as "isNps",q.display_order as "displayOrder",
+        q.deleted_at as "deletedAt",v.version_number as "versionNumber",v.text
+      from questions q join question_versions v on v.question_id=q.id and v.is_current=true where q.id=${id}`;
+    return rows[0] ?? null;
+  }
+
   async updateText(id: number, text: string, actorId: number): Promise<QuestionRow | null> {
     const locked = await this.sql<{ questionId: number }[]>`select question_id as "questionId" from question_versions where question_id=${id} for update`;
     if (locked.length === 0) return null;
@@ -159,6 +167,11 @@ export class QuestionsRepository {
   async setDeleted(id: number, deleted: boolean): Promise<boolean> {
     const rows = await this.sql<{ id: number }[]>`update questions set deleted_at=${deleted ? this.sql`now()` : null},updated_at=now() where id=${id} and deleted_at is ${deleted ? this.sql`null` : this.sql`not null`} returning id`;
     return rows.length === 1;
+  }
+
+  async endAssignments(questionId: number, isNps: boolean): Promise<void> {
+    if (isNps) await this.sql`update sector_nps_assignments set ended_at=now() where question_id=${questionId} and ended_at is null`;
+    else await this.sql`update question_sector_assignments set ended_at=now() where question_id=${questionId} and ended_at is null`;
   }
 
   async hasActiveOrderConflict(question: QuestionRow): Promise<boolean> {
