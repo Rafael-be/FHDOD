@@ -19,6 +19,8 @@ import { healthRoutes } from "./modules/health/health.routes.js";
 import type { ContentService } from "./modules/content/content.service.js";
 import { contentRoutes } from "./modules/content/content.routes.js";
 import { performanceRequestLogger } from "./shared/performance.js";
+import type { QuestionsService } from "./modules/questions/questions.service.js";
+import { questionsRoutes } from "./modules/questions/questions.routes.js";
 
 export interface AppDependencies {
   authService: AuthService;
@@ -26,6 +28,7 @@ export interface AppDependencies {
   auditService?: AuditService;
   healthService?: HealthService;
   contentService?: ContentService;
+  questionsService?: QuestionsService;
 }
 
 function validateRuntimeDependencies(
@@ -58,6 +61,7 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
     auditService,
     healthService,
     contentService,
+    questionsService,
   } = dependencies;
   const app = express();
   app.disable("x-powered-by");
@@ -72,6 +76,7 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
   if (adminService) app.use("/api", authenticate(authService), adminRoutes(adminService, authService));
   if (auditService) app.use("/api", authenticate(authService), auditRoutes(auditService));
   if (contentService) app.use("/api", contentRoutes(contentService, authService));
+  if (questionsService) app.use("/api", authenticate(authService), questionsRoutes(questionsService, authService));
   app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openapiDocument, { explorer: false }));
   app.use(notFoundHandler);
   app.use(errorHandler);
