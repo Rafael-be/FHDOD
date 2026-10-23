@@ -41,6 +41,70 @@ export class QuestionsRepository {
       order by q.display_order,q.id`;
   }
 
+  async listEffective(sectorId: number, includeDeleted: boolean): Promise<QuestionRow[]> {
+    const deleted = includeDeleted ? this.sql`` : this.sql`and q.deleted_at is null`;
+    return this.sql<QuestionRow[]>`
+      select q.id,q.question_kind as "questionKind",q.scope,q.sector_id as "sectorId",q.is_nps as "isNps",
+        case when q.is_nps then 2147483647 else coalesce(a.display_order,q.display_order) end as "displayOrder",
+        q.deleted_at as "deletedAt",v.version_number as "versionNumber",v.text
+      from questions q join question_versions v on v.question_id=q.id and v.is_current=true
+      left join question_sector_assignments a on a.question_id=q.id and a.sector_id=${sectorId} and a.ended_at is null
+      left join sector_nps_assignments n on n.question_id=q.id and n.sector_id=${sectorId} and n.ended_at is null
+      where ((q.question_kind='sector' and q.sector_id=${sectorId})
+        or (q.question_kind='standard' and q.is_nps=false and a.id is not null)
+        or (q.is_nps=true and n.id is not null)) ${deleted}
+      order by q.is_nps, q.question_kind desc, "displayOrder", q.id`;
+  }
+
+  async createStandard(text: string, scope: "all_sectors" | "selected_sectors", sectorIds: number[], order: number, actorId: number): Promise<QuestionRow> {
+    const rows = await this.sql<QuestionRow[]>`
+      insert into questions(question_kind,scope,sector_id,is_nps,display_order,created_by_user_id)
+      values ('standard',${scope},null,false,${order},${actorId})
+      returning id,question_kind as "questionKind",scope,sector_id as "sectorId",is_nps as "isNps",display_order as "displayOrder",deleted_at as "deletedAt",1 as "versionNumber",${text}::text as text`;
+    const question = rows[0]!;
+    await this.sql`insert into question_versions(question_id,version_number,text,is_current,created_by_user_id) values(${question.id},1,${text},true,${actorId})`;
+    const targets = scope === "all_sectors"
+      ? await this.sql<{ id: number }[]>`select id from sectors where deleted_at is null`
+      : await this.sql<{ id: number }[]>`select id from sectors where id = any(${sectorIds}) and deleted_at is null`;
+    if (targets.length !== (scope === "all_sectors" ? targets.length : new Set(sectorIds).size)) throw new Error("Invalid standard question sector scope");
+    for (const target of targets) {
+      await this.sql`insert into question_sector_assignments(question_id,sector_id,assignment_source,display_order,assigned_by_user_id) values(${question.id},${target.id},${scope === "all_sectors" ? "global" : "selected"},${order},${actorId})`;
+    }
+    return question;
+  }
+
+  async createNps(text: string, scope: "all_sectors" | "selected_sectors", sectorIds: number[], actorId: number): Promise<QuestionRow> {
+    const rows = await this.sql<QuestionRow[]>`
+      insert into questions(question_kind,scope,sector_id,is_nps,display_order,created_by_user_id)
+      values ('standard',${scope},null,true,2147483647,${actorId})
+      returning id,question_kind as "questionKind",scope,sector_id as "sectorId",is_nps as "isNps",display_order as "displayOrder",deleted_at as "deletedAt",1 as "versionNumber",${text}::text as text`;
+    const question = rows[0]!;
+    await this.sql`insert into question_versions(question_id,version_number,text,is_current,created_by_user_id) values(${question.id},1,${text},true,${actorId})`;
+    const targets = scope === "all_sectors"
+      ? await this.sql<{ id: number }[]>`select id from sectors where deleted_at is null`
+      : await this.sql<{ id: number }[]>`select id from sectors where id = any(${sectorIds}) and deleted_at is null`;
+    if (targets.length !== (scope === "all_sectors" ? targets.length : new Set(sectorIds).size)) throw new Error("Invalid NPS sector scope");
+    for (const target of targets) {
+      await this.sql`insert into sector_nps_assignments(sector_id,question_id,assignment_source,assigned_by_user_id) values(${target.id},${question.id},${scope === "all_sectors" ? "global" : "specific"},${actorId})`;
+    }
+    return question;
+  }
+
+  async assignNps(sectorId: number, questionId: number, actorId: number, replace: boolean): Promise<void> {
+    if (replace) await this.sql`update sector_nps_assignments set ended_at=now() where sector_id=${sectorId} and ended_at is null`;
+    await this.sql`insert into sector_nps_assignments(sector_id,question_id,assignment_source,assigned_by_user_id) values(${sectorId},${questionId},'specific',${actorId})`;
+  }
+
+  async activeNps(questionId: number): Promise<boolean> {
+    const rows = await this.sql<{ valid: boolean }[]>`select exists(select 1 from questions where id=${questionId} and is_nps=true and deleted_at is null) as valid`;
+    return rows[0]?.valid ?? false;
+  }
+
+  async sectorHasNps(sectorId: number): Promise<boolean> {
+    const rows = await this.sql<{ present: boolean }[]>`select exists(select 1 from sector_nps_assignments where sector_id=${sectorId} and ended_at is null) as present`;
+    return rows[0]?.present ?? false;
+  }
+
   async createSector(sectorId: number, text: string, order: number, actorId: number): Promise<QuestionRow> {
     const rows = await this.sql<QuestionRow[]>`
       insert into questions(question_kind,scope,sector_id,is_nps,display_order,created_by_user_id)

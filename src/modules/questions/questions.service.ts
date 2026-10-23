@@ -18,7 +18,41 @@ export class QuestionsService {
 
   async listSector(actor: AuthIdentity, sectorId: number, includeDeleted: boolean) {
     await this.authorize(actor, sectorId);
-    return (await this.repository.listSector(sectorId, includeDeleted)).map(dto);
+    return (await this.repository.listEffective(sectorId, includeDeleted)).map(dto);
+  }
+
+  private requireSuperuser(actor: AuthIdentity): void {
+    if (actor.role !== "superuser") throw forbidden();
+  }
+
+  async createStandard(actor: AuthIdentity, input: { text: string; scope: "all_sectors" | "selected_sectors"; sectorIds: number[]; displayOrder: number }) {
+    this.requireSuperuser(actor);
+    return this.repository.transaction(async (repository) => {
+      const row = await repository.createStandard(input.text, input.scope, input.sectorIds, input.displayOrder, actor.userId);
+      await repository.audit(actor.userId, "standard_question.created", row.id);
+      return dto(row);
+    });
+  }
+
+  async createNps(actor: AuthIdentity, input: { text: string; scope: "all_sectors" | "selected_sectors"; sectorIds: number[] }) {
+    this.requireSuperuser(actor);
+    return this.repository.transaction(async (repository) => {
+      const row = await repository.createNps(input.text, input.scope, input.sectorIds, actor.userId);
+      await repository.audit(actor.userId, "nps.created", row.id);
+      return dto(row);
+    });
+  }
+
+  async assignNps(actor: AuthIdentity, sectorId: number, questionId: number, replace: boolean) {
+    this.requireSuperuser(actor);
+    if (!await this.repository.activeNps(questionId)) throw notFound("NPS não encontrado.");
+    if (!replace && await this.repository.sectorHasNps(sectorId)) {
+      throw new DomainError("NPS_ALREADY_ASSIGNED", "O setor já possui um NPS vigente.", 409);
+    }
+    return this.repository.transaction(async (repository) => {
+      await repository.assignNps(sectorId, questionId, actor.userId, replace);
+      await repository.audit(actor.userId, replace ? "nps.replaced" : "nps.assigned", questionId);
+    });
   }
 
   async createSector(actor: AuthIdentity, sectorId: number, text: string, displayOrder: number) {
