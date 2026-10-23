@@ -8,6 +8,15 @@ function dto(row: QuestionRow) {
   return { ...row, ...policy };
 }
 
+function mapQuestionConflict(error: unknown): DomainError | null {
+  const databaseError = error as { code?: string; constraint_name?: string };
+  if (databaseError.code !== "23505") return null;
+  if (databaseError.constraint_name === "questions_active_sector_order_uq" || databaseError.constraint_name === "question_sector_assignment_active_order_uq") return new DomainError("QUESTION_ORDER_CONFLICT", "A posição da pergunta já está ocupada.", 409);
+  if (databaseError.constraint_name === "questions_one_active_global_nps_uq") return new DomainError("NPS_GLOBAL_ALREADY_EXISTS", "Já existe um NPS global ativo.", 409);
+  if (databaseError.constraint_name === "sector_nps_one_current_per_sector_uq") return new DomainError("NPS_ALREADY_ASSIGNED", "O setor já possui um NPS vigente.", 409);
+  return new DomainError("QUESTION_CONFLICT", "A operação de pergunta entrou em conflito com o estado atual.", 409);
+}
+
 export class QuestionsService {
   constructor(private readonly repository: QuestionsRepository) {}
 
@@ -27,20 +36,12 @@ export class QuestionsService {
 
   async createStandard(actor: AuthIdentity, input: { text: string; scope: "all_sectors" | "selected_sectors"; sectorIds: number[]; displayOrder: number }) {
     this.requireSuperuser(actor);
-    return this.repository.transaction(async (repository) => {
-      const row = await repository.createStandard(input.text, input.scope, input.sectorIds, input.displayOrder, actor.userId);
-      await repository.audit(actor.userId, "standard_question.created", row.id);
-      return dto(row);
-    });
+    try { return await this.repository.transaction(async (repository) => { const row = await repository.createStandard(input.text, input.scope, input.sectorIds, input.displayOrder, actor.userId); await repository.audit(actor.userId, "standard_question.created", row.id); return dto(row); }); } catch (error) { throw mapQuestionConflict(error) ?? error; }
   }
 
   async createNps(actor: AuthIdentity, input: { text: string; scope: "all_sectors" | "selected_sectors"; sectorIds: number[] }) {
     this.requireSuperuser(actor);
-    return this.repository.transaction(async (repository) => {
-      const row = await repository.createNps(input.text, input.scope, input.sectorIds, actor.userId);
-      await repository.audit(actor.userId, "nps.created", row.id);
-      return dto(row);
-    });
+    try { return await this.repository.transaction(async (repository) => { const row = await repository.createNps(input.text, input.scope, input.sectorIds, actor.userId); await repository.audit(actor.userId, "nps.created", row.id); return dto(row); }); } catch (error) { throw mapQuestionConflict(error) ?? error; }
   }
 
   async assignNps(actor: AuthIdentity, sectorId: number, questionId: number, replace: boolean) {
@@ -73,17 +74,14 @@ export class QuestionsService {
 
   async createSector(actor: AuthIdentity, sectorId: number, text: string, displayOrder: number) {
     await this.authorize(actor, sectorId);
-    return this.repository.transaction(async (repository) => {
-      const row = await repository.createSector(sectorId, text, displayOrder, actor.userId);
-      await repository.audit(actor.userId, "question.created", row.id);
-      return dto(row);
-    });
+    try { return await this.repository.transaction(async (repository) => { const row = await repository.createSector(sectorId, text, displayOrder, actor.userId); await repository.audit(actor.userId, "question.created", row.id); return dto(row); }); } catch (error) { throw mapQuestionConflict(error) ?? error; }
   }
 
   async updateText(actor: AuthIdentity, id: number, text: string) {
-    const question = await this.repository.findSectorQuestion(id);
-    if (!question || question.sectorId === null) throw notFound();
-    await this.authorize(actor, question.sectorId);
+    const question = await this.repository.findQuestion(id);
+    if (!question) throw notFound();
+    if (question.questionKind === "sector" && question.sectorId !== null) await this.authorize(actor, question.sectorId);
+    else this.requireSuperuser(actor);
     if (question.text === text) return dto(question);
     return this.repository.transaction(async (repository) => {
       const row = await repository.updateText(id, text, actor.userId);
