@@ -28,6 +28,46 @@ describe("POST /api/auth/login validation", () => {
     await request(makeApp(async () => ({ accessToken: "access", refreshToken: "refresh", csrfToken: "csrf", expiresAt: new Date("2026-12-31T00:00:00Z") }))).get("/api/auth/csrf").set("Cookie", "refresh_token=refresh").expect(200).expect({ data: { csrfToken: "csrf" } });
   });
 
+  it.each([
+    ["get", "/api/auth/csrf"],
+    ["post", "/api/auth/refresh"],
+  ] as const)("limits repeated %s requests to %s", async (method, path) => {
+    const refresh = jest.fn(async () => ({
+      accessToken: "access",
+      refreshToken: "refresh",
+      csrfToken: "csrf",
+      expiresAt: new Date("2026-12-31T00:00:00Z"),
+    }));
+    const auth = {
+      login: async () => { throw new Error("unused"); },
+      refresh,
+      authenticate: async () => { throw new Error("unused"); },
+      recoverCsrf: async () => "csrf",
+      recoverCsrfForIdentity: async () => "csrf",
+    } as unknown as AuthService;
+    const app = createApp(config, { authService: auth });
+
+    for (let index = 0; index < 60; index += 1) {
+      await request(app)[method](path)
+        .set("Cookie", "refresh_token=refresh")
+        .expect(200);
+    }
+
+    await request(app)[method](path)
+      .set("Cookie", "refresh_token=refresh")
+      .expect(429)
+      .expect({
+        error: {
+          code: "SESSION_RATE_LIMITED",
+          message: "Muitas solicitações de sessão. Aguarde alguns minutos.",
+        },
+      });
+
+    if (path === "/api/auth/refresh") {
+      expect(refresh).toHaveBeenCalledTimes(60);
+    }
+  });
+
   it("uses the valid access token when a legacy empty duplicate is sent and clears both paths on logout", async () => {
     const logout = jest.fn(async () => undefined);
     const authenticate = jest.fn(async (token: string) => { if (token !== "valid-access-token") throw new Error("invalid"); return { userId: 1, sessionId: "session", role: "superuser" as const, mustChangePassword: false }; });
