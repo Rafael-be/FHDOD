@@ -9,6 +9,7 @@ import { measurePerformance } from "../../shared/performance.js";
 import type { AuthRepository, AuthUser, Role, Session } from "./auth.repository.js";
 
 const HOUR = 3_600_000;
+const REFERENCE_PASSWORD_HASH = "$argon2id$v=19$m=19456,p=1,t=2$XjLQ8tr1tw5H70kpf+O3WQ$Ukqa+/1eXvgWWRQyt1319/oLYw0jYVZleU4L5VtSzO0";
 /** Server-only authorization context; csrfToken is never serialized into a response. */
 export interface AuthIdentity { userId: number; sessionId: string; role: Role; mustChangePassword: boolean; csrfToken?: string; }
 export interface AuthResult { accessToken: string; refreshToken: string; csrfToken: string; expiresAt: Date; }
@@ -25,7 +26,14 @@ export class AuthService {
   async login(email: string, password: string): Promise<AuthResult> {
     const measured = (stage: string, work: () => Promise<unknown>) => measurePerformance(this.config.PERFORMANCE_MEASUREMENTS, "auth.login", stage, work);
     const user = await measured("user_lookup", () => this.repository.findUserByEmail(normalizeEmail(email))) as AuthUser | null;
-    const accepted = user && !user.deletedAt && await measured("password_verify", () => argon2.verify(user.passwordHash, password));
+    const passwordHash = user && !user.deletedAt
+      ? user.passwordHash
+      : REFERENCE_PASSWORD_HASH;
+    const passwordMatches = await measured(
+      "password_verify",
+      () => argon2.verify(passwordHash, password),
+    ) as boolean;
+    const accepted = Boolean(user && !user.deletedAt && passwordMatches);
     const now = this.clock.now();
     const temporaryPasswordExpired = user?.mustChangePassword && (
       !user.temporaryPasswordExpiresAt || user.temporaryPasswordExpiresAt <= now
