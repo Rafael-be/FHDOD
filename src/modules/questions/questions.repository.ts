@@ -105,6 +105,27 @@ export class QuestionsRepository {
     return rows[0]?.present ?? false;
   }
 
+  async reorderSectorQuestions(sectorId: number, ids: number[]): Promise<void> {
+    const rows = await this.sql<{ id: number }[]>`
+      select id from questions where question_kind='sector' and sector_id=${sectorId} and deleted_at is null for update`;
+    const expected = rows.map((row) => row.id).sort((a, b) => a - b);
+    const received = [...ids].sort((a, b) => a - b);
+    if (expected.length !== received.length || expected.some((id, index) => id !== received[index])) throw new Error("Question reorder must contain every active sector question");
+    for (const [index, id] of ids.entries()) await this.sql`update questions set display_order=${1000000000 + index} where id=${id}`;
+    for (const [index, id] of ids.entries()) await this.sql`update questions set display_order=${index + 1},updated_at=now() where id=${id}`;
+  }
+
+  async reorderStandardQuestions(sectorId: number, ids: number[]): Promise<void> {
+    const rows = await this.sql<{ id: number }[]>`
+      select a.question_id as id from question_sector_assignments a join questions q on q.id=a.question_id
+      where a.sector_id=${sectorId} and a.ended_at is null and q.deleted_at is null and q.is_nps=false for update`;
+    const expected = rows.map((row) => row.id).sort((a, b) => a - b);
+    const received = [...ids].sort((a, b) => a - b);
+    if (expected.length !== received.length || expected.some((id, index) => id !== received[index])) throw new Error("Question reorder must contain every active standard question");
+    for (const [index, id] of ids.entries()) await this.sql`update question_sector_assignments set display_order=${1000000000 + index} where sector_id=${sectorId} and question_id=${id} and ended_at is null`;
+    for (const [index, id] of ids.entries()) await this.sql`update question_sector_assignments set display_order=${index + 1} where sector_id=${sectorId} and question_id=${id} and ended_at is null`;
+  }
+
   async createSector(sectorId: number, text: string, order: number, actorId: number): Promise<QuestionRow> {
     const rows = await this.sql<QuestionRow[]>`
       insert into questions(question_kind,scope,sector_id,is_nps,display_order,created_by_user_id)

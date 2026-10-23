@@ -55,6 +55,22 @@ export class QuestionsService {
     });
   }
 
+  async reorderSector(actor: AuthIdentity, sectorId: number, ids: number[]) {
+    await this.authorize(actor, sectorId);
+    return this.repository.transaction(async (repository) => {
+      try { await repository.reorderSectorQuestions(sectorId, ids); } catch (error) { if (error instanceof Error && error.message.includes("must contain")) throw new DomainError("INVALID_ORDER", "A ordem deve conter todas as perguntas ativas do setor.", 409); throw error; }
+      await repository.audit(actor.userId, "question.reordered", sectorId);
+    });
+  }
+
+  async reorderStandard(actor: AuthIdentity, sectorId: number, ids: number[]) {
+    this.requireSuperuser(actor);
+    return this.repository.transaction(async (repository) => {
+      try { await repository.reorderStandardQuestions(sectorId, ids); } catch (error) { if (error instanceof Error && error.message.includes("must contain")) throw new DomainError("INVALID_ORDER", "A ordem deve conter todas as perguntas padrão ativas do setor.", 409); throw error; }
+      await repository.audit(actor.userId, "standard_question.reordered", sectorId);
+    });
+  }
+
   async createSector(actor: AuthIdentity, sectorId: number, text: string, displayOrder: number) {
     await this.authorize(actor, sectorId);
     return this.repository.transaction(async (repository) => {
