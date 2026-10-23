@@ -15,8 +15,22 @@ const migrationConfigSchema = z.object({
   DATABASE_URL_MIGRATIONS: z.string().url(),
 });
 
+const auditRetentionConfigSchema = z.object({
+  AUDIT_RETENTION_DATABASE_URL: z.string().url().superRefine((value, context) => {
+    const username = new URL(value).username;
+
+    if (username !== "fhdod_audit_maintenance") {
+      context.addIssue({
+        code: "custom",
+        message: "AUDIT_RETENTION_DATABASE_URL deve usar fhdod_audit_maintenance",
+      });
+    }
+  }),
+});
+
 export type AppConfig = z.infer<typeof runtimeConfigSchema>;
 export type MigrationConfig = z.infer<typeof migrationConfigSchema>;
+export type AuditRetentionConfig = z.infer<typeof auditRetentionConfigSchema>;
 
 function parseConfig<T>(schema: z.ZodType<T>, source: NodeJS.ProcessEnv): T {
   const result = schema.safeParse(source);
@@ -36,4 +50,11 @@ export function loadConfig(source: NodeJS.ProcessEnv = process.env): AppConfig {
 /** Validates administrative credentials used exclusively by offline operations. */
 export function loadMigrationConfig(source: NodeJS.ProcessEnv = process.env): MigrationConfig {
   return parseConfig(migrationConfigSchema, source);
+}
+
+/** Validates the dedicated, non-runtime credential used by the retention job. */
+export function loadAuditRetentionConfig(
+  source: NodeJS.ProcessEnv = process.env,
+): AuditRetentionConfig {
+  return parseConfig(auditRetentionConfigSchema, source);
 }
