@@ -3,7 +3,8 @@ import { jest } from "@jest/globals";
 import request from "supertest";
 import { createApp } from "../../src/app.js";
 import type { AppConfig } from "../../src/config/env.js";
-import type { AdminService } from "../../src/modules/admin/admin.service.js";
+import { AdminService } from "../../src/modules/admin/admin.service.js";
+import type { AdminRepository } from "../../src/modules/admin/admin.repository.js";
 import type { AuthRepository, AuthUser, RefreshToken, Session } from "../../src/modules/auth/auth.repository.js";
 import { AuthService } from "../../src/modules/auth/auth.service.js";
 import type { Clock } from "../../src/shared/core.js";
@@ -58,5 +59,92 @@ describe("administrative HTTP contracts", () => {
     await request(app).post("/api/sectors").set("x-csrf-token", login.csrfToken).send(body).expect(401).expect({ error: { code: "UNAUTHENTICATED", message: "Autenticação necessária." } });
 
     expect(createSector).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps managers in their own sector scope and rejects every administrative mutation", async () => {
+    const sectorsByManager = new Map([
+      [10, [{ id: 7, code: "uti", name: "UTI", deletedAt: null }]],
+      [11, [{ id: 8, code: "ps", name: "Pronto-socorro", deletedAt: null }]],
+    ]);
+    const adminRepository = {
+      managerSectors: async (managerId: number) => sectorsByManager.get(managerId) ?? [],
+      sector: async (sectorId: number) => ({ id: sectorId }),
+      readiness: async () => ({ hasShiftRanges: true, hasNps: true }),
+    } as unknown as AdminRepository;
+    const admin = new AdminService(adminRepository, clock);
+
+    const createManagerApp = async (id: number, email: string, password: string) => {
+      const hash = await argon2.hash(password);
+      const repository = new Repository({
+        id,
+        email,
+        passwordHash: hash,
+        role: "sector_manager",
+        deletedAt: null,
+        mustChangePassword: false,
+        temporaryPasswordExpiresAt: null,
+      });
+      const auth = new AuthService(repository, clock, config);
+      const login = await auth.login(email, password);
+
+      return {
+        app: createApp(config, { authService: auth, adminService: admin }),
+        cookies: [`access_token=${login.accessToken}`, `refresh_token=${login.refreshToken}`],
+        csrfToken: login.csrfToken,
+      };
+    };
+    const managerA = await createManagerApp(10, "manager-a@hospital.test", "manager-a-password");
+    const managerB = await createManagerApp(11, "manager-b@hospital.test", "manager-b-password");
+
+    await request(managerA.app)
+      .get("/api/sectors")
+      .set("Cookie", managerA.cookies)
+      .expect(200)
+      .expect({ data: sectorsByManager.get(10) });
+    await request(managerB.app)
+      .get("/api/sectors")
+      .set("Cookie", managerB.cookies)
+      .expect(200)
+      .expect({ data: sectorsByManager.get(11) });
+    await request(managerA.app)
+      .get("/api/sectors/8/status")
+      .set("Cookie", managerA.cookies)
+      .expect(403);
+    await request(managerB.app)
+      .get("/api/sectors/7/status")
+      .set("Cookie", managerB.cookies)
+      .expect(403);
+
+    const administrativeMutations = [
+      { method: "post", path: "/api/managers", body: { fullName: "Novo gestor", email: "novo@hospital.test", temporaryPassword: "temporary-password", sectorIds: [] } },
+      { method: "patch", path: "/api/managers/2", body: { fullName: "Gestor atualizado", email: "atualizado@hospital.test" } },
+      { method: "post", path: "/api/managers/2/deactivate" },
+      { method: "post", path: "/api/managers/2/reactivate", body: { temporaryPassword: "temporary-password" } },
+      { method: "put", path: "/api/managers/2/sectors/7" },
+      { method: "delete", path: "/api/managers/2/sectors/7" },
+      { method: "post", path: "/api/sectors", body: { code: "NOVO", name: "Novo setor" } },
+      { method: "patch", path: "/api/sectors/7", body: { name: "UTI atualizada" } },
+      { method: "post", path: "/api/sectors/7/deactivate" },
+      { method: "post", path: "/api/sectors/7/reactivate" },
+    ] as const;
+
+    for (const manager of [managerA, managerB]) {
+      for (const mutation of administrativeMutations) {
+        let response = request(manager.app)[mutation.method](mutation.path)
+          .set("Cookie", manager.cookies)
+          .set("x-csrf-token", manager.csrfToken);
+
+        if (mutation.body) {
+          response = response.send(mutation.body);
+        }
+
+        await response.expect(403).expect({
+          error: {
+            code: "FORBIDDEN",
+            message: "Somente superusuário pode executar esta operação.",
+          },
+        });
+      }
+    }
   });
 });

@@ -4,15 +4,16 @@ import type { Clock } from "../../src/shared/core.js";
 import type { AdminRepository } from "../../src/modules/admin/admin.repository.js";
 
 const clock: Clock = { now: () => new Date("2026-01-01T00:00:00Z") };
-const manager: AuthIdentity = { userId: 10, sessionId: "session", role: "sector_manager", mustChangePassword: false };
+const managerA: AuthIdentity = { userId: 10, sessionId: "session-a", role: "sector_manager", mustChangePassword: false };
+const managerB: AuthIdentity = { userId: 11, sessionId: "session-b", role: "sector_manager", mustChangePassword: false };
 const superuser: AuthIdentity = { userId: 1, sessionId: "session", role: "superuser", mustChangePassword: false };
 describe("AdminService manager sector scope", () => {
-  it("returns manager detail with assignments only to a superuser",async()=>{const repository={manager:async()=>({id:10,fullName:"Gestor",email:"gestor@hospital.test",role:"sector_manager",deletedAt:null}),managerSectors:async()=>[{id:7,code:"uti",name:"UTI",deletedAt:null}]} as unknown as AdminRepository;await expect(new AdminService(repository,clock).getManager(superuser,10)).resolves.toMatchObject({id:10,sectors:[{id:7}]});await expect(new AdminService(repository,clock).getManager(manager,10)).rejects.toMatchObject({code:"FORBIDDEN"});});
+  it("returns manager detail with assignments only to a superuser",async()=>{const repository={manager:async()=>({id:10,fullName:"Gestor",email:"gestor@hospital.test",role:"sector_manager",deletedAt:null}),managerSectors:async()=>[{id:7,code:"uti",name:"UTI",deletedAt:null}]} as unknown as AdminRepository;await expect(new AdminService(repository,clock).getManager(superuser,10)).resolves.toMatchObject({id:10,sectors:[{id:7}]});await expect(new AdminService(repository,clock).getManager(managerA,10)).rejects.toMatchObject({code:"FORBIDDEN"});});
   it("allows a manager to query only their own assignments", async () => {
     const repository = { managerSectors: async () => [{ id: 7, code: "uti", name: "UTI", deletedAt: null }] } as unknown as AdminRepository;
     const service = new AdminService(repository, clock);
-    await expect(service.listManagerSectors(manager, 10)).resolves.toHaveLength(1);
-    await expect(service.listManagerSectors(manager, 11)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(service.listManagerSectors(managerA, 10)).resolves.toHaveLength(1);
+    await expect(service.listManagerSectors(managerA, 11)).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
   it("allows a superuser to query a manager after its existence is checked", async () => {
     const repository = { manager: async () => ({ id: 11 }), managerSectors: async () => [] } as unknown as AdminRepository;
@@ -22,7 +23,29 @@ describe("AdminService manager sector scope", () => {
     const repository = { sector: async () => ({ id: 7 }), readiness: async () => ({ hasShiftRanges: false, hasNps: false }), managerSectors: async () => [] } as unknown as AdminRepository;
     const service = new AdminService(repository, clock);
     await expect(service.sectorStatus(superuser, 7)).resolves.toEqual({ sectorId: 7, status: "preparing", missingRequirements: ["shift_ranges", "nps"] });
-    await expect(service.sectorStatus(manager, 7)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(service.sectorStatus(managerA, 7)).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("keeps manager A and manager B isolated to their own sectors", async () => {
+    const sectorsByManager = new Map([
+      [10, [{ id: 7, code: "uti", name: "UTI", deletedAt: null }]],
+      [11, [{ id: 8, code: "ps", name: "Pronto-socorro", deletedAt: null }]],
+    ]);
+    const repository = {
+      managerSectors: async (managerId: number) => sectorsByManager.get(managerId) ?? [],
+      sector: async (sectorId: number) => ({ id: sectorId }),
+      readiness: async () => ({ hasShiftRanges: true, hasNps: true }),
+    } as unknown as AdminRepository;
+    const service = new AdminService(repository, clock);
+
+    await expect(service.listSectors(managerA)).resolves.toEqual(sectorsByManager.get(10));
+    await expect(service.listSectors(managerB)).resolves.toEqual(sectorsByManager.get(11));
+    await expect(service.listManagerSectors(managerA, managerB.userId))
+      .rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(service.listManagerSectors(managerB, managerA.userId))
+      .rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(service.sectorStatus(managerA, 8)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    await expect(service.sectorStatus(managerB, 7)).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
 
   it("does not revoke sessions or audit when the target is not a sector manager", async () => {
