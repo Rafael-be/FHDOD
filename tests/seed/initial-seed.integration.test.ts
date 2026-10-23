@@ -3,10 +3,11 @@ import { randomUUID } from "node:crypto";
 import argon2 from "argon2";
 import postgres from "postgres";
 import { seedInitialData } from "../../src/db/seed/initial-seed.js";
+import { usesIsolatedDatabase } from "../helpers/database.js";
 
 const testUrl = process.env.DATABASE_URL_TEST;
 const runtimeUrl = process.env.DATABASE_URL;
-const integration = testUrl && runtimeUrl && new URL(testUrl).href !== new URL(runtimeUrl).href ? describe : describe.skip;
+const integration = usesIsolatedDatabase(testUrl, runtimeUrl) ? describe : describe.skip;
 
 integration("initial seed PostgreSQL integration", () => {
   it("creates a temporary superuser once and preserves it on a repeat run", async () => {

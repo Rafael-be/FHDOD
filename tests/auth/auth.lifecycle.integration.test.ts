@@ -15,6 +15,7 @@ import { PostgresAuthRepository } from "../../src/modules/auth/auth.repository.j
 import { AuthService } from "../../src/modules/auth/auth.service.js";
 
 import { SystemClock } from "../../src/shared/core.js";
+import { usesIsolatedDatabase } from "../helpers/database.js";
 
 // -----------------------------------------------------------------------------
 // Configuração do ambiente
@@ -23,11 +24,7 @@ import { SystemClock } from "../../src/shared/core.js";
 const testUrl = process.env.DATABASE_URL_TEST;
 const runtimeUrl = process.env.DATABASE_URL;
 
-const hasIsolatedDatabase = Boolean(
-  testUrl &&
-  runtimeUrl &&
-  new URL(testUrl).href !== new URL(runtimeUrl).href
-);
+const hasIsolatedDatabase = usesIsolatedDatabase(testUrl, runtimeUrl);
 
 const integration = hasIsolatedDatabase
   ? describe

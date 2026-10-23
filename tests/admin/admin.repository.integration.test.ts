@@ -2,10 +2,11 @@ import "dotenv/config";
 import postgres from "postgres";
 import { randomUUID } from "node:crypto";
 import { AdminRepository } from "../../src/modules/admin/admin.repository.js";
+import { usesIsolatedDatabase } from "../helpers/database.js";
 
 const testUrl = process.env.DATABASE_URL_TEST;
 const runtimeUrl = process.env.DATABASE_URL;
-const describeIntegration = testUrl && runtimeUrl && new URL(testUrl).href !== new URL(runtimeUrl).href ? describe : describe.skip;
+const describeIntegration = usesIsolatedDatabase(testUrl, runtimeUrl) ? describe : describe.skip;
 
 describeIntegration("AdminRepository PostgreSQL integration", () => {
   it("persists manager, sector and assignment then rolls all changes back", async () => {

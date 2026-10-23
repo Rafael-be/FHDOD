@@ -2,10 +2,11 @@ import "dotenv/config";
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import postgres from "postgres";
+import { usesIsolatedDatabase } from "../helpers/database.js";
 
 const testUrl = process.env.DATABASE_URL_TEST;
 const runtimeUrl = process.env.DATABASE_URL;
-const integration = testUrl && runtimeUrl && new URL(testUrl).href !== new URL(runtimeUrl).href ? describe : describe.skip;
+const integration = usesIsolatedDatabase(testUrl, runtimeUrl) ? describe : describe.skip;
 
 const rollbackMarker = "ROLLBACK_RLS_POLICY_TEST";
 
