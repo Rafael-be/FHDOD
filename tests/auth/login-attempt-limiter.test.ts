@@ -82,4 +82,25 @@ describe("LoginAttemptLimiter", () => {
     expect(output).not.toContain("203.0.113.10");
     expect(output).not.toContain("person@hospital.test");
   });
+
+  it("rejects a new key when active entries reach the configured capacity", async () => {
+    const limiter = new LoginAttemptLimiter(() => 1_000, noDelay, noLog, 2);
+    limiter.failure("203.0.113.1", "first@hospital.test");
+    limiter.failure("203.0.113.2", "second@hospital.test");
+
+    await expect(limiter.check("203.0.113.3", "third@hospital.test"))
+      .rejects.toMatchObject({ code: "LOGIN_FAILED_RATE_LIMITED", status: 429 });
+    await expect(limiter.check("203.0.113.1", "first@hospital.test"))
+      .resolves.toBeUndefined();
+  });
+
+  it("reclaims expired entries before accepting a new key at capacity", async () => {
+    let now = 1_000;
+    const limiter = new LoginAttemptLimiter(() => now, noDelay, noLog, 1);
+    limiter.failure("203.0.113.1", "first@hospital.test");
+
+    now += LOGIN_FAILURE_WINDOW_MS;
+    await expect(limiter.check("203.0.113.2", "second@hospital.test"))
+      .resolves.toBeUndefined();
+  });
 });
