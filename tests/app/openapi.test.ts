@@ -14,4 +14,12 @@ describe("OpenAPI request contracts", () => {
     const bodyOperations = [["/api/auth/change-temporary-password", "post"], ["/api/auth/change-password", "post"], ["/api/auth/change-email", "post"], ["/api/managers", "post"], ["/api/managers/{id}", "patch"], ["/api/managers/{id}/reactivate", "post"], ["/api/sectors", "post"], ["/api/sectors/{id}", "patch"], ["/api/pages/{slug}", "put"]] as const;
     for (const [path, method] of bodyOperations) expect(paths[path]![method]!.requestBody).toBeDefined();
   });
+
+  it("documents the Fase 2 question and NPS request contracts", () => {
+    const paths = openapiDocument.paths as Record<string, Record<string, { requestBody?: { content?: { "application/json"?: { schema?: { $ref?: string } } } } }>>;
+    expect(paths["/api/sectors/{sectorId}/questions"].post.requestBody?.content?.["application/json"]?.schema?.$ref).toBe("#/components/schemas/QuestionRequest");
+    expect(paths["/api/standard-questions"].post.requestBody?.content?.["application/json"]?.schema?.$ref).toBe("#/components/schemas/StandardQuestionRequest");
+    expect(paths["/api/nps-questions"].post.requestBody?.content?.["application/json"]?.schema?.$ref).toBe("#/components/schemas/NpsQuestionRequest");
+    expect(paths["/api/sectors/{sectorId}/questions/reorder"].post.responses["204"]).toBeDefined();
+  });
 });
