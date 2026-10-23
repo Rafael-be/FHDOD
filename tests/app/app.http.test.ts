@@ -4,6 +4,10 @@ import { createApp } from "../../src/app.js";
 import type { AppConfig } from "../../src/config/env.js";
 import type { AuthRepository } from "../../src/modules/auth/auth.repository.js";
 import { AuthService } from "../../src/modules/auth/auth.service.js";
+import type { AdminService } from "../../src/modules/admin/admin.service.js";
+import type { AuditService } from "../../src/modules/audit/audit.service.js";
+import type { ContentService } from "../../src/modules/content/content.service.js";
+import type { HealthService } from "../../src/modules/health/health.service.js";
 import type { Clock } from "../../src/shared/core.js";
 
 const config: AppConfig = { NODE_ENV: "test", PORT: 3000, DATABASE_URL: "postgres://api:pass@localhost/fhdod", ALLOWED_ORIGIN: "http://localhost:5173", JWT_SECRET: "12345678901234567890123456789012", JWT_ISSUER: "fhdod-api", JWT_AUDIENCE: "fhdod-web", PERFORMANCE_MEASUREMENTS: false };
@@ -12,7 +16,21 @@ const repository: AuthRepository = {
   revokeUserSessions: async () => undefined, createSession: async () => undefined, createRefresh: async () => undefined, consumeRefresh: async () => false, linkRefreshReplacement: async () => undefined, revokeSession: async () => undefined, touchSession: async () => undefined, changePassword: async () => undefined, changeEmail: async () => undefined,
 };
 const clock: Clock = { now: () => new Date("2026-01-01T00:00:00Z") };
-const app = createApp(config, new AuthService(repository, clock, config));
+const app = createApp(config, {
+  authService: new AuthService(repository, clock, config),
+});
+
+function runtimeDependencies() {
+  return {
+    authService: new AuthService(repository, clock, config),
+    adminService: {} as AdminService,
+    auditService: {} as AuditService,
+    healthService: {
+      live: () => ({ status: "ok" as const }),
+    } as HealthService,
+    contentService: {} as ContentService,
+  };
+}
 
 describe("HTTP boundary", () => {
   it("exposes health and allows only the configured CORS origin", async () => {
@@ -24,7 +42,9 @@ describe("HTTP boundary", () => {
   it("writes a safe completion log for successful development requests", async () => {
     const stdoutWrite = jest.spyOn(process.stdout, "write").mockImplementation(() => true);
     try {
-      await request(createApp({ ...config, NODE_ENV: "development" }, new AuthService(repository, clock, config))).get("/health").expect(200);
+      await request(createApp({ ...config, NODE_ENV: "development" }, runtimeDependencies()))
+        .get("/health")
+        .expect(200);
       const output = String(stdoutWrite.mock.calls.at(-1)?.[0]);
       expect(output).toContain('"event":"http.request_completed"');
       expect(output).toContain('"operation":"GET /health"');
@@ -34,6 +54,12 @@ describe("HTTP boundary", () => {
     } finally {
       stdoutWrite.mockRestore();
     }
+  });
+
+  it("rejects missing application modules outside the test environment", () => {
+    expect(() => createApp({ ...config, NODE_ENV: "development" }, {
+      authService: new AuthService(repository, clock, config),
+    })).toThrow("adminService, auditService, healthService, contentService");
   });
 
   it("returns the documented validation envelope for invalid input", async () => {
@@ -72,7 +98,9 @@ describe("HTTP boundary", () => {
   it("logs internal failures without exposing sensitive values", async () => {
     const stderrWrite = jest.spyOn(process.stderr, "write").mockImplementation(() => true);
     const failingRepository: AuthRepository = { ...repository, findUserByEmail: async () => { throw Object.assign(new Error("password=senha-super-secreta token=abc123 email=person@example.com"), { code: "23505" }); } };
-    const failingApp = createApp(config, new AuthService(failingRepository, clock, config));
+    const failingApp = createApp(config, {
+      authService: new AuthService(failingRepository, clock, config),
+    });
     try {
       await request(failingApp).post("/api/auth/login").send({ email: "person@example.com", password: "senha-super-secreta" }).expect(500).expect({ error: { code: "INTERNAL_ERROR", message: "Ocorreu um erro interno." } });
       const output = stderrWrite.mock.calls.at(-1)?.[0];

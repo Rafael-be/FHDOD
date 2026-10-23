@@ -25,7 +25,10 @@ describe("administrative HTTP contracts", () => {
     const auth = new AuthService(repository, clock, config);
     const received: unknown[] = [];
     const admin = { listManagers: async () => [{ id: 2, fullName: "Gestor", email: "gestor@hospital.test" }], createManager: async (...args: unknown[]) => { received.push(args); return { id: 2, fullName: "Novo gestor", email: "novo@hospital.test" }; } } as unknown as AdminService;
-    const app = createApp(config, auth, admin);
+    const app = createApp(config, {
+      authService: auth,
+      adminService: admin,
+    });
     await request(app).get("/api/managers").expect(401).expect({ error: { code: "UNAUTHENTICATED", message: "Autenticação necessária." } });
     const login = await auth.login("admin@hospital.test", "superuser-password");
     const cookies = [`access_token=${login.accessToken}`, `refresh_token=${login.refreshToken}`];
@@ -41,7 +44,10 @@ describe("administrative HTTP contracts", () => {
     const repository = new Repository({ id: 1, email: "admin@hospital.test", passwordHash: hash, role: "superuser", deletedAt: null, mustChangePassword: false, temporaryPasswordExpiresAt: null });
     const auth = new AuthService(repository, clock, config);
     const createSector = jest.fn(async () => ({ id: 1, code: "ER", name: "Emergência" }));
-    const app = createApp(config, auth, { createSector } as unknown as AdminService);
+    const app = createApp(config, {
+      authService: auth,
+      adminService: { createSector } as unknown as AdminService,
+    });
     const login = await auth.login("admin@hospital.test", "superuser-password");
     const accessCookie = `access_token=${login.accessToken}`;
     const body = { code: "ER", name: "Emergência" };

@@ -11,7 +11,7 @@ const validBody = { email: "admin@example.test", password: "senha-de-desenvolvim
 
 function makeApp(login: (email: string, password: string) => Promise<unknown>) {
   const auth = { login, authenticate: async () => { throw new Error("unused without cookie"); }, recoverCsrf: async () => "csrf", recoverCsrfForIdentity: async () => "csrf" } as unknown as AuthService;
-  return createApp(config, auth);
+  return createApp(config, { authService: auth });
 }
 
 describe("POST /api/auth/login validation", () => {
@@ -32,7 +32,7 @@ describe("POST /api/auth/login validation", () => {
     const logout = jest.fn(async () => undefined);
     const authenticate = jest.fn(async (token: string) => { if (token !== "valid-access-token") throw new Error("invalid"); return { userId: 1, sessionId: "session", role: "superuser" as const, mustChangePassword: false }; });
     const auth = { login: async () => { throw new Error("unused"); }, authenticate, recoverCsrf: async () => "csrf", recoverCsrfForIdentity: async () => "csrf", logout } as unknown as AuthService;
-    const response = await request(createApp(config, auth)).post("/api/auth/logout").set("Cookie", "access_token=; refresh_token=refresh; access_token=valid-access-token").set("X-CSRF-Token", "csrf").expect(204);
+    const response = await request(createApp(config, { authService: auth })).post("/api/auth/logout").set("Cookie", "access_token=; refresh_token=refresh; access_token=valid-access-token").set("X-CSRF-Token", "csrf").expect(204);
     expect(authenticate).toHaveBeenCalledWith("valid-access-token");
     expect(logout).toHaveBeenCalledWith("session");
     const cookies = response.headers["set-cookie"] as string[];
@@ -43,7 +43,7 @@ describe("POST /api/auth/login validation", () => {
     const failure = Object.assign(new Error("permission denied"), { code: "42501" });
     const authenticate = jest.fn(async () => { throw failure; });
     const auth = { login: async () => { throw new Error("unused"); }, authenticate, recoverCsrf: async () => "csrf", recoverCsrfForIdentity: async () => "csrf" } as unknown as AuthService;
-    await request(createApp(config, auth)).get("/api/auth/csrf").set("Cookie", "access_token=valid; refresh_token=refresh").expect(200).expect({ data: { csrfToken: "csrf" } });
+    await request(createApp(config, { authService: auth })).get("/api/auth/csrf").set("Cookie", "access_token=valid; refresh_token=refresh").expect(200).expect({ data: { csrfToken: "csrf" } });
     expect(authenticate).not.toHaveBeenCalled();
   });
 
@@ -51,7 +51,7 @@ describe("POST /api/auth/login validation", () => {
     const stderrWrite = jest.spyOn(process.stderr, "write").mockImplementation(() => true);
     const auth = { login: async () => { throw new Error("unused"); }, authenticate: async () => ({ userId: 1, sessionId: "session", role: "superuser" as const, mustChangePassword: true }), recoverCsrf: async () => "csrf", recoverCsrfForIdentity: async () => "csrf", changeTemporaryPassword: async () => undefined } as unknown as AuthService;
     try {
-      await request(createApp(config, auth)).post("/api/auth/change-temporary-password").set("Cookie", "access_token=access-secret; refresh_token=refresh-secret").send({ currentPassword: "current-secret", newPassword: "new-password-safe" }).expect(403).expect({ error: { code: "CSRF_INVALID", message: "Token CSRF inválido." } });
+      await request(createApp(config, { authService: auth })).post("/api/auth/change-temporary-password").set("Cookie", "access_token=access-secret; refresh_token=refresh-secret").send({ currentPassword: "current-secret", newPassword: "new-password-safe" }).expect(403).expect({ error: { code: "CSRF_INVALID", message: "Token CSRF inválido." } });
       const output = String(stderrWrite.mock.calls.at(-1)?.[0]);
       expect(output).toContain('"reason":"csrf_invalid"');
       expect(output).not.toContain("access-secret");
@@ -65,7 +65,7 @@ describe("POST /api/auth/login validation", () => {
   it("accepts a legacy short current password but requires a compliant new password", async () => {
     const changeTemporaryPassword = jest.fn(async () => undefined);
     const auth = { login: async () => { throw new Error("unused"); }, authenticate: async () => ({ userId: 1, sessionId: "session", role: "superuser" as const, mustChangePassword: true }), recoverCsrf: async () => "csrf", recoverCsrfForIdentity: async () => "csrf", changeTemporaryPassword } as unknown as AuthService;
-    await request(createApp(config, auth)).post("/api/auth/change-temporary-password").set("Cookie", "access_token=access; refresh_token=refresh").set("X-CSRF-Token", "csrf").send({ currentPassword: "short123", newPassword: "new-password-safe" }).expect(204);
+    await request(createApp(config, { authService: auth })).post("/api/auth/change-temporary-password").set("Cookie", "access_token=access; refresh_token=refresh").set("X-CSRF-Token", "csrf").send({ currentPassword: "short123", newPassword: "new-password-safe" }).expect(204);
     expect(changeTemporaryPassword).toHaveBeenCalledWith(expect.objectContaining({ userId: 1 }), "short123", "new-password-safe");
   });
 
@@ -74,7 +74,7 @@ describe("POST /api/auth/login validation", () => {
     const stderrWrite = jest.spyOn(process.stderr, "write").mockImplementation(() => true);
     const auth = { login: async () => { throw new Error("unused"); }, authenticate: async () => ({ userId: 1, sessionId: "session", role: "superuser" as const, mustChangePassword: true }), recoverCsrf: async () => "csrf", recoverCsrfForIdentity: async () => "csrf", changeTemporaryPassword } as unknown as AuthService;
     try {
-      await request(createApp(config, auth)).post("/api/auth/change-temporary-password").set("Cookie", "access_token=access; refresh_token=refresh").set("X-CSRF-Token", "csrf").send(body).expect(400).expect({ error: { code: "VALIDATION_ERROR", message: "Dados de entrada inválidos." } });
+      await request(createApp(config, { authService: auth })).post("/api/auth/change-temporary-password").set("Cookie", "access_token=access; refresh_token=refresh").set("X-CSRF-Token", "csrf").send(body).expect(400).expect({ error: { code: "VALIDATION_ERROR", message: "Dados de entrada inválidos." } });
       expect(changeTemporaryPassword).not.toHaveBeenCalled();
       const output = String(stderrWrite.mock.calls.at(-1)?.[0]);
       expect(output).toContain('"event":"http.validation_failed"');

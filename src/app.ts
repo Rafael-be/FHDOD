@@ -20,8 +20,45 @@ import type { ContentService } from "./modules/content/content.service.js";
 import { contentRoutes } from "./modules/content/content.routes.js";
 import { performanceRequestLogger } from "./shared/performance.js";
 
-/** Creates the HTTP boundary; domain dependencies are composed explicitly in server.ts. */
-export function createApp(config: AppConfig, authService: AuthService, adminService?: AdminService, auditService?: AuditService, healthService?: HealthService, contentService?: ContentService) {
+export interface AppDependencies {
+  authService: AuthService;
+  adminService?: AdminService;
+  auditService?: AuditService;
+  healthService?: HealthService;
+  contentService?: ContentService;
+}
+
+function validateRuntimeDependencies(
+  config: AppConfig,
+  dependencies: AppDependencies,
+): void {
+  if (config.NODE_ENV === "test") {
+    return;
+  }
+
+  const missing = [
+    !dependencies.adminService ? "adminService" : null,
+    !dependencies.auditService ? "auditService" : null,
+    !dependencies.healthService ? "healthService" : null,
+    !dependencies.contentService ? "contentService" : null,
+  ].filter((dependency): dependency is string => dependency !== null);
+
+  if (missing.length > 0) {
+    throw new Error(`Dependências obrigatórias ausentes: ${missing.join(", ")}.`);
+  }
+}
+
+/** Creates the HTTP boundary; runtime dependencies must be composed explicitly. */
+export function createApp(config: AppConfig, dependencies: AppDependencies) {
+  validateRuntimeDependencies(config, dependencies);
+
+  const {
+    authService,
+    adminService,
+    auditService,
+    healthService,
+    contentService,
+  } = dependencies;
   const app = express();
   app.disable("x-powered-by");
   if (config.NODE_ENV !== "test") app.use(httpRequestLogger);

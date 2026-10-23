@@ -169,7 +169,7 @@ integration("authentication lifecycle PostgreSQL integration", () => {
           config
         );
 
-        const app = createApp(config, authService);
+        const app = createApp(config, { authService });
 
         const agent = request.agent(app);
 

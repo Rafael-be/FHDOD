@@ -25,7 +25,11 @@ describe("content and audit HTTP contracts", () => {
     const published: unknown[] = [];
     const content = { getPublished: async () => ({ slug: "lgpd", title: "Privacidade", content: "Texto público", versionNumber: 1, publishedAt: "2026-01-01" }), publish: async (...args: unknown[]) => { published.push(args); return { slug: "lgpd", title: "Privacidade", content: "Texto atualizado", versionNumber: 2, publishedAt: "2026-01-02" }; } } as unknown as ContentService;
     const audit = { list: async () => ({ records: [], nextCursor: null }) } as unknown as AuditService;
-    const app = createApp(config, auth, undefined, audit, undefined, content);
+    const app = createApp(config, {
+      authService: auth,
+      auditService: audit,
+      contentService: content,
+    });
     await request(app).get("/api/pages/lgpd").expect(200).expect({ data: { slug: "lgpd", title: "Privacidade", content: "Texto público", versionNumber: 1, publishedAt: "2026-01-01" } });
     await request(app).get("/api/audit-logs").expect(401);
     const login = await auth.login("admin@hospital.test", "superuser-password"); const cookies = [`access_token=${login.accessToken}`, `refresh_token=${login.refreshToken}`];
