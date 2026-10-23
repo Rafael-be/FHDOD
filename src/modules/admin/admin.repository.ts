@@ -50,7 +50,22 @@ export class AdminRepository {
   async createSector(code: string,name: string,actor: number | null): Promise<Sector> { const rows=await this.sql<Sector[]>`insert into sectors(code,name,created_by_user_id,created_at,updated_at) values(${code},${name},${actor},now(),now()) returning id,code,name,deleted_at as "deletedAt"`; return rows[0]!; }
   async renameSector(id: number,name: string): Promise<Sector | null> { const rows=await this.sql<Sector[]>`update sectors set name=${name},updated_at=now() where id=${id} and deleted_at is null returning id,code,name,deleted_at as "deletedAt"`; return rows[0]??null; }
   async setSectorDeleted(id: number, deleted: boolean): Promise<boolean> { const rows=await this.sql<{id:number}[]>`update sectors set deleted_at=${deleted ? this.sql`now()` : null},updated_at=now() where id=${id} and deleted_at is ${deleted ? this.sql`null` : this.sql`not null`} returning id`; return rows.length===1; }
-  async assign(managerId:number,sectorId:number,actor:number):Promise<void>{await this.sql`insert into user_sector_assignments(user_id,sector_id,assigned_at,assigned_by_user_id) values(${managerId},${sectorId},now(),${actor}) on conflict (user_id,sector_id) where unassigned_at is null do nothing`;}
+  /** Returns whether an active assignment was created instead of matching an existing one. */
+  async assign(managerId: number, sectorId: number, actor: number): Promise<boolean> {
+    const assignments = await this.sql<{ id: number }[]>`
+      insert into user_sector_assignments (
+        user_id,
+        sector_id,
+        assigned_at,
+        assigned_by_user_id
+      )
+      values (${managerId}, ${sectorId}, now(), ${actor})
+      on conflict (user_id, sector_id) where unassigned_at is null do nothing
+      returning id
+    `;
+
+    return assignments.length === 1;
+  }
   async unassign(managerId:number,sectorId:number,actor:number):Promise<boolean>{const r=await this.sql<{id:number}[]>`update user_sector_assignments set unassigned_at=now(),unassigned_by_user_id=${actor} where user_id=${managerId} and sector_id=${sectorId} and unassigned_at is null returning id`;return r.length===1;}
   async managerSectors(managerId:number):Promise<Sector[]>{return this.sql<Sector[]>`select s.id,s.code,s.name,s.deleted_at as "deletedAt" from sectors s join user_sector_assignments a on a.sector_id=s.id where a.user_id=${managerId} and a.unassigned_at is null and s.deleted_at is null order by s.name`;}
   /** Reads prerequisites from their authoritative tables; sector status is never stored. */

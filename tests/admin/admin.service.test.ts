@@ -68,4 +68,33 @@ describe("AdminService manager sector scope", () => {
     await expect(new AdminService(repository, clock).createSector(superuser, { code: "UTI", name: "UTI" }))
       .rejects.toBe(unrelatedViolation);
   });
+
+  it("does not audit an assignment that already exists", async () => {
+    let auditCalls = 0;
+    const repository = {
+      transaction: async (work: (repository: AdminRepository) => Promise<void>) => work(repository as unknown as AdminRepository),
+      manager: async () => ({ id: 10 }),
+      sector: async () => ({ id: 7 }),
+      assign: async () => false,
+      audit: async () => { auditCalls += 1; },
+    } as unknown as AdminRepository;
+
+    await expect(new AdminService(repository, clock).assignment(superuser, 10, 7, true))
+      .resolves.toBeUndefined();
+    expect(auditCalls).toBe(0);
+  });
+
+  it("audits an assignment only when the repository creates it", async () => {
+    let auditCalls = 0;
+    const repository = {
+      transaction: async (work: (repository: AdminRepository) => Promise<void>) => work(repository as unknown as AdminRepository),
+      manager: async () => ({ id: 10 }),
+      sector: async () => ({ id: 7 }),
+      assign: async () => true,
+      audit: async () => { auditCalls += 1; },
+    } as unknown as AdminRepository;
+
+    await new AdminService(repository, clock).assignment(superuser, 10, 7, true);
+    expect(auditCalls).toBe(1);
+  });
 });

@@ -358,7 +358,15 @@ export class AdminService {
       }
 
       if (assign) {
-        await repository.assign(managerId, sectorId, actor.userId);
+        const assignmentCreated = await repository.assign(
+          managerId,
+          sectorId,
+          actor.userId,
+        );
+
+        if (!assignmentCreated) {
+          return;
+        }
       } else if (!await repository.unassign(managerId, sectorId, actor.userId)) {
         throw notFound("Vínculo não encontrado.");
       }
