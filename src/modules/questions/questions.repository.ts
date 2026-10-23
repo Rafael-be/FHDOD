@@ -174,6 +174,46 @@ export class QuestionsRepository {
     else await this.sql`update question_sector_assignments set ended_at=now() where question_id=${questionId} and ended_at is null`;
   }
 
+  async reactivateScoped(question: QuestionRow): Promise<void> {
+    if (question.isNps) {
+      const targets = question.scope === "all_sectors"
+        ? await this.sql<{ sectorId: number }[]>`select id as "sectorId" from sectors where deleted_at is null`
+        : await this.sql<{ sectorId: number }[]>`select distinct sector_id as "sectorId" from sector_nps_assignments where question_id=${question.id}`;
+      for (const target of targets) {
+        const conflict = await this.sql<{ present: boolean }[]>`select exists(select 1 from sector_nps_assignments where sector_id=${target.sectorId} and ended_at is null and question_id<>${question.id}) as present`;
+        if (conflict[0]?.present) throw new Error("NPS reactivation conflict");
+      }
+      await this.sql`update questions set deleted_at=null,updated_at=now() where id=${question.id} and deleted_at is not null`;
+      for (const target of targets) await this.sql`insert into sector_nps_assignments(sector_id,question_id,assignment_source,assigned_by_user_id) values(${target.sectorId},${question.id},${question.scope === "all_sectors" ? "global" : "specific"},null)`;
+      return;
+    }
+    const targets = question.scope === "all_sectors"
+      ? await this.sql<{ sectorId: number; displayOrder: number }[]>`select s.id as "sectorId",coalesce((select a.display_order from question_sector_assignments a where a.question_id=${question.id} and a.sector_id=s.id order by a.assigned_at desc limit 1),(select coalesce(max(x.display_order),0)+1 from question_sector_assignments x where x.sector_id=s.id and x.ended_at is null)) as "displayOrder" from sectors s where s.deleted_at is null`
+      : await this.sql<{ sectorId: number; displayOrder: number }[]>`select distinct on (sector_id) sector_id as "sectorId",display_order as "displayOrder" from question_sector_assignments where question_id=${question.id} order by sector_id,assigned_at desc`;
+    for (const target of targets) {
+      const conflict = await this.sql<{ present: boolean }[]>`select exists(select 1 from question_sector_assignments where sector_id=${target.sectorId} and display_order=${target.displayOrder} and ended_at is null and question_id<>${question.id}) as present`;
+      if (conflict[0]?.present) throw new Error("standard question reactivation conflict");
+    }
+    await this.sql`update questions set deleted_at=null,updated_at=now() where id=${question.id} and deleted_at is not null`;
+    for (const target of targets) await this.sql`insert into question_sector_assignments(question_id,sector_id,assignment_source,display_order,assigned_by_user_id) values(${question.id},${target.sectorId},${question.scope === "all_sectors" ? "global" : "selected"},${target.displayOrder},null)`;
+  }
+
+  async inheritForSectorOn(sql: postgres.Sql, sectorId: number, actorId: number): Promise<void> {
+    const standards = await sql<{ id: number; displayOrder: number }[]>`
+      select id,display_order as "displayOrder" from questions
+      where question_kind='standard' and is_nps=false and scope='all_sectors' and deleted_at is null`;
+    for (const question of standards) {
+      await sql`insert into question_sector_assignments(question_id,sector_id,assignment_source,display_order,assigned_by_user_id)
+        values(${question.id},${sectorId},'global',${question.displayOrder},${actorId})`;
+    }
+    const nps = await sql<{ id: number }[]>`
+      select id from questions where is_nps=true and scope='all_sectors' and deleted_at is null`;
+    for (const question of nps) {
+      await sql`insert into sector_nps_assignments(sector_id,question_id,assignment_source,assigned_by_user_id)
+        values(${sectorId},${question.id},'global',${actorId})`;
+    }
+  }
+
   async hasActiveOrderConflict(question: QuestionRow): Promise<boolean> {
     if (question.sectorId === null) return false;
     const rows = await this.sql<{ exists: boolean }[]>`

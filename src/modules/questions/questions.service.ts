@@ -98,7 +98,12 @@ export class QuestionsService {
     if (!question) throw notFound();
     if (question.questionKind === "sector" && question.sectorId !== null) await this.authorize(actor, question.sectorId);
     else this.requireSuperuser(actor);
-    if (!deleted && question.questionKind !== "sector") throw new DomainError("REACTIVATION_SCOPE_REQUIRED", "A reativação de pergunta padrão ou NPS exige reconciliação explícita de escopo.", 409);
+    if (!deleted && question.questionKind !== "sector") {
+      return this.repository.transaction(async (repository) => {
+        try { await repository.reactivateScoped(question); } catch (error) { if (error instanceof Error && error.message.includes("conflict")) throw new DomainError("REACTIVATION_CONFLICT", "Não foi possível reativar a pergunta porque o escopo ou a posição está ocupado.", 409); throw error; }
+        await repository.audit(actor.userId, question.isNps ? "nps.reactivated" : "standard_question.reactivated", id);
+      });
+    }
     if (!deleted && await this.repository.hasActiveOrderConflict(question)) {
       throw new DomainError("QUESTION_ORDER_CONFLICT", "A posição da pergunta já está ocupada.", 409);
     }

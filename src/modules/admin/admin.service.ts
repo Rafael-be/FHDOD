@@ -8,6 +8,7 @@ import {
 } from "../../shared/core.js";
 import { measurePerformance } from "../../shared/performance.js";
 import type { AuthIdentity } from "../auth/auth.service.js";
+import type postgres from "postgres";
 import { AdminRepository, type SectorReadiness } from "./admin.repository.js";
 
 interface ManagerInput {
@@ -31,6 +32,10 @@ interface PostgresError {
   code?: string;
   table_name?: string;
   constraint_name?: string;
+}
+
+export interface SectorInheritanceCollaborator {
+  inheritForSectorOn(connection: postgres.Sql, sectorId: number, actorId: number): Promise<void>;
 }
 
 function requireSuperuser(actor: AuthIdentity): void {
@@ -63,6 +68,7 @@ export class AdminService {
     private readonly repository: AdminRepository,
     private readonly clock: Clock,
     private readonly performanceMeasurements = false,
+    private readonly sectorInheritance?: SectorInheritanceCollaborator,
   ) {}
 
   async createManager(actor: AuthIdentity, input: ManagerInput) {
@@ -221,12 +227,14 @@ export class AdminService {
         this.performanceMeasurements,
         "admin.create_sector",
         "database_transaction",
-        () => this.repository.transaction(async (repository) => {
+        () => {
+          const work = async (repository: AdminRepository, connection?: postgres.Sql) => {
           const sector = await repository.createSector(
             normalizeSectorCode(input.code),
             input.name.trim(),
             actor.userId,
           );
+          if (this.sectorInheritance && connection) await this.sectorInheritance.inheritForSectorOn(connection, sector.id, actor.userId);
           await repository.audit(
             actor.userId,
             "sector.created",
@@ -236,7 +244,10 @@ export class AdminService {
             { code: sector.code },
           );
           return sector;
-        }),
+          };
+          if (typeof this.repository.transactionWithConnection === "function") return this.repository.transactionWithConnection(work);
+          return this.repository.transaction((repository) => work(repository));
+        },
       );
     } catch (error) {
       if (isSectorCodeConflict(error)) {

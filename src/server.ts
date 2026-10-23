@@ -65,6 +65,7 @@ async function startServer(): Promise<void> {
       new AdminRepository(database.client),
       clock,
       config.PERFORMANCE_MEASUREMENTS,
+      new QuestionsRepository(database.client),
     ),
     auditService: new AuditService(new AuditRepository(database.client)),
     healthService,

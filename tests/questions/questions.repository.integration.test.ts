@@ -27,6 +27,11 @@ describeIntegration("QuestionsRepository PostgreSQL integration", () => {
         const updated = await repository.updateText(question.id, "Texto revisado", actor!.id);
         expect(updated).toMatchObject({ id: question.id, versionNumber: 2, text: "Texto revisado" });
         expect((await repository.listEffective(sector!.id, false))[0]).toMatchObject({ id: question.id, text: "Texto revisado" });
+        const standard = await repository.createStandard("Pergunta padrão", "all_sectors", [], 1, actor!.id);
+        const [secondSector] = await tx<{ id: number }[]>`
+          insert into sectors(code,name,created_at,updated_at) values(${`question-second-${suffix}`},'Question test 2',now(),now()) returning id`;
+        await repository.inheritForSectorOn(tx as unknown as postgres.Sql, secondSector!.id, actor!.id);
+        expect((await repository.listEffective(secondSector!.id, false)).map((item) => item.id)).toContain(standard.id);
         await repository.reorderSectorQuestions(sector!.id, [question.id]);
         await repository.audit(actor!.id, "question.integration", question.id);
         throw new Error("ROLLBACK_TEST");
