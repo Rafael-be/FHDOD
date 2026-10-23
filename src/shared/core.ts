@@ -7,8 +7,23 @@ export const forbidden = (message = "Você não possui permissão para esta oper
 export const notFound = (message = "Recurso não encontrado.") => new DomainError("NOT_FOUND", message, 404);
 /** Converts unmatched HTTP routes to the API's standard error envelope. */
 export function notFoundHandler(_request: Request, _response: Response, next: NextFunction): void { next(notFound()); }
+
+function bodyParserError(error: unknown, type: "entity.parse.failed" | "entity.too.large"): boolean {
+  return typeof error === "object" && error !== null && "type" in error && error.type === type;
+}
+
 export function errorHandler(error: unknown, request: Request, response: Response, _next: NextFunction): void {
   if (error instanceof DomainError) { logRequestRejection(error.code, error.status, request); response.status(error.status).json({ error: { code: error.code, message: error.message } }); return; }
+  if (bodyParserError(error, "entity.parse.failed")) {
+    logRequestRejection("INVALID_JSON", 400, request);
+    response.status(400).json({ error: { code: "INVALID_JSON", message: "JSON inválido." } });
+    return;
+  }
+  if (bodyParserError(error, "entity.too.large")) {
+    logRequestRejection("PAYLOAD_TOO_LARGE", 413, request);
+    response.status(413).json({ error: { code: "PAYLOAD_TOO_LARGE", message: "Corpo da requisição excede o limite permitido." } });
+    return;
+  }
   if (error instanceof ZodError) { const fields=[...new Set(error.issues.map(issue=>issue.path.join(".") || "body"))]; const issues=[...new Set(error.issues.map(issue=>issue.code==="too_small" ? "min_length" : issue.code))]; logValidationFailure(request,fields,issues); response.status(400).json({ error: { code: "VALIDATION_ERROR", message: "Dados de entrada inválidos." } }); return; }
   logInternalError(error, request);
   response.status(500).json({ error: { code: "INTERNAL_ERROR", message: "Ocorreu um erro interno." } });
