@@ -15,6 +15,13 @@
       "when": 1792700000000,
       "tag": "0001_add_questions_runtime_rls",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792700001000,
+      "tag": "0002_add_question_versions_update_rls",
+      "breakpoints": true
     }
   ]
 }
