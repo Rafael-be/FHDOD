@@ -14,4 +14,10 @@ describe("OpenAPI request contracts", () => {
     const bodyOperations = [["/api/auth/change-temporary-password", "post"], ["/api/auth/change-password", "post"], ["/api/auth/change-email", "post"], ["/api/managers", "post"], ["/api/managers/{id}", "patch"], ["/api/managers/{id}/reactivate", "post"], ["/api/sectors", "post"], ["/api/sectors/{id}", "patch"], ["/api/pages/{slug}", "put"]] as const;
     for (const [path, method] of bodyOperations) expect(paths[path]![method]!.requestBody).toBeDefined();
   });
+
+  it("documents the protected shift sheet upload", () => {
+    const upload = openapiDocument.paths["/api/shift-sheets"].post;
+    expect(upload.security).toEqual([{ cookieAuth: [] }]);
+    expect(upload.requestBody.content["application/octet-stream"].schema).toMatchObject({ format: "binary" });
+  });
 });
