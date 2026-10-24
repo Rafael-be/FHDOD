@@ -12,7 +12,7 @@
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src tests",
-    "test": "NODE_OPTIONS=--experimental-vm-modules jest --runInBand",
+    "test": "node --experimental-vm-modules ./node_modules/jest/bin/jest.js --runInBand",
     "migrate": "drizzle-kit migrate --config drizzle.config.ts",
     "seed": "tsx src/db/seed/initial-seed.ts",
     "audit:purge": "tsx src/db/purge-audit-logs.ts"
