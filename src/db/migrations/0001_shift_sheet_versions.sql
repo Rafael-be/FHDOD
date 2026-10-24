@@ -18,7 +18,6 @@ CREATE TABLE IF NOT EXISTS sector_shift_ranges (
   starts_at time NOT NULL,
   ends_at time NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
-  day_of_week integer NOT NULL CHECK (day_of_week BETWEEN 1 AND 7),
   CONSTRAINT sector_shift_ranges_distinct_hours_ck CHECK (starts_at <> ends_at),
   CONSTRAINT sector_shift_range_duplicate_uq UNIQUE (shift_sheet_version_id, sector_id, shift_name, starts_at, ends_at)
 );

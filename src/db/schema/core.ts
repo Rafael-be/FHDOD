@@ -31,7 +31,6 @@ export const sectorShiftRanges = pgTable("sector_shift_ranges", {
   startsAt: time("starts_at").notNull(),
   endsAt: time("ends_at").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
-  dayOfWeek: integer("day_of_week").notNull(),
 });
 export const employees = pgTable("employees", { id: integer().primaryKey().generatedByDefaultAsIdentity(), employeeCode: text("employee_code").notNull(), fullName: text("full_name").notNull(), createdAt: timestamp("created_at", { withTimezone: true }).notNull(), updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(), deletedAt: timestamp("deleted_at", { withTimezone: true }) });
 export const employeeShiftAssignments = pgTable("employee_shift_assignments", { id: integer().primaryKey().generatedByDefaultAsIdentity(), shiftSheetVersionId: integer("shift_sheet_version_id").notNull(), sectorId: integer("sector_id").notNull(), shiftRangeId: integer("shift_range_id").notNull(), employeeId: integer("employee_id").notNull(), workDate: text("work_date"), dayOfWeek: integer("day_of_week") });
