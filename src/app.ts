@@ -19,6 +19,8 @@ import { healthRoutes } from "./modules/health/health.routes.js";
 import type { ContentService } from "./modules/content/content.service.js";
 import { contentRoutes } from "./modules/content/content.routes.js";
 import { performanceRequestLogger } from "./shared/performance.js";
+import type { ShiftSheetService } from "./modules/shifts/shift-sheet.service.js";
+import { shiftSheetRoutes } from "./modules/shifts/shift-sheet.routes.js";
 
 export interface AppDependencies {
   authService: AuthService;
@@ -26,6 +28,7 @@ export interface AppDependencies {
   auditService?: AuditService;
   healthService?: HealthService;
   contentService?: ContentService;
+  shiftSheetService?: ShiftSheetService;
 }
 
 function validateRuntimeDependencies(
@@ -58,6 +61,7 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
     auditService,
     healthService,
     contentService,
+    shiftSheetService,
   } = dependencies;
   const app = express();
   app.disable("x-powered-by");
@@ -65,11 +69,13 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
   app.use(helmet());
   app.use(cors({ origin: (origin, callback) => callback(null, !origin || origin === config.ALLOWED_ORIGIN), credentials: true, methods: ["GET", "POST", "PUT", "PATCH", "DELETE"] }));
   app.use(express.json({ limit: "32kb" })); app.use(cookieParser());
+  app.use(express.raw({ type: "application/octet-stream", limit: "5mb" }));
   app.use(performanceRequestLogger(config.PERFORMANCE_MEASUREMENTS));
   if (healthService) app.use(healthRoutes(healthService));
   else app.get("/health", (_request, response) => response.status(200).json({ data: { status: "ok" } }));
   app.use("/api/auth", authRoutes(authService, config));
   if (adminService) app.use("/api", authenticate(authService), adminRoutes(adminService, authService));
+  if (shiftSheetService) app.use("/api", authenticate(authService), shiftSheetRoutes(shiftSheetService, authService));
   if (auditService) app.use("/api", authenticate(authService), auditRoutes(auditService));
   if (contentService) app.use("/api", contentRoutes(contentService, authService));
   app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openapiDocument, { explorer: false }));
