@@ -9,6 +9,18 @@ describe("OpenAPI request contracts", () => {
     expect(login.responses).toEqual(expect.objectContaining({ "200": expect.anything(), "400": expect.anything(), "401": expect.anything(), "403": expect.anything(), "429": expect.anything() }));
   });
 
+  it("documents the shared public user response for login, refresh and /me", () => {
+    const paths = openapiDocument.paths as Record<string, Record<string, {
+      responses: Record<string, {
+        content?: { "application/json"?: { schema?: { $ref?: string } } };
+      }>;
+    }>>;
+    expect(openapiDocument.components.schemas.AuthUserResponse.required).toEqual(["user"]);
+    for (const [path, method] of [["/api/auth/login", "post"], ["/api/auth/refresh", "post"], ["/api/auth/me", "get"]] as const) {
+      expect(paths[path]![method]!.responses["200"]!.content?.["application/json"]?.schema?.$ref).toBe("#/components/schemas/AuthUserResponse");
+    }
+  });
+
   it("documents every Fase 1 JSON body with a schema", () => {
     const paths = openapiDocument.paths as Record<string, Record<string, { requestBody?: unknown }>>;
     const bodyOperations = [["/api/auth/change-temporary-password", "post"], ["/api/auth/change-password", "post"], ["/api/auth/change-email", "post"], ["/api/managers", "post"], ["/api/managers/{id}", "patch"], ["/api/managers/{id}/reactivate", "post"], ["/api/sectors", "post"], ["/api/sectors/{id}", "patch"], ["/api/pages/{slug}", "put"]] as const;

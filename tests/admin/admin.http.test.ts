@@ -22,7 +22,7 @@ const clock: Clock = { now: () => new Date("2026-01-01T00:00:00Z") };
 describe("administrative HTTP contracts", () => {
   it("requires a current superuser and CSRF token for manager creation", async () => {
     const hash = await argon2.hash("superuser-password");
-    const repository = new Repository({ id: 1, email: "admin@hospital.test", passwordHash: hash, role: "superuser", deletedAt: null, mustChangePassword: false, temporaryPasswordExpiresAt: null });
+    const repository = new Repository({ id: 1, fullName: "Admin", email: "admin@hospital.test", passwordHash: hash, role: "superuser", deletedAt: null, mustChangePassword: false, temporaryPasswordExpiresAt: null });
     const auth = new AuthService(repository, clock, config);
     const received: unknown[] = [];
     const admin = { listManagers: async () => [{ id: 2, fullName: "Gestor", email: "gestor@hospital.test" }], createManager: async (...args: unknown[]) => { received.push(args); return { id: 2, fullName: "Novo gestor", email: "novo@hospital.test" }; } } as unknown as AdminService;
@@ -42,7 +42,7 @@ describe("administrative HTTP contracts", () => {
 
   it("uses the authenticated session CSRF token for sectors without a refresh cookie", async () => {
     const hash = await argon2.hash("superuser-password");
-    const repository = new Repository({ id: 1, email: "admin@hospital.test", passwordHash: hash, role: "superuser", deletedAt: null, mustChangePassword: false, temporaryPasswordExpiresAt: null });
+    const repository = new Repository({ id: 1, fullName: "Admin", email: "admin@hospital.test", passwordHash: hash, role: "superuser", deletedAt: null, mustChangePassword: false, temporaryPasswordExpiresAt: null });
     const auth = new AuthService(repository, clock, config);
     const createSector = jest.fn(async () => ({ id: 1, code: "ER", name: "Emergência" }));
     const app = createApp(config, {
@@ -76,7 +76,7 @@ describe("administrative HTTP contracts", () => {
     const createManagerApp = async (id: number, email: string, password: string) => {
       const hash = await argon2.hash(password);
       const repository = new Repository({
-        id,
+        id, fullName: "Gestor",
         email,
         passwordHash: hash,
         role: "sector_manager",

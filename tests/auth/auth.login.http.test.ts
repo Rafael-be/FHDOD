@@ -8,6 +8,7 @@ import { DomainError } from "../../src/shared/core.js";
 
 const config: AppConfig = { NODE_ENV: "test", PORT: 3000, DATABASE_URL: "postgres://api:pass@localhost/fhdod", ALLOWED_ORIGIN: "http://localhost:5173", JWT_SECRET: "12345678901234567890123456789012", JWT_ISSUER: "fhdod-api", JWT_AUDIENCE: "fhdod-web", PERFORMANCE_MEASUREMENTS: false };
 const validBody = { email: "admin@example.test", password: "senha-de-desenvolvimento" };
+const publicUser = { id: 1, name: "Admin", email: "admin@example.test", role: "superuser" as const, mustChangePassword: false };
 
 function makeApp(login: (email: string, password: string) => Promise<unknown>) {
   const auth = { login, authenticate: async () => { throw new Error("unused without cookie"); }, recoverCsrf: async () => "csrf", recoverCsrfForIdentity: async () => "csrf" } as unknown as AuthService;
@@ -17,8 +18,8 @@ function makeApp(login: (email: string, password: string) => Promise<unknown>) {
 describe("POST /api/auth/login validation", () => {
   it("accepts the documented JSON and delegates authentication", async () => {
     const received: unknown[] = [];
-    const app = makeApp(async (...input) => { received.push(input); return { accessToken: "access", refreshToken: "refresh", csrfToken: "csrf", expiresAt: new Date("2026-12-31T00:00:00Z") }; });
-    const response = await request(app).post("/api/auth/login").set("Content-Type", "application/json").send(validBody).expect(200).expect(({ body }) => expect(body.data.csrfToken).toBe("csrf"));
+    const app = makeApp(async (...input) => { received.push(input); return { accessToken: "access", refreshToken: "refresh", csrfToken: "csrf", expiresAt: new Date("2026-12-31T00:00:00Z"), user: publicUser }; });
+    const response = await request(app).post("/api/auth/login").set("Content-Type", "application/json").send(validBody).expect(200).expect({ user: publicUser });
     const cookies = response.headers["set-cookie"] as string[];
     expect(cookies).toEqual(expect.arrayContaining([expect.stringMatching(/^access_token=.*; Path=\/api;/), expect.stringMatching(/^refresh_token=.*; Path=\/api\/auth;/)]));
     expect(received).toEqual([[validBody.email, validBody.password]]);
@@ -85,6 +86,29 @@ describe("POST /api/auth/login validation", () => {
     const auth = { login: async () => { throw new Error("unused"); }, authenticate, recoverCsrf: async () => "csrf", recoverCsrfForIdentity: async () => "csrf" } as unknown as AuthService;
     await request(createApp(config, { authService: auth })).get("/api/auth/csrf").set("Cookie", "access_token=valid; refresh_token=refresh").expect(200).expect({ data: { csrfToken: "csrf" } });
     expect(authenticate).not.toHaveBeenCalled();
+  });
+
+  it("returns the same public user contract from refresh", async () => {
+    const refreshedUser = { ...publicUser, role: "sector_manager" as const, mustChangePassword: true };
+    const auth = { refresh: async () => ({ accessToken: "access", refreshToken: "refresh", csrfToken: "csrf", expiresAt: new Date("2026-12-31T00:00:00Z"), user: refreshedUser }) } as unknown as AuthService;
+    await request(createApp(config, { authService: auth })).post("/api/auth/refresh").set("Cookie", "refresh_token=refresh").expect(200).expect({ user: refreshedUser });
+  });
+
+  it("returns the authenticated user's current data from /me without mutating cookies", async () => {
+    const authenticate = jest.fn(async (_token: string, options?: { touchSession?: boolean }) => {
+      expect(options).toEqual({ touchSession: false });
+      return { userId: 1, sessionId: "session", role: "superuser" as const, mustChangePassword: true };
+    });
+    const currentUser = jest.fn(async () => ({ ...publicUser, mustChangePassword: true }));
+    const auth = { authenticate, currentUser } as unknown as AuthService;
+    const response = await request(createApp(config, { authService: auth })).get("/api/auth/me").set("Cookie", "access_token=access").expect(200).expect({ user: { ...publicUser, mustChangePassword: true } });
+    expect(currentUser).toHaveBeenCalledWith(expect.objectContaining({ userId: 1 }));
+    expect(response.headers["set-cookie"]).toBeUndefined();
+  });
+
+  it("rejects /me without a valid authenticated session", async () => {
+    const auth = { authenticate: async () => { throw new DomainError("UNAUTHENTICATED", "Sessão inválida ou expirada.", 401); } } as unknown as AuthService;
+    await request(createApp(config, { authService: auth })).get("/api/auth/me").expect(401).expect({ error: { code: "UNAUTHENTICATED", message: "Autenticação necessária." } });
   });
 
   it("logs a CSRF rejection without recording request credentials", async () => {

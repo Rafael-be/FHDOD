@@ -46,6 +46,10 @@ As demais variáveis obrigatórias são `ALLOWED_ORIGIN`, `JWT_SECRET`,
   `x-csrf-token`.
 - Senhas temporárias expiram em 48 horas e exigem troca após login.
 - Logins substituem a sessão anterior do mesmo usuário dentro de transação.
+- `POST /api/auth/login`, `POST /api/auth/refresh` e `GET /api/auth/me`
+  retornam `{ user: { id, name, email, role, mustChangePassword } }`. Os dois
+  primeiros atualizam os cookies; `/me` apenas valida a sessão atual e não a
+  renova.
 - O limite local de falhas protege cada processo, mas não substitui
   armazenamento compartilhado em implantação com múltiplas réplicas.
 
