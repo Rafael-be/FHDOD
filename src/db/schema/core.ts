@@ -17,7 +17,10 @@ export const userSectorAssignments = pgTable("user_sector_assignments", { id: in
 export const auditLogs = pgTable("audit_logs", { id: integer().primaryKey().generatedByDefaultAsIdentity(), actorUserId: integer("actor_user_id"), action: text().notNull(), entityType: text("entity_type").notNull(), entityId: integer("entity_id"), oldValues: jsonb("old_values"), newValues: jsonb("new_values"), createdAt: timestamp("created_at", { withTimezone: true }).notNull() });
 export const shiftSheetVersions = pgTable("shift_sheet_versions", {
   id: integer().primaryKey().generatedByDefaultAsIdentity(),
-  importedAt: timestamp("imported_at", { withTimezone: true }).notNull(),
+  versionNumber: integer("version_number").notNull(),
+  uploadedByUserId: integer("uploaded_by_user_id"),
+  uploadedAt: timestamp("uploaded_at", { withTimezone: true }).notNull(),
+  validFrom: timestamp("valid_from", { withTimezone: true }).notNull(),
   isCurrent: boolean("is_current").notNull().default(false),
 });
 export const sectorShiftRanges = pgTable("sector_shift_ranges", {
@@ -27,7 +30,8 @@ export const sectorShiftRanges = pgTable("sector_shift_ranges", {
   shiftName: text("shift_name").notNull(),
   startsAt: time("starts_at").notNull(),
   endsAt: time("ends_at").notNull(),
-  employeeCode: text("employee_code").notNull(),
-  employeeName: text("employee_name").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
   dayOfWeek: integer("day_of_week").notNull(),
 });
+export const employees = pgTable("employees", { id: integer().primaryKey().generatedByDefaultAsIdentity(), employeeCode: text("employee_code").notNull(), fullName: text("full_name").notNull(), createdAt: timestamp("created_at", { withTimezone: true }).notNull(), updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(), deletedAt: timestamp("deleted_at", { withTimezone: true }) });
+export const employeeShiftAssignments = pgTable("employee_shift_assignments", { id: integer().primaryKey().generatedByDefaultAsIdentity(), shiftSheetVersionId: integer("shift_sheet_version_id").notNull(), sectorId: integer("sector_id").notNull(), shiftRangeId: integer("shift_range_id").notNull(), employeeId: integer("employee_id").notNull(), workDate: text("work_date"), dayOfWeek: integer("day_of_week") });
