@@ -8,6 +8,13 @@
       "when": 1792621938065,
       "tag": "0000_enforce_runtime_rls_policies",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792700000000,
+      "tag": "0001_add_questions_runtime_rls",
+      "breakpoints": true
     }
   ]
 }
