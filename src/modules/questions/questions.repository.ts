@@ -161,7 +161,7 @@ export class QuestionsRepository {
     await this.sql`update question_versions set is_current=false where question_id=${id} and is_current=true`;
     await this.sql`insert into question_versions(question_id,version_number,text,is_current,created_by_user_id)
       values(${id},${current[0]!.next},${text},true,${actorId})`;
-    return this.findSectorQuestion(id);
+    return this.findQuestion(id);
   }
 
   async setDeleted(id: number, deleted: boolean): Promise<boolean> {

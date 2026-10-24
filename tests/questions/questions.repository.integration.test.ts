@@ -28,6 +28,8 @@ describeIntegration("QuestionsRepository PostgreSQL integration", () => {
         expect(updated).toMatchObject({ id: question.id, versionNumber: 2, text: "Texto revisado" });
         expect((await repository.listEffective(sector!.id, false))[0]).toMatchObject({ id: question.id, text: "Texto revisado" });
         const standard = await repository.createStandard("Pergunta padrão", "all_sectors", [], 1, actor!.id);
+        const updatedStandard = await repository.updateText(standard.id, "Texto padrão revisado", actor!.id);
+        expect(updatedStandard).toMatchObject({ id: standard.id, questionKind: "standard", versionNumber: 2, text: "Texto padrão revisado" });
         const [secondSector] = await tx<{ id: number }[]>`
           insert into sectors(code,name,created_at,updated_at) values(${`question-second-${suffix}`},'Question test 2',now(),now()) returning id`;
         await repository.inheritForSectorOn(tx as unknown as postgres.Sql, secondSector!.id, actor!.id);
