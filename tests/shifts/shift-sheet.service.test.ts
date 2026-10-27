@@ -37,4 +37,13 @@ describe("ShiftSheetService", () => {
     expect(result.issues[0]?.reason).toContain("excede");
     expect(catalogRead).toBe(false);
   });
+
+  it("generates an Excel-compatible CSV with BOM and escaped values", async () => {
+    const repo = { ...repository(), currentSheetRows: async () => [{ codigo_setor: "uti", nome_setor: "UTI; Adulto", nome_turno: "Dia", hora_inicio: "08:00", hora_fim: "16:00", codigo_funcionario: "F-1", nome_funcionario: 'Ana "A"', dia_semana_iso: 1 }] };
+    const csv = await new ShiftSheetService(repo).download();
+    const text = new TextDecoder().decode(csv);
+    expect([...csv.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
+    expect(text).toContain('"UTI; Adulto"');
+    expect(text).toContain('"Ana ""A"""');
+  });
 });

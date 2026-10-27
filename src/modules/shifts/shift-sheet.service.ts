@@ -5,12 +5,14 @@ export const MAX_SHIFT_SHEET_BYTES = 5 * 1024 * 1024;
 
 export interface ShiftSectorReference { code: string; name: string; active: boolean; }
 export interface ShiftEmployeeReference { code: string; name: string; active: boolean; }
+export interface ShiftSheetDownloadRow { codigo_setor: string; nome_setor: string; nome_turno: string; hora_inicio: string; hora_fim: string; codigo_funcionario: string; nome_funcionario: string; dia_semana_iso: number; }
 export interface ShiftSheetRepository {
   sectors(): Promise<ShiftSectorReference[]>;
   employees(): Promise<ShiftEmployeeReference[]>;
   transaction<T>(work: (repository: ShiftSheetRepository) => Promise<T>): Promise<T>;
   replaceCurrentSheet(rows: ParsedShiftSheet["rows"], importedAt: Date): Promise<{ versionId: number }>;
   recordUploadAttempt?(userId: number, result: "accepted" | "rejected", versionId: number | null, issues: ShiftSheetIssue[]): Promise<void>;
+  currentSheetRows?(): Promise<ShiftSheetDownloadRow[]>;
 }
 
 export type ShiftSheetValidation = ParsedShiftSheet & { warnings: ShiftSheetIssue[] };
@@ -53,5 +55,19 @@ export class ShiftSheetService {
       if (userId !== undefined && repository.recordUploadAttempt) await repository.recordUploadAttempt(userId, "accepted", result.versionId, []);
       return { ...result, warnings: validation.warnings };
     });
+  }
+
+  async download(): Promise<Uint8Array> {
+    if (!this.repository.currentSheetRows) throw new Error("Download de planilha não configurado.");
+    const headers = ["codigo_setor", "nome_setor", "nome_turno", "hora_inicio", "hora_fim", "codigo_funcionario", "nome_funcionario", "dia_semana_iso"];
+    const escape = (value: string | number): string => {
+      const text = String(value);
+      return /[;"\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+    };
+    const rows = await this.repository.currentSheetRows();
+    const content = [headers, ...rows.map((row) => headers.map((header) => escape(row[header as keyof ShiftSheetDownloadRow])))]
+      .map((row) => row.join(";"))
+      .join("\r\n");
+    return new TextEncoder().encode(`\ufeff${content}\r\n`);
   }
 }

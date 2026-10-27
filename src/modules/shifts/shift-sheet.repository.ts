@@ -1,6 +1,6 @@
 import type postgres from "postgres";
 import type { ParsedShiftSheet } from "./shift-sheet.parser.js";
-import type { ShiftEmployeeReference, ShiftSectorReference, ShiftSheetRepository } from "./shift-sheet.service.js";
+import type { ShiftEmployeeReference, ShiftSectorReference, ShiftSheetDownloadRow, ShiftSheetRepository } from "./shift-sheet.service.js";
 
 export class PostgresShiftSheetRepository implements ShiftSheetRepository {
   constructor(private readonly sql: postgres.Sql) {}
@@ -69,6 +69,22 @@ export class PostgresShiftSheetRepository implements ShiftSheetRepository {
     await this.sql`
       insert into shift_upload_attempts (uploaded_by_user_id, attempted_at, result, resulting_version_id, validation_errors)
       values (${userId}, now(), ${result}, ${versionId}, ${JSON.stringify(issues)})
+    `;
+  }
+
+  async currentSheetRows(): Promise<ShiftSheetDownloadRow[]> {
+    return this.sql<ShiftSheetDownloadRow[]>`
+      select s.code as codigo_setor, s.name as nome_setor, r.shift_name as nome_turno,
+             to_char(r.starts_at, 'HH24:MI') as hora_inicio, to_char(r.ends_at, 'HH24:MI') as hora_fim,
+             e.employee_code as codigo_funcionario, e.full_name as nome_funcionario,
+             a.day_of_week as dia_semana_iso
+      from shift_sheet_versions v
+      join sector_shift_ranges r on r.shift_sheet_version_id = v.id
+      join sectors s on s.id = r.sector_id and s.deleted_at is null
+      join employee_shift_assignments a on a.shift_range_id = r.id and a.shift_sheet_version_id = v.id
+      join employees e on e.id = a.employee_id
+      where v.is_current = true
+      order by s.code, a.day_of_week, r.starts_at, e.employee_code
     `;
   }
 }

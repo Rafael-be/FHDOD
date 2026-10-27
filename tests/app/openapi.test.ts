@@ -20,4 +20,8 @@ describe("OpenAPI request contracts", () => {
     expect(upload.security).toEqual([{ cookieAuth: [] }]);
     expect(upload.requestBody.content["application/octet-stream"].schema).toMatchObject({ format: "binary" });
   });
+
+  it("documents the shift sheet download", () => {
+    expect(openapiDocument.paths["/api/shift-sheets"].get).toMatchObject({ security: [{ cookieAuth: [] }] });
+  });
 });
