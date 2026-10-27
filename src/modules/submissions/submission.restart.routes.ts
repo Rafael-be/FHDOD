@@ -1,8 +1,10 @@
 import { Router } from "express";
 import type { SubmissionService } from "./submission.service.js";
+import { submissionPublicLimiter } from "./submission.public-limiter.js";
 
 export function submissionRestartRoutes(service: SubmissionService): Router {
   const router = Router();
+  router.use(submissionPublicLimiter);
   router.post("/public/submissions/:sessionId/restart", async (request, response, next) => {
     try {
       const token = request.get("x-session-capability");

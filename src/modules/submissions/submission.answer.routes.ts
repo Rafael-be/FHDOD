@@ -1,11 +1,13 @@
 import { Router } from "express";
 import { z } from "zod";
 import type { SubmissionService } from "./submission.service.js";
+import { submissionPublicLimiter } from "./submission.public-limiter.js";
 
 const input = z.object({ status: z.enum(["answered", "skipped"]), score: z.number().int().nullable() });
 
 export function submissionAnswerRoutes(service: SubmissionService): Router {
   const router = Router();
+  router.use(submissionPublicLimiter);
   router.post("/public/submissions/:sessionId/answers", async (request, response, next) => {
     try {
       const token = request.get("x-session-capability");
