@@ -5,6 +5,7 @@ export interface SubmissionRepository {
   transaction<T>(work: (repository: SubmissionRepository) => Promise<T>): Promise<T>;
   createSessionSnapshot(input: SubmissionStart): Promise<{ session: { id: string; sectorId: number; shiftSheetVersionId: number; shiftRangeId: number }; questions: SubmissionQuestion[] }>;
   saveAnswer(sessionId: string, input: SubmissionAnswerInput, now: Date): Promise<{ sessionId: string; status: "incomplete" | "complete"; answered: boolean }>;
+  endSession(sessionId: string, now: Date): Promise<{ sectorId: number }>;
 }
 
 export class PostgresSubmissionRepository implements SubmissionRepository {
@@ -77,7 +78,10 @@ export class PostgresSubmissionRepository implements SubmissionRepository {
     `;
     const item = target[0];
     if (!item) throw new Error("Pergunta não pertence à sessão.");
-    if (now.getTime() - item.lastActivityAt.getTime() > 2 * 60_000) throw new Error("Sessão expirada por inatividade.");
+    if (now.getTime() - item.lastActivityAt.getTime() > 2 * 60_000) {
+      await this.sql`update submission_sessions set ended_at = ${now.toISOString()} where id = ${sessionId} and ended_at is null`;
+      throw new Error("Sessão expirada por inatividade.");
+    }
     if (input.status === "skipped" && item.questionKind !== "sector") throw new Error("Somente perguntas de setor podem ser puladas.");
     const max = item.isNps ? 10 : 5;
     const min = item.isNps ? 0 : 1;
@@ -105,5 +109,15 @@ export class PostgresSubmissionRepository implements SubmissionRepository {
     const complete = count.answered === count.total && count.skippedSector === 0 && count.npsAnswered === 1;
     if (complete) await this.sql`update submission_sessions set status = 'complete', ended_at = ${now.toISOString()} where id = ${sessionId}`;
     return { sessionId, status: complete ? "complete" as const : "incomplete" as const, answered: input.status === "answered" };
+  }
+
+  async endSession(sessionId: string, now: Date): Promise<{ sectorId: number }> {
+    const rows = await this.sql<{ sectorId: number }[]>`
+      update submission_sessions set ended_at = ${now.toISOString()}
+      where id = ${sessionId} and ended_at is null
+      returning sector_id as "sectorId"
+    `;
+    if (!rows[0]) throw new Error("Sessão não encontrada ou já encerrada.");
+    return rows[0];
   }
 }

@@ -24,6 +24,7 @@ import { shiftSheetRoutes } from "./modules/shifts/shift-sheet.routes.js";
 import type { SubmissionService } from "./modules/submissions/submission.service.js";
 import { submissionRoutes } from "./modules/submissions/submission.routes.js";
 import { submissionAnswerRoutes } from "./modules/submissions/submission.answer.routes.js";
+import { submissionRestartRoutes } from "./modules/submissions/submission.restart.routes.js";
 
 export interface AppDependencies {
   authService: AuthService;
@@ -79,7 +80,7 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
   if (healthService) app.use(healthRoutes(healthService));
   else app.get("/health", (_request, response) => response.status(200).json({ data: { status: "ok" } }));
   app.use("/api/auth", authRoutes(authService, config));
-  if (submissionService) { app.use("/api", submissionRoutes(submissionService)); app.use("/api", submissionAnswerRoutes(submissionService)); }
+  if (submissionService) { app.use("/api", submissionRoutes(submissionService)); app.use("/api", submissionAnswerRoutes(submissionService)); app.use("/api", submissionRestartRoutes(submissionService)); }
   if (adminService) app.use("/api", authenticate(authService), adminRoutes(adminService, authService));
   if (shiftSheetService) app.use("/api", authenticate(authService), shiftSheetRoutes(shiftSheetService, authService));
   if (auditService) app.use("/api", authenticate(authService), auditRoutes(auditService));

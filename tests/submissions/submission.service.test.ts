@@ -37,4 +37,13 @@ describe("SubmissionService", () => {
     await expect(service.answer(result.capability.sessionId, "invalid", { sessionQuestionId: 1, status: "answered", score: 3 })).rejects.toMatchObject({ code: "SUBMISSION_CAPABILITY_INVALID" });
     await expect(service.answer(result.capability.sessionId, result.capability.token, { sessionQuestionId: 1, status: "answered", score: null })).rejects.toMatchObject({ code: "INVALID_ANSWER" });
   });
+
+  it("ends the old session and issues a new capability on restart", async () => {
+    const repository: SubmissionRepository = { transaction: async (work) => work(repository), createSessionSnapshot: async (input) => ({ session: { id: input.sessionId, sectorId: input.sectorId, shiftSheetVersionId: 1, shiftRangeId: 2 }, questions: [] }), saveAnswer: async (sessionId, input) => ({ sessionId, status: "incomplete", answered: input.status === "answered" }), endSession: async () => ({ sectorId: 7 }) };
+    const service = new SubmissionService(repository, clock);
+    const first = await service.start(7, 4, "09:00");
+    const restarted = await service.restart(first.capability.sessionId, first.capability.token);
+    expect(restarted.capability.sessionId).not.toBe(first.capability.sessionId);
+    expect(service.authorize(first.capability.sessionId, first.capability.token)).toBe(false);
+  });
 });

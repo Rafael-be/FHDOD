@@ -28,4 +28,8 @@ describe("OpenAPI request contracts", () => {
   it("documents the anonymous submission start", () => {
     expect(openapiDocument.paths["/api/public/sectors/{sectorId}/submissions"].post).not.toHaveProperty("security");
   });
+
+  it("documents anonymous restart", () => {
+    expect(openapiDocument.paths["/api/public/submissions/{sessionId}/restart"].post).not.toHaveProperty("security");
+  });
 });

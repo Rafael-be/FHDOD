@@ -37,4 +37,11 @@ export class SubmissionService {
     if (input.status === "skipped" && input.score !== null) throw new DomainError("INVALID_ANSWER", "Pergunta pulada não pode ter nota.", 400);
     return this.repository.transaction((repository) => repository.saveAnswer(sessionId, input, this.clock.now()));
   }
+
+  async restart(sessionId: string, token: string) {
+    if (!this.authorize(sessionId, token)) throw new DomainError("SUBMISSION_CAPABILITY_INVALID", "Capability de sessão inválida.", 403);
+    const { sectorId } = await this.repository.transaction((repository) => repository.endSession(sessionId, this.clock.now()));
+    this.capabilities.delete(sessionId);
+    return this.startNow(sectorId);
+  }
 }
