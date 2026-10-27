@@ -23,9 +23,11 @@ describe("ShiftSheetService", () => {
 
   it("rejects unknown sectors without changing the repository", async () => {
     let replaced = false;
-    const repo = { ...repository(), sectors: async () => [], replaceCurrentSheet: async () => { replaced = true; return { versionId: 1 }; } };
-    await expect(new ShiftSheetService(repo).import(input())).rejects.toMatchObject({ code: "INVALID_SHIFT_SHEET" });
+    let attempt: string | undefined;
+    const repo = { ...repository(), sectors: async () => [], replaceCurrentSheet: async () => { replaced = true; return { versionId: 1 }; }, recordUploadAttempt: async (_userId: number, result: "accepted" | "rejected") => { attempt = result; } };
+    await expect(new ShiftSheetService(repo).import(input(), 10)).rejects.toMatchObject({ code: "INVALID_SHIFT_SHEET" });
     expect(replaced).toBe(false);
+    expect(attempt).toBe("rejected");
   });
 
   it("rejects oversized files before catalog access", async () => {

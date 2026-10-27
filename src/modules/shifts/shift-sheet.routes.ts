@@ -12,7 +12,7 @@ export function shiftSheetRoutes(service: ShiftSheetService, auth: AuthService):
         response.status(400).json({ error: { code: "INVALID_SHIFT_SHEET_BODY", message: "Envie a planilha como corpo binário." } });
         return;
       }
-      const result = await service.import(new Uint8Array(request.body));
+      const result = await service.import(new Uint8Array(request.body), request.identity!.userId);
       response.status(201).json({ data: result });
     } catch (error) {
       next(error);

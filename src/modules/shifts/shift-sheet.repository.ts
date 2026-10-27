@@ -64,4 +64,11 @@ export class PostgresShiftSheetRepository implements ShiftSheetRepository {
     await this.sql`update shift_sheet_versions set is_current = true where id = ${versionId}`;
     return { versionId };
   }
+
+  async recordUploadAttempt(userId: number, result: "accepted" | "rejected", versionId: number | null, issues: { line?: number; sectorCode?: string; reason: string }[]): Promise<void> {
+    await this.sql`
+      insert into shift_upload_attempts (uploaded_by_user_id, attempted_at, result, resulting_version_id, validation_errors)
+      values (${userId}, now(), ${result}, ${versionId}, ${JSON.stringify(issues)})
+    `;
+  }
 }

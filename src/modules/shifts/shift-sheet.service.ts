@@ -10,6 +10,7 @@ export interface ShiftSheetRepository {
   employees(): Promise<ShiftEmployeeReference[]>;
   transaction<T>(work: (repository: ShiftSheetRepository) => Promise<T>): Promise<T>;
   replaceCurrentSheet(rows: ParsedShiftSheet["rows"], importedAt: Date): Promise<{ versionId: number }>;
+  recordUploadAttempt?(userId: number, result: "accepted" | "rejected", versionId: number | null, issues: ShiftSheetIssue[]): Promise<void>;
 }
 
 export type ShiftSheetValidation = ParsedShiftSheet & { warnings: ShiftSheetIssue[] };
@@ -41,12 +42,16 @@ export class ShiftSheetService {
     return { rows: parsed.rows, issues, warnings };
   }
 
-  async import(input: Uint8Array): Promise<{ versionId: number; warnings: ShiftSheetIssue[] }> {
+  async import(input: Uint8Array, userId?: number): Promise<{ versionId: number; warnings: ShiftSheetIssue[] }> {
     const validation = await this.validate(input);
-    if (validation.issues.length > 0) throw new DomainError("INVALID_SHIFT_SHEET", "A planilha contém erros impeditivos.", 400);
-    return this.repository.transaction(async (repository) => ({
-      ...(await repository.replaceCurrentSheet(validation.rows, this.now())),
-      warnings: validation.warnings,
-    }));
+    if (validation.issues.length > 0) {
+      if (userId !== undefined && this.repository.recordUploadAttempt) await this.repository.recordUploadAttempt(userId, "rejected", null, validation.issues);
+      throw new DomainError("INVALID_SHIFT_SHEET", "A planilha contém erros impeditivos.", 400);
+    }
+    return this.repository.transaction(async (repository) => {
+      const result = await repository.replaceCurrentSheet(validation.rows, this.now());
+      if (userId !== undefined && repository.recordUploadAttempt) await repository.recordUploadAttempt(userId, "accepted", result.versionId, []);
+      return { ...result, warnings: validation.warnings };
+    });
   }
 }
