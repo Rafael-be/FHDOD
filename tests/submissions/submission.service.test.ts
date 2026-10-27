@@ -29,4 +29,12 @@ describe("SubmissionService", () => {
     await new SubmissionService(repository, clock).startNow(7);
     expect(received).toMatchObject({ dayOfWeek: 4, localTime: "09:00" });
   });
+
+  it("requires the ephemeral capability before saving an answer", async () => {
+    const repository: SubmissionRepository = { transaction: async (work) => work(repository), createSessionSnapshot: async (input) => ({ session: { id: input.sessionId, sectorId: input.sectorId, shiftSheetVersionId: 1, shiftRangeId: 2 }, questions: [] }), saveAnswer: async (sessionId, input) => ({ sessionId, status: input.status === "answered" ? "incomplete" : "incomplete", answered: input.status === "answered" }) };
+    const service = new SubmissionService(repository, clock);
+    const result = await service.start(7, 4, "09:00");
+    await expect(service.answer(result.capability.sessionId, "invalid", { sessionQuestionId: 1, status: "answered", score: 3 })).rejects.toMatchObject({ code: "SUBMISSION_CAPABILITY_INVALID" });
+    await expect(service.answer(result.capability.sessionId, result.capability.token, { sessionQuestionId: 1, status: "answered", score: null })).rejects.toMatchObject({ code: "INVALID_ANSWER" });
+  });
 });
