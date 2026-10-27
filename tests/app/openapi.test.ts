@@ -24,4 +24,8 @@ describe("OpenAPI request contracts", () => {
   it("documents the shift sheet download", () => {
     expect(openapiDocument.paths["/api/shift-sheets"].get).toMatchObject({ security: [{ cookieAuth: [] }] });
   });
+
+  it("documents the anonymous submission start", () => {
+    expect(openapiDocument.paths["/api/public/sectors/{sectorId}/submissions"].post).not.toHaveProperty("security");
+  });
 });

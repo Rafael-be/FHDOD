@@ -18,5 +18,14 @@ export class SubmissionService {
     return { capability: { sessionId, token }, ...result };
   }
 
+  async startNow(sectorId: number): Promise<{ capability: SubmissionCapability; session: unknown; questions: SubmissionQuestion[] }> {
+    const now = this.clock.now();
+    const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/Sao_Paulo", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(now);
+    const weekday = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 }[parts.find((part) => part.type === "weekday")?.value as "Mon"];
+    const hour = parts.find((part) => part.type === "hour")?.value ?? "00";
+    const minute = parts.find((part) => part.type === "minute")?.value ?? "00";
+    return this.start(sectorId, weekday ?? 1, `${hour}:${minute}`);
+  }
+
   authorize(sessionId: string, token: string): boolean { return this.capabilities.get(sessionId) === token; }
 }

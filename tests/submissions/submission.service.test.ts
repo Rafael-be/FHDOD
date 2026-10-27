@@ -22,4 +22,11 @@ describe("SubmissionService", () => {
     expect(service.authorize(result.capability.sessionId, "wrong-token")).toBe(false);
     expect(service.authorize("other-session", result.capability.token)).toBe(false);
   });
+
+  it("computes the start window in America/Sao_Paulo", async () => {
+    let received: { dayOfWeek?: number; localTime?: string } = {};
+    const repository: SubmissionRepository = { transaction: async (work) => work(repository), createSessionSnapshot: async (input) => { received = input; return { session: { id: input.sessionId, sectorId: input.sectorId, shiftSheetVersionId: 1, shiftRangeId: 2 }, questions: [] }; } };
+    await new SubmissionService(repository, clock).startNow(7);
+    expect(received).toMatchObject({ dayOfWeek: 4, localTime: "09:00" });
+  });
 });

@@ -16,6 +16,8 @@ import { ContentRepository } from "./modules/content/content.repository.js";
 import { ContentService } from "./modules/content/content.service.js";
 import { PostgresShiftSheetRepository } from "./modules/shifts/shift-sheet.repository.js";
 import { ShiftSheetService } from "./modules/shifts/shift-sheet.service.js";
+import { PostgresSubmissionRepository } from "./modules/submissions/submission.repository.js";
+import { SubmissionService } from "./modules/submissions/submission.service.js";
 import {
   logServerShutdownTimedOut,
   logServerStarted,
@@ -70,6 +72,7 @@ async function startServer(): Promise<void> {
     healthService,
     contentService: new ContentService(new ContentRepository(database.client)),
     shiftSheetService: new ShiftSheetService(new PostgresShiftSheetRepository(database.client), clock.now.bind(clock)),
+    submissionService: new SubmissionService(new PostgresSubmissionRepository(database.client), clock),
   });
   const server = app.listen(config.PORT, () => logServerStarted(config.PORT));
 
