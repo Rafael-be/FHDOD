@@ -11,6 +11,7 @@ export class PostgresSubmissionRepository implements SubmissionRepository {
   constructor(private readonly sql: postgres.Sql) {}
 
   async transaction<T>(work: (repository: SubmissionRepository) => Promise<T>): Promise<T> {
+    if (typeof (this.sql as unknown as { begin?: unknown }).begin !== "function") return work(this);
     return this.sql.begin(async (transaction) => work(new PostgresSubmissionRepository(transaction as unknown as postgres.Sql))) as Promise<T>;
   }
 
@@ -55,10 +56,14 @@ export class PostgresSubmissionRepository implements SubmissionRepository {
       values (${input.sessionId}, ${input.sectorId}, ${shift[0].versionId}, ${shift[0].rangeId}, ${input.now.toISOString()}, ${input.now.toISOString()}, 'incomplete')
       returning id
     `;
-    for (const question of questions) await this.sql`
+    for (const question of questions) {
+      const inserted = await this.sql<{ id: number }[]>`
       insert into submission_session_questions (session_id, question_id, question_version_id, position, question_kind, is_nps, created_at)
       values (${input.sessionId}, ${question.questionId}, ${question.questionVersionId}, ${question.position}, ${question.questionKind}, ${question.isNps}, ${input.now.toISOString()})
+      returning id
     `;
+      question.sessionQuestionId = inserted[0]!.id;
+    }
     return { session: { id: sessionRows[0]!.id, sectorId: input.sectorId, shiftSheetVersionId: shift[0].versionId, shiftRangeId: shift[0].rangeId }, questions };
   }
 

@@ -4,7 +4,7 @@ import type { SubmissionRepository } from "./submission.repository.js";
 import { DomainError } from "../../shared/core.js";
 
 export interface SubmissionStart { sessionId: string; sectorId: number; dayOfWeek: number; localTime: string; now: Date; }
-export interface SubmissionQuestion { questionId: number; questionVersionId: number; text: string; questionKind: "sector" | "standard"; isNps: boolean; position: number; }
+export interface SubmissionQuestion { sessionQuestionId?: number; questionId: number; questionVersionId: number; text: string; questionKind: "sector" | "standard"; isNps: boolean; position: number; }
 export interface SubmissionCapability { sessionId: string; token: string; }
 export type SubmissionAnswerInput = { sessionQuestionId: number; status: "answered" | "skipped"; score: number | null };
 
