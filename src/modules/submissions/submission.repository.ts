@@ -6,6 +6,7 @@ export interface SubmissionRepository {
   createSessionSnapshot(input: SubmissionStart): Promise<{ session: { id: string; sectorId: number; shiftSheetVersionId: number; shiftRangeId: number }; questions: SubmissionQuestion[] }>;
   saveAnswer(sessionId: string, input: SubmissionAnswerInput, now: Date): Promise<{ sessionId: string; status: "incomplete" | "complete"; answered: boolean }>;
   endSession(sessionId: string, now: Date): Promise<{ sectorId: number }>;
+  reconcileExpired?(now: Date): Promise<number>;
 }
 
 export class PostgresSubmissionRepository implements SubmissionRepository {
@@ -119,5 +120,16 @@ export class PostgresSubmissionRepository implements SubmissionRepository {
     `;
     if (!rows[0]) throw new Error("Sessão não encontrada ou já encerrada.");
     return rows[0];
+  }
+
+  async reconcileExpired(now: Date): Promise<number> {
+    const rows = await this.sql<{ id: string }[]>`
+      update submission_sessions
+      set ended_at = ${now.toISOString()}
+      where status = 'incomplete' and ended_at is null
+        and last_activity_at < ${new Date(now.getTime() - 2 * 60_000).toISOString()}
+      returning id
+    `;
+    return rows.length;
   }
 }

@@ -14,7 +14,10 @@ export class SubmissionService {
 
   async start(sectorId: number, dayOfWeek: number, localTime: string): Promise<{ capability: SubmissionCapability; session: unknown; questions: SubmissionQuestion[] }> {
     const sessionId = randomUUID();
-    const result = await this.repository.transaction((repository) => repository.createSessionSnapshot({ sessionId, sectorId, dayOfWeek, localTime, now: this.clock.now() }));
+    const result = await this.repository.transaction(async (repository) => {
+      if (repository.reconcileExpired) await repository.reconcileExpired(this.clock.now());
+      return repository.createSessionSnapshot({ sessionId, sectorId, dayOfWeek, localTime, now: this.clock.now() });
+    });
     const token = randomUUID();
     this.capabilities.set(sessionId, token);
     return { capability: { sessionId, token }, ...result };
