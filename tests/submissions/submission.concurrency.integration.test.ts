@@ -2,6 +2,7 @@ import "dotenv/config";
 import postgres from "postgres";
 import { randomUUID } from "node:crypto";
 import { usesIsolatedDatabase } from "../helpers/database.js";
+import { PostgresSubmissionRepository } from "../../src/modules/submissions/submission.repository.js";
 
 const testUrl = process.env.DATABASE_URL_TEST;
 const runtimeUrl = process.env.DATABASE_URL;
@@ -24,6 +25,9 @@ describeIntegration("submission answer concurrency integration", () => {
       await Promise.all([1, 5].map((score) => sql`insert into submission_answers (session_question_id, status, score, created_at, updated_at) values (${item[0]!.id}, 'answered', ${score}, now(), now()) on conflict (session_question_id) do update set score = excluded.score, updated_at = excluded.updated_at`));
       const answers = await sql<{ count: number; score: number }[]>`select count(*)::int as count, max(score)::int as score from submission_answers where session_question_id=${item[0]!.id}`;
       expect(answers).toEqual([{ count: 1, score: expect.any(Number) }]);
+      await sql`update submission_sessions set started_at = now() - interval '4 minutes', last_activity_at = now() - interval '3 minutes' where id = ${sessionId}`;
+      expect(await new PostgresSubmissionRepository(sql).reconcileExpired(new Date())).toBeGreaterThanOrEqual(1);
+      expect((await sql<{ endedAt: Date | null }[]>`select ended_at as "endedAt" from submission_sessions where id=${sessionId}`)[0]!.endedAt).not.toBeNull();
     } finally {
       await sql`delete from submission_answers where session_question_id in (select id from submission_session_questions where session_id in (select id from submission_sessions where sector_id in (select id from sectors where code=${`race-${suffix}`})))`;
       await sql`delete from submission_session_questions where session_id in (select id from submission_sessions where sector_id in (select id from sectors where code=${`race-${suffix}`}))`;
