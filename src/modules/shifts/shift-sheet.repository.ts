@@ -46,8 +46,8 @@ export class PostgresShiftSheetRepository implements ShiftSheetRepository {
       let rangeId = rangeIds.get(key);
       if (!rangeId) {
         const inserted = await this.sql<{ id: number }[]>`
-          insert into sector_shift_ranges (shift_sheet_version_id, sector_id, shift_name, starts_at, ends_at, day_of_week)
-          values (${versionId}, ${sectorId}, ${row.nome_turno}, ${`${String(Math.floor(row.startsAt / 60)).padStart(2, "0")}:${String(row.startsAt % 60).padStart(2, "0")}`}, ${`${String(Math.floor(row.endsAt / 60)).padStart(2, "0")}:${String(row.endsAt % 60).padStart(2, "0")}`}, ${row.dayOfWeek})
+          insert into sector_shift_ranges (shift_sheet_version_id, sector_id, shift_name, starts_at, ends_at)
+          values (${versionId}, ${sectorId}, ${row.nome_turno}, ${`${String(Math.floor(row.startsAt / 60)).padStart(2, "0")}:${String(row.startsAt % 60).padStart(2, "0")}`}, ${`${String(Math.floor(row.endsAt / 60)).padStart(2, "0")}:${String(row.endsAt % 60).padStart(2, "0")}`})
           returning id
         `;
         rangeId = inserted[0]!.id;
