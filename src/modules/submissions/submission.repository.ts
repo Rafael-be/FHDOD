@@ -1,5 +1,6 @@
 import type postgres from "postgres";
 import type { SubmissionAnswerInput, SubmissionQuestion, SubmissionStart } from "./submission.service.js";
+import { DomainError } from "../../shared/core.js";
 
 export interface SubmissionRepository {
   transaction<T>(work: (repository: SubmissionRepository) => Promise<T>): Promise<T>;
@@ -52,7 +53,7 @@ export class PostgresSubmissionRepository implements SubmissionRepository {
       order by position
     `;
     const npsCount = questions.filter((question) => question.isNps).length;
-    if (npsCount !== 1) throw new Error("Setor sem exatamente um NPS efetivo.");
+    if (npsCount !== 1) throw new DomainError("NPS_CONFIGURATION_CONFLICT", "O setor precisa ter exatamente um NPS efetivo antes de iniciar uma sessão.", 409);
     const sessionRows = await this.sql<{ id: string }[]>`
       insert into submission_sessions (id, sector_id, shift_sheet_version_id, shift_range_id, started_at, last_activity_at, status)
       values (${input.sessionId}, ${input.sectorId}, ${shift[0].versionId}, ${shift[0].rangeId}, ${input.now.toISOString()}, ${input.now.toISOString()}, 'incomplete')

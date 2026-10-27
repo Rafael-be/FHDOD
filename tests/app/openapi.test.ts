@@ -26,7 +26,7 @@ describe("OpenAPI request contracts", () => {
   });
 
   it("documents the anonymous submission start", () => {
-    expect(openapiDocument.paths["/api/public/sectors/{sectorId}/submissions"].post).not.toHaveProperty("security");
+    expect(openapiDocument.paths["/api/public/sectors/{sectorId}/submissions"].post).toMatchObject({ responses: { "409": expect.anything() } });
   });
 
   it("documents anonymous restart", () => {
