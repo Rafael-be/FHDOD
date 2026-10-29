@@ -97,4 +97,54 @@ describeIntegration("QuestionsRepository PostgreSQL integration", () => {
       await sql.end({ timeout: 5 });
     }
   });
+
+  it("resolves a dynamic global NPS and restores it after an override ends", async () => {
+    const sql = postgres(testUrl!, { max: 1 });
+    const suffix = randomUUID().slice(0, 8);
+    try {
+      await expect(sql.begin(async (tx) => {
+        const repository = new QuestionsRepository(tx as unknown as postgres.Sql);
+        const [actor] = await tx<{ id: number }[]>`
+          insert into users(role_id,full_name,email,password_hash,created_at,updated_at)
+          select r.id,${`Dynamic NPS ${suffix}`},${`dynamic-nps-${suffix}@test.invalid`},'hash',now(),now()
+          from roles r where r.code='superuser' returning id`;
+        const [sector] = await tx<{ id: number }[]>`
+          insert into sectors(code,name,created_at,updated_at)
+          values(${`dynamic-nps-${suffix}`},'Dynamic NPS test',now(),now()) returning id`;
+        const global = await repository.createNps("NPS global", "all_sectors", [], actor!.id);
+        expect((await tx<{ count: number }[]>`select count(*)::int as count from sector_nps_assignments where question_id=${global.id}`)[0]?.count)
+          .toBe(0);
+        expect(await repository.listEffective(sector!.id, false)).toEqual(expect.arrayContaining([expect.objectContaining({ id: global.id, npsSource: "global" })]));
+        const override = await repository.createNps("NPS override", "selected_sectors", [sector!.id], actor!.id);
+        expect(await repository.listEffective(sector!.id, false)).toEqual(expect.arrayContaining([expect.objectContaining({ id: override.id, npsSource: "specific" })]));
+        await repository.endAssignments(override.id, true);
+        expect(await repository.listEffective(sector!.id, false)).toEqual(expect.arrayContaining([expect.objectContaining({ id: global.id, npsSource: "global" })]));
+        throw new Error("ROLLBACK_TEST");
+      })).rejects.toThrow("ROLLBACK_TEST");
+    } finally {
+      await sql.end({ timeout: 5 });
+    }
+  });
+
+  it("lists the administrative catalogue with filters and current associations", async () => {
+    const sql = postgres(testUrl!, { max: 1 });
+    const suffix = randomUUID().slice(0, 8);
+    try {
+      await expect(sql.begin(async (tx) => {
+        const repository = new QuestionsRepository(tx as unknown as postgres.Sql);
+        const [actor] = await tx<{ id: number }[]>`insert into users(role_id,full_name,email,password_hash,created_at,updated_at) select id,${`Catalogue ${suffix}`},${`catalogue-${suffix}@test.invalid`},'hash',now(),now() from roles where code='superuser' returning id`;
+        const [sector] = await tx<{ id: number }[]>`insert into sectors(code,name,created_at,updated_at) values(${`catalogue-${suffix}`},'Catalogue',now(),now()) returning id`;
+        const standard = await repository.createStandard("Catalogue standard", "selected_sectors", [sector!.id], 1, actor!.id);
+        const nps = await repository.createNps("Catalogue NPS", "selected_sectors", [sector!.id], actor!.id);
+        const standards = await repository.listCatalog({ type: "standard", state: "active", sectorId: sector!.id, limit: 25, offset: 0 });
+        expect(standards).toEqual(expect.arrayContaining([expect.objectContaining({ id: standard.id, associations: [expect.objectContaining({ sectorId: sector!.id, active: true })] })]));
+        const npsRows = await repository.listCatalog({ type: "nps", state: "active", sectorId: sector!.id, limit: 25, offset: 0 });
+        expect(npsRows).toEqual(expect.arrayContaining([expect.objectContaining({ id: nps.id })]));
+        expect(await repository.catalogQuestion(nps.id)).toMatchObject({ id: nps.id, total: 1 });
+        throw new Error("ROLLBACK_TEST");
+      })).rejects.toThrow("ROLLBACK_TEST");
+    } finally {
+      await sql.end({ timeout: 5 });
+    }
+  });
 });
