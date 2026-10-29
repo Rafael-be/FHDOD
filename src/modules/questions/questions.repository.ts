@@ -164,6 +164,10 @@ export class QuestionsRepository {
   }
 
   async assignNps(sectorId: number, questionId: number, actorId: number, replace: boolean): Promise<void> {
+    // Serializes competing replacements for one sector. The explicit contract is
+    // last committed replacement wins; the partial unique index remains the
+    // integrity guard if a non-replacement request races with this operation.
+    await this.sql`select pg_advisory_xact_lock(912003, ${sectorId})`;
     if (replace) await this.sql`update sector_nps_assignments set ended_at=now() where sector_id=${sectorId} and ended_at is null`;
     await this.sql`insert into sector_nps_assignments(sector_id,question_id,assignment_source,assigned_by_user_id) values(${sectorId},${questionId},'specific',${actorId})`;
   }

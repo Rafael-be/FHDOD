@@ -47,24 +47,28 @@ restrita `fhdod_api`. `DATABASE_URL_MIGRATIONS` é validada somente pelo seed e
 pelas operações administrativas offline. Não a forneça ao processo HTTP, à imagem de
 runtime da API, ao frontend ou a logs de produção.
 
-## Autorização e RLS na Fase 1
+## Autorização na API e RLS
 
-O RLS permanece desabilitado na Fase 1. A migration
+O RLS permanece deliberadamente desabilitado, inclusive para as tabelas da Fase
+2. As migrations
 `0000_enforce_runtime_rls_policies.sql` cria 26 policies permissivas (`USING (true)`
-e `WITH CHECK (true)`) em 12 tabelas, mas não habilita RLS. Essas policies não
+e `WITH CHECK (true)`) para o runtime, mas não habilitam RLS. Essas policies não
 oferecem isolamento por linha e não devem ser consideradas uma barreira de segurança.
 
-A autorização de usuários é responsabilidade dos middlewares e services da API: a
+A autorização por usuário e setor é responsabilidade dos middlewares e services da API: a
 sessão atual define a identidade e o perfil, e os services limitam operações de
 gestores aos vínculos ativos com seus setores. A role PostgreSQL `fhdod_api` continua
 sendo a conexão restrita compartilhada pelo runtime, sem `DELETE`, DDL ou bypass de
-RLS.
+RLS. Isso só é seguro enquanto o banco não for exposto diretamente: a Data API
+deve permanecer desabilitada, o frontend não pode receber URLs/credenciais do
+banco e as credenciais administrativas/service_role devem ficar fora do runtime.
 
 Antes do deploy, valide em ambiente autorizado e isolado os privilégios efetivos, o
 owner das tabelas, os atributos da role `fhdod_api` e a exposição da Data API. Em
 especial, confirme que roles expostas pela Data API não receberam grants inesperados
 e que credenciais administrativas ou `service_role` nunca são distribuídas ao
-frontend.
+frontend. RLS não pode ser citado como camada de isolamento até ser habilitado e
+as policies forem substituídas por regras restritivas.
 
 ## Limite de falhas de login
 

@@ -187,7 +187,7 @@ export class AdminService {
   async deactivateManager(actor: AuthIdentity, id: number) {
     requireSuperuser(actor);
 
-    await this.repository.transaction(async (repository) => {
+    return this.repository.transaction(async (repository) => {
       const manager = await repository.deactivateManager(id);
       if (!manager) {
         throw notFound("Gestor não encontrado.");
@@ -211,7 +211,7 @@ export class AdminService {
     });
     const expiresAt = new Date(this.clock.now().getTime() + 48 * 3_600_000);
 
-    await this.repository.transaction(async (repository) => {
+    return this.repository.transaction(async (repository) => {
       const manager = await repository.reactivateManager(id, passwordHash, expiresAt);
       if (!manager) {
         throw notFound("Gestor desativado não encontrado.");
@@ -368,7 +368,7 @@ export class AdminService {
   async deactivateSector(actor: AuthIdentity, id: number, deleted: boolean) {
     requireSuperuser(actor);
 
-    await this.repository.transaction(async (repository) => {
+    return this.repository.transaction(async (repository) => {
       const sector = await repository.setSectorDeleted(id, deleted);
       if (!sector) {
         throw notFound(deleted ? "Setor não encontrado." : "Setor desativado não encontrado.");
