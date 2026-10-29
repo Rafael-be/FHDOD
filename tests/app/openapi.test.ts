@@ -30,6 +30,13 @@ describe("OpenAPI request contracts", () => {
   });
 
   it("documents anonymous restart", () => {
-    expect(openapiDocument.paths["/api/public/submissions/{sessionId}/restart"].post).not.toHaveProperty("security");
+    const restart = openapiDocument.paths["/api/public/submissions/{sessionId}/restart"].post;
+    expect(restart).not.toHaveProperty("security");
+    expect(restart.responses).toEqual(expect.objectContaining({ "404": expect.anything() }));
+  });
+
+  it("documents anonymous answer lifecycle errors", () => {
+    const answer = openapiDocument.paths["/api/public/submissions/{sessionId}/answers"].post;
+    expect(answer.responses).toEqual(expect.objectContaining({ "404": expect.anything(), "409": expect.anything(), "410": expect.anything() }));
   });
 });
