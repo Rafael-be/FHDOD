@@ -12,6 +12,12 @@ Nunca reaplique o bootstrap em um banco existente. Ele não é uma migration, n�
 
 ## Drizzle e baseline
 
+Atualização P1: o baseline foi reconciliado em `src/db/schema/baseline.ts` e
+`src/db/migrations/meta/0003_snapshot.json`. A configuração agora aponta só
+para `baseline.ts`; o texto histórico desta seção sobre snapshot pendente não
+se aplica mais. Gere migrations somente a partir desse schema completo,
+revise o SQL produzido e nunca use `drizzle-kit push`.
+
 O schema Drizzle da Fase 2 está descrito em `src/db/schema/questions.ts`, mas o
 snapshot atual ainda não representa o banco completo. Por isso, **não execute
 `drizzle-kit generate`** até que o baseline seja reconciliado e revisado em banco

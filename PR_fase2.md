@@ -114,7 +114,23 @@ vez de desativar a pergunta NPS.
 - [ ] Baseline Drizzle completo para geração futura.
 - [ ] Infraestrutura local dedicada para retenção de auditoria.
 
-## N. Parecer final
+## N. Atualização do baseline Drizzle
+
+O bloqueio P1 foi resolvido. `baseline.ts` representa as 30 tabelas e 10 enums
+introspectados do PostgreSQL local após as migrations `0000`–`0003`; o snapshot
+reconciliado é `meta/0003_snapshot.json`. `drizzle-kit generate` sem mudanças
+retornou “No schema changes”. Uma alteração temporária de índice gerou somente
+o `CREATE INDEX` esperado e foi descartada sem aplicação no banco.
+
+Em contêiner PostgreSQL 16 descartável, bootstrap aplicado uma única vez mais
+as quatro migrations resultou em 30 tabelas e quatro entradas no journal. Uma
+segunda execução de migrate manteve quatro entradas, sem reaplicar DDL.
+
+## O. Parecer final
+
+**APROVADO COM RESSALVAS** — este parecer substitui a classificação histórica
+abaixo: o baseline P1 foi validado. Permanecem somente os quatro testes
+ignorados de retenção de auditoria (P2, infraestrutura local dedicada).
 
 **CORREÇÕES NECESSÁRIAS ANTES DO MERGE** — há pendências P1/P2 registradas e a
 regressão completa desta revisão ainda precisa ser concluída.
