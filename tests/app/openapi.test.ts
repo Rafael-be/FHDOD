@@ -35,5 +35,8 @@ describe("OpenAPI request contracts", () => {
     expect(paths["/api/standard-questions"].post.requestBody?.content?.["application/json"]?.schema?.$ref).toBe("#/components/schemas/StandardQuestionRequest");
     expect(paths["/api/nps-questions"].post.requestBody?.content?.["application/json"]?.schema?.$ref).toBe("#/components/schemas/NpsQuestionRequest");
     expect(paths["/api/sectors/{sectorId}/questions/reorder"].post.responses["204"]).toBeDefined();
+    expect(paths["/api/questions"].get).toBeDefined();
+    expect(paths["/api/questions/{id}"].get).toBeDefined();
+    expect(paths["/api/sectors/{sectorId}/nps"].delete).toBeDefined();
   });
 });

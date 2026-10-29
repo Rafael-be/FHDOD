@@ -4,7 +4,7 @@ import type { Role } from "../auth/auth.repository.js";
 export interface AdminUser { id: number; fullName: string; email: string; role: Role; deletedAt: Date | null; }
 export interface Sector { id: number; code: string; name: string; deletedAt: Date | null; }
 export interface SectorReadiness { hasShiftRanges: boolean; hasNps: boolean; }
-export interface SectorQuestion { id: number; questionKind: "sector" | "standard"; isNps: boolean; text: string; versionNumber: number; displayOrder: number; }
+export interface SectorQuestion { id: number; questionKind: "sector" | "standard"; isNps: boolean; text: string; versionNumber: number; displayOrder: number; npsSource: "global" | "specific" | null; }
 export class AdminRepository {
   constructor(private readonly sql: postgres.Sql) {}
   async transaction<T>(work: (repository: AdminRepository) => Promise<T>): Promise<T> { return this.sql.begin(async (tx) => work(new AdminRepository(tx as unknown as postgres.Sql))) as Promise<T>; }
@@ -71,18 +71,22 @@ export class AdminRepository {
   async unassign(managerId:number,sectorId:number,actor:number):Promise<boolean>{const r=await this.sql<{id:number}[]>`update user_sector_assignments set unassigned_at=now(),unassigned_by_user_id=${actor} where user_id=${managerId} and sector_id=${sectorId} and unassigned_at is null returning id`;return r.length===1;}
   async managerSectors(managerId:number):Promise<Sector[]>{return this.sql<Sector[]>`select s.id,s.code,s.name,s.deleted_at as "deletedAt" from sectors s join user_sector_assignments a on a.sector_id=s.id where a.user_id=${managerId} and a.unassigned_at is null and s.deleted_at is null order by s.name`;}
   /** Reads prerequisites from their authoritative tables; sector status is never stored. */
-  async readiness(sectorId:number):Promise<SectorReadiness>{const rows=await this.sql<SectorReadiness[]>`select exists(select 1 from sector_shift_ranges r join shift_sheet_versions v on v.id=r.shift_sheet_version_id where r.sector_id=${sectorId} and v.is_current=true) as "hasShiftRanges", exists(select 1 from sector_nps_assignments n where n.sector_id=${sectorId} and n.ended_at is null) as "hasNps"`;return rows[0]!;}
+  async readiness(sectorId:number):Promise<SectorReadiness>{const rows=await this.sql<SectorReadiness[]>`select exists(select 1 from sector_shift_ranges r join shift_sheet_versions v on v.id=r.shift_sheet_version_id where r.sector_id=${sectorId} and v.is_current=true) as "hasShiftRanges", (exists(select 1 from sector_nps_assignments n join questions q on q.id=n.question_id where n.sector_id=${sectorId} and n.ended_at is null and q.deleted_at is null) or exists(select 1 from questions q where q.is_nps=true and q.scope='all_sectors' and q.deleted_at is null)) as "hasNps"`;return rows[0]!;}
   /** Current effective questions only; intentionally excludes history and deleted rows. */
   async effectiveQuestions(sectorId: number): Promise<SectorQuestion[]> { return this.sql<SectorQuestion[]>`
     select q.id, q.question_kind as "questionKind", q.is_nps as "isNps", v.text,
       v.version_number as "versionNumber",
       case when q.is_nps then 2147483647 else coalesce(a.display_order, q.display_order) end as "displayOrder"
+      ,case when q.is_nps and override.id is not null then 'specific'
+            when q.is_nps and global_nps.id is not null then 'global' else null end as "npsSource"
     from questions q join question_versions v on v.question_id=q.id and v.is_current=true
     left join question_sector_assignments a on a.question_id=q.id and a.sector_id=${sectorId} and a.ended_at is null
-    left join sector_nps_assignments n on n.question_id=q.id and n.sector_id=${sectorId} and n.ended_at is null
+    left join sector_nps_assignments override on override.question_id=q.id and override.sector_id=${sectorId} and override.ended_at is null
+    left join sector_nps_assignments sector_override on sector_override.sector_id=${sectorId} and sector_override.ended_at is null
+    left join questions global_nps on global_nps.is_nps=true and global_nps.scope='all_sectors' and global_nps.deleted_at is null
     where q.deleted_at is null and ((q.question_kind='sector' and q.sector_id=${sectorId})
       or (q.question_kind='standard' and q.is_nps=false and a.id is not null)
-      or (q.is_nps=true and n.id is not null))
+      or (q.is_nps=true and (override.id is not null or (global_nps.id=q.id and sector_override.id is null))))
     order by q.is_nps, case when q.question_kind='sector' then 0 else 1 end, "displayOrder", q.id`; }
   async audit(actor:number,action:string,entity:string,id:number,oldValues:object|null,newValues:object|null):Promise<void>{await this.sql`insert into audit_logs(actor_user_id,action,entity_type,entity_id,old_values,new_values,created_at) values(${actor},${action},${entity},${id},${oldValues === null ? null : JSON.stringify(oldValues)},${newValues === null ? null : JSON.stringify(newValues)},now())`;}
 }
