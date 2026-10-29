@@ -4,7 +4,7 @@ import type { SubmissionRepository } from "./submission.repository.js";
 import { DomainError } from "../../shared/core.js";
 
 export interface SubmissionStart { sessionId: string; sectorId: number; dayOfWeek: number; localTime: string; now: Date; }
-export interface SubmissionQuestion { sessionQuestionId?: number; questionId: number; questionVersionId: number; text: string; questionKind: "sector" | "standard"; isNps: boolean; position: number; }
+export interface SubmissionQuestion { sessionQuestionId: number; questionId: number; questionVersionId: number; text: string; questionKind: "sector" | "standard"; isNps: boolean; position: number; }
 export interface SubmissionCapability { sessionId: string; token: string; }
 export type SubmissionAnswerInput = { sessionQuestionId: number; status: "answered" | "skipped"; score: number | null };
 
@@ -26,7 +26,8 @@ export class SubmissionService {
   async startNow(sectorId: number): Promise<{ capability: SubmissionCapability; session: unknown; questions: SubmissionQuestion[] }> {
     const now = this.clock.now();
     const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/Sao_Paulo", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(now);
-    const weekday = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 }[parts.find((part) => part.type === "weekday")?.value as "Mon"];
+    const weekdayByName: Record<string, number> = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
+    const weekday = weekdayByName[parts.find((part) => part.type === "weekday")?.value ?? ""];
     const hour = parts.find((part) => part.type === "hour")?.value ?? "00";
     const minute = parts.find((part) => part.type === "minute")?.value ?? "00";
     return this.start(sectorId, weekday ?? 1, `${hour}:${minute}`);

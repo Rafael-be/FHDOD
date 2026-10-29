@@ -8,7 +8,7 @@ describe("SubmissionService", () => {
   it("creates a capability only after the repository snapshot succeeds", async () => {
     const repository: SubmissionRepository = {
       transaction: async (work) => work(repository),
-      createSessionSnapshot: async (input) => ({ session: { id: input.sessionId, sectorId: input.sectorId, shiftSheetVersionId: 1, shiftRangeId: 2 }, questions: [{ questionId: 3, questionVersionId: 4, text: "Como foi?", questionKind: "standard", isNps: true, position: 1 }] }),
+      createSessionSnapshot: async (input) => ({ session: { id: input.sessionId, sectorId: input.sectorId, shiftSheetVersionId: 1, shiftRangeId: 2 }, questions: [{ sessionQuestionId: 10, questionId: 3, questionVersionId: 4, text: "Como foi?", questionKind: "standard", isNps: true, position: 1 }] }),
     };
     const result = await new SubmissionService(repository, clock).start(7, 4, "09:00");
     expect(result.capability.sessionId).toBe(result.session.id);

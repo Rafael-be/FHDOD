@@ -3,7 +3,7 @@ import { z } from "zod";
 import type { SubmissionService } from "./submission.service.js";
 import { submissionPublicLimiter } from "./submission.public-limiter.js";
 
-const input = z.object({ status: z.enum(["answered", "skipped"]), score: z.number().int().nullable() });
+const input = z.object({ sessionQuestionId: z.coerce.number().int().positive(), status: z.enum(["answered", "skipped"]), score: z.number().int().nullable() });
 
 export function submissionAnswerRoutes(service: SubmissionService): Router {
   const router = Router();
@@ -13,8 +13,7 @@ export function submissionAnswerRoutes(service: SubmissionService): Router {
       const token = request.get("x-session-capability");
       if (!token) { response.status(403).json({ error: { code: "SUBMISSION_CAPABILITY_INVALID", message: "Capability de sessão ausente." } }); return; }
       const body = input.parse(request.body);
-      const sessionQuestionId = z.coerce.number().int().positive().parse(request.body.sessionQuestionId);
-      response.json({ data: await service.answer(request.params.sessionId, token, { ...body, sessionQuestionId }) });
+      response.json({ data: await service.answer(request.params.sessionId, token, body) });
     } catch (error) { next(error); }
   });
   return router;
