@@ -31,6 +31,19 @@ export class QuestionsRepository {
     return rows[0]?.allowed ?? false;
   }
 
+  /** Verifies that a target sector exists and is currently usable by Phase 2. */
+  async activeSector(sectorId: number): Promise<boolean> {
+    const rows = await this.sql<{ active: boolean }[]>`select exists(select 1 from sectors where id=${sectorId} and deleted_at is null) as active`;
+    return rows[0]?.active ?? false;
+  }
+
+  /** Avoids partial inserts when a selected scope references removed or unknown sectors. */
+  async activeSectorCount(sectorIds: number[]): Promise<number> {
+    if (sectorIds.length === 0) return 0;
+    const rows = await this.sql<{ count: number }[]>`select count(*)::int as count from sectors where id = any(${sectorIds}) and deleted_at is null`;
+    return rows[0]?.count ?? 0;
+  }
+
   async listSector(sectorId: number, includeDeleted: boolean): Promise<QuestionRow[]> {
     const deleted = includeDeleted ? this.sql`` : this.sql`and q.deleted_at is null`;
     return this.sql<QuestionRow[]>`

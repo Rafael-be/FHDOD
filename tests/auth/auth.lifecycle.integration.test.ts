@@ -15,13 +15,13 @@ import { PostgresAuthRepository } from "../../src/modules/auth/auth.repository.j
 import { AuthService } from "../../src/modules/auth/auth.service.js";
 
 import { SystemClock } from "../../src/shared/core.js";
-import { usesIsolatedDatabase } from "../helpers/database.js";
+import { testDatabaseUrl, usesIsolatedDatabase } from "../helpers/database.js";
 
 // -----------------------------------------------------------------------------
 // Configuração do ambiente
 // -----------------------------------------------------------------------------
 
-const testUrl = process.env.DATABASE_URL_TEST;
+const testUrl = testDatabaseUrl();
 const runtimeUrl = process.env.DATABASE_URL;
 
 const hasIsolatedDatabase = usesIsolatedDatabase(testUrl, runtimeUrl);

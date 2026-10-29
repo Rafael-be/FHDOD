@@ -3,9 +3,9 @@ import postgres from "postgres";
 import { randomUUID } from "node:crypto";
 import { jest } from "@jest/globals";
 import { QuestionsRepository } from "../../src/modules/questions/questions.repository.js";
-import { usesIsolatedDatabase } from "../helpers/database.js";
+import { testDatabaseUrl, usesIsolatedDatabase } from "../helpers/database.js";
 
-const testUrl = process.env.DATABASE_URL_TEST;
+const testUrl = testDatabaseUrl();
 const describeIntegration = usesIsolatedDatabase(testUrl, process.env.DATABASE_URL) ? describe : describe.skip;
 
 jest.setTimeout(15_000);
@@ -59,6 +59,38 @@ describeIntegration("QuestionsRepository PostgreSQL integration", () => {
           insert into sectors(code,name,created_at,updated_at) values(${`nps-${suffix}`},'NPS test',now(),now()) returning id`;
         const nps = await repository.createNps("NPS específico", "selected_sectors", [sector!.id], actor!.id);
         await expect(repository.assignNps(sector!.id, nps.id, actor!.id, false)).rejects.toThrow();
+        throw new Error("ROLLBACK_TEST");
+      })).rejects.toThrow("ROLLBACK_TEST");
+    } finally {
+      await sql.end({ timeout: 5 });
+    }
+  });
+
+  it("keeps the active global NPS and current question version unique", async () => {
+    const sql = postgres(testUrl!, { max: 1 });
+    const suffix = randomUUID().slice(0, 8);
+    try {
+      await expect(sql.begin(async (tx) => {
+        const repository = new QuestionsRepository(tx as unknown as postgres.Sql);
+        const [actor] = await tx<{ id: number }[]>`
+          insert into users(role_id,full_name,email,password_hash,created_at,updated_at)
+          select r.id,${`Global NPS ${suffix}`},${`global-nps-${suffix}@test.invalid`},'hash',now(),now()
+          from roles r where r.code='superuser' returning id`;
+        const nps = await repository.createNps("NPS global", "all_sectors", [], actor!.id);
+        await expect(repository.createNps("Segundo NPS global", "all_sectors", [], actor!.id)).rejects.toMatchObject({ code: "23505" });
+        return nps;
+      })).rejects.toMatchObject({ code: "23505" });
+      await expect(sql.begin(async (tx) => {
+        const repository = new QuestionsRepository(tx as unknown as postgres.Sql);
+        const [actor] = await tx<{ id: number }[]>`
+          insert into users(role_id,full_name,email,password_hash,created_at,updated_at)
+          select r.id,${`Version NPS ${suffix}`},${`version-nps-${suffix}@test.invalid`},'hash',now(),now()
+          from roles r where r.code='superuser' returning id`;
+        const nps = await repository.createNps("NPS global", "all_sectors", [], actor!.id);
+        await expect(tx`
+          insert into question_versions(question_id,version_number,text,is_current,created_by_user_id)
+          values(${nps.id},2,'Versão concorrente',true,${actor!.id})
+        `).rejects.toMatchObject({ code: "23505" });
         throw new Error("ROLLBACK_TEST");
       })).rejects.toThrow("ROLLBACK_TEST");
     } finally {

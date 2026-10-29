@@ -19,7 +19,7 @@ describe("POST /api/auth/login validation", () => {
   it("accepts the documented JSON and delegates authentication", async () => {
     const received: unknown[] = [];
     const app = makeApp(async (...input) => { received.push(input); return { accessToken: "access", refreshToken: "refresh", csrfToken: "csrf", expiresAt: new Date("2026-12-31T00:00:00Z"), user: publicUser }; });
-    const response = await request(app).post("/api/auth/login").set("Content-Type", "application/json").send(validBody).expect(200).expect({ user: publicUser });
+    const response = await request(app).post("/api/auth/login").set("Content-Type", "application/json").send(validBody).expect(200).expect({ user: publicUser, csrfToken: "csrf" });
     const cookies = response.headers["set-cookie"] as string[];
     expect(cookies).toEqual(expect.arrayContaining([expect.stringMatching(/^access_token=.*; Path=\/api;/), expect.stringMatching(/^refresh_token=.*; Path=\/api\/auth;/)]));
     expect(received).toEqual([[validBody.email, validBody.password]]);
@@ -91,7 +91,7 @@ describe("POST /api/auth/login validation", () => {
   it("returns the same public user contract from refresh", async () => {
     const refreshedUser = { ...publicUser, role: "sector_manager" as const, mustChangePassword: true };
     const auth = { refresh: async () => ({ accessToken: "access", refreshToken: "refresh", csrfToken: "csrf", expiresAt: new Date("2026-12-31T00:00:00Z"), user: refreshedUser }) } as unknown as AuthService;
-    await request(createApp(config, { authService: auth })).post("/api/auth/refresh").set("Cookie", "refresh_token=refresh").expect(200).expect({ user: refreshedUser });
+    await request(createApp(config, { authService: auth })).post("/api/auth/refresh").set("Cookie", "refresh_token=refresh").expect(200).expect({ user: refreshedUser, csrfToken: "csrf" });
   });
 
   it("returns the authenticated user's current data from /me without mutating cookies", async () => {

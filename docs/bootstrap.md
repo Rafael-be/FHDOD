@@ -2,7 +2,7 @@
 
 ## Sequência de inicialização
 
-1. Obtenha a versão aprovada do bootstrap SQL por meio do canal seguro do projeto. O arquivo `FHDOD.sql` não é versionado neste repositório; não o recrie nem aplique SQL de origem desconhecida.
+1. Revise o bootstrap SQL aprovado em `src/db/bootstrap/FHDOD.sql`. Não o recrie nem aplique SQL de outra origem.
 2. Revise o bootstrap e aplique-o **uma única vez** em um banco PostgreSQL vazio, usando conexão administrativa. Nunca use `DATABASE_URL` para DDL.
 3. Execute as migrations Drizzle com `DATABASE_URL_MIGRATIONS`. O bootstrap deve sempre ocorrer antes das migrations; a migration atual pressupõe que suas tabelas já existam.
 4. Forneça as três variáveis `INITIAL_SUPERUSER_*` apenas no ambiente seguro e rode `npm run seed`. O seed ocorre depois do bootstrap e das migrations. Ele é idempotente: não troca a senha nem reativa a conta já existente. Uma conta criada pelo seed recebe senha temporária, com troca obrigatória e validade de 48 horas. Ele cria a página LGPD com conteúdo vazio, que não é publicação jurídica.
@@ -12,10 +12,10 @@ Nunca reaplique o bootstrap em um banco existente. Ele não é uma migration, n�
 
 ## Drizzle e baseline
 
-O schema Drizzle e o snapshot atual ainda não representam o banco completo. Por isso,
-**não execute `drizzle-kit generate`** até que o baseline seja reconciliado e revisado
-em banco isolado. Uma migration gerada agora pode ser incompleta ou incompatível com
-um banco inicializado pelo bootstrap aprovado.
+O schema Drizzle da Fase 2 está descrito em `src/db/schema/questions.ts`, mas o
+snapshot atual ainda não representa o banco completo. Por isso, **não execute
+`drizzle-kit generate`** até que o baseline seja reconciliado e revisado em banco
+isolado. Consulte `docs/database-baseline.md` antes de gerar migrations.
 
 A versão instalada de `drizzle-kit` não suporta `drizzle-kit pull --init`. Use a
 introspecção somente para inspeção de um banco isolado, apontando a saída para um

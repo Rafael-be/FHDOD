@@ -184,20 +184,22 @@ export class AdminService {
     }
   }
 
-  async deactivateManager(actor: AuthIdentity, id: number): Promise<void> {
+  async deactivateManager(actor: AuthIdentity, id: number) {
     requireSuperuser(actor);
 
     await this.repository.transaction(async (repository) => {
-      if (!await repository.deactivateManager(id)) {
+      const manager = await repository.deactivateManager(id);
+      if (!manager) {
         throw notFound("Gestor não encontrado.");
       }
 
       await repository.revokeSessions(id);
       await repository.audit(actor.userId, "manager.deactivated", "user", id, null, null);
+      return manager;
     });
   }
 
-  async reactivateManager(actor: AuthIdentity, id: number, password: string): Promise<void> {
+  async reactivateManager(actor: AuthIdentity, id: number, password: string) {
     requireSuperuser(actor);
 
     const passwordHash = await argon2.hash(password, {
@@ -210,12 +212,14 @@ export class AdminService {
     const expiresAt = new Date(this.clock.now().getTime() + 48 * 3_600_000);
 
     await this.repository.transaction(async (repository) => {
-      if (!await repository.reactivateManager(id, passwordHash, expiresAt)) {
+      const manager = await repository.reactivateManager(id, passwordHash, expiresAt);
+      if (!manager) {
         throw notFound("Gestor desativado não encontrado.");
       }
 
       await repository.revokeSessions(id);
       await repository.audit(actor.userId, "manager.reactivated", "user", id, null, null);
+      return manager;
     });
   }
 
@@ -307,6 +311,34 @@ export class AdminService {
     };
   }
 
+  /** Administrative sector view. Questions are opt-in to keep the default query lightweight. */
+  async getSector(actor: AuthIdentity, sectorId: number, includeQuestions: boolean) {
+    const sector = await this.repository.sector(sectorId, actor.role === "superuser");
+    if (!sector) throw notFound("Setor não encontrado.");
+    if (actor.role === "sector_manager") {
+      const assignedSectors = await this.repository.managerSectors(actor.userId);
+      if (!assignedSectors.some((item) => item.id === sectorId)) throw new DomainError("FORBIDDEN", "Você não possui acesso a este setor.", 403);
+    } else requireSuperuser(actor);
+
+    const readiness = sectorStatus(await this.repository.readiness(sectorId));
+    const detail = {
+      ...sector,
+      isActive: sector.deletedAt === null,
+      operationalStatus: readiness.status,
+      missingRequirements: readiness.missingRequirements,
+    };
+    if (!includeQuestions) return detail;
+    const questions = await this.repository.effectiveQuestions(sectorId);
+    return {
+      ...detail,
+      questions: {
+        sector: questions.filter((question) => question.questionKind === "sector"),
+        standard: questions.filter((question) => question.questionKind === "standard" && !question.isNps),
+        nps: questions.find((question) => question.isNps) ?? null,
+      },
+    };
+  }
+
   async updateSector(actor: AuthIdentity, id: number, name: string) {
     requireSuperuser(actor);
 
@@ -333,11 +365,12 @@ export class AdminService {
     });
   }
 
-  async deactivateSector(actor: AuthIdentity, id: number, deleted: boolean): Promise<void> {
+  async deactivateSector(actor: AuthIdentity, id: number, deleted: boolean) {
     requireSuperuser(actor);
 
     await this.repository.transaction(async (repository) => {
-      if (!await repository.setSectorDeleted(id, deleted)) {
+      const sector = await repository.setSectorDeleted(id, deleted);
+      if (!sector) {
         throw notFound(deleted ? "Setor não encontrado." : "Setor desativado não encontrado.");
       }
 
@@ -349,6 +382,7 @@ export class AdminService {
         null,
         null,
       );
+      return { ...sector, isActive: sector.deletedAt === null };
     });
   }
 
