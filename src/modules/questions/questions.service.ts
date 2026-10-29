@@ -35,6 +35,20 @@ export class QuestionsService {
     return (await this.repository.listEffective(sectorId, includeDeleted)).map(dto);
   }
 
+  async listCatalog(actor: AuthIdentity, input: { type?: "standard" | "nps"; state?: "active" | "inactive"; scope?: "all_sectors" | "selected_sectors"; sectorId?: number; page: number; pageSize: number }) {
+    this.requireSuperuser(actor);
+    if (input.sectorId !== undefined && !await this.repository.activeSector(input.sectorId)) throw notFound("Setor não encontrado.");
+    const rows = await this.repository.listCatalog({ ...input, limit: input.pageSize, offset: (input.page - 1) * input.pageSize });
+    return { items: rows.map(dto), page: input.page, pageSize: input.pageSize, total: rows[0]?.total ?? 0 };
+  }
+
+  async catalogQuestion(actor: AuthIdentity, id: number) {
+    this.requireSuperuser(actor);
+    const question = await this.repository.catalogQuestion(id);
+    if (!question) throw notFound("Pergunta padrão ou NPS não encontrada.");
+    return dto(question);
+  }
+
   private requireSuperuser(actor: AuthIdentity): void {
     if (actor.role !== "superuser") throw forbidden();
   }
@@ -51,10 +65,16 @@ export class QuestionsService {
     try { return await this.repository.transaction(async (repository) => { const row = await repository.createStandard(input.text, input.scope, input.sectorIds, input.displayOrder, actor.userId); await repository.audit(actor.userId, "standard_question.created", row.id); return dto(row); }); } catch (error) { throw mapQuestionConflict(error) ?? mapQuestionScopeError(error) ?? error; }
   }
 
-  async createNps(actor: AuthIdentity, input: { text: string; scope: "all_sectors" | "selected_sectors"; sectorIds: number[] }) {
+  async createNps(actor: AuthIdentity, input: { text: string; scope: "all_sectors" | "selected_sectors"; sectorIds: number[]; replaceGlobal?: boolean }) {
     this.requireSuperuser(actor);
     await this.validateScope(input.scope, input.sectorIds);
-    try { return await this.repository.transaction(async (repository) => { const row = await repository.createNps(input.text, input.scope, input.sectorIds, actor.userId); await repository.audit(actor.userId, "nps.created", row.id); return dto(row); }); } catch (error) { throw mapQuestionConflict(error) ?? mapQuestionScopeError(error) ?? error; }
+    try { return await this.repository.transaction(async (repository) => {
+      const replacedId = input.scope === "all_sectors" && input.replaceGlobal
+        ? await repository.replaceActiveGlobalNps() : null;
+      const row = await repository.createNps(input.text, input.scope, input.sectorIds, actor.userId);
+      await repository.audit(actor.userId, replacedId === null ? "nps.created" : "nps.global_replaced", row.id);
+      return dto(row);
+    }); } catch (error) { throw mapQuestionConflict(error) ?? mapQuestionScopeError(error) ?? error; }
   }
 
   async assignNps(actor: AuthIdentity, sectorId: number, questionId: number, replace: boolean) {
@@ -68,6 +88,15 @@ export class QuestionsService {
       await repository.assignNps(sectorId, questionId, actor.userId, replace);
       await repository.audit(actor.userId, replace ? "nps.replaced" : "nps.assigned", questionId);
     }); } catch (error) { throw mapQuestionConflict(error) ?? error; }
+  }
+
+  async removeNpsOverride(actor: AuthIdentity, sectorId: number) {
+    this.requireSuperuser(actor);
+    if (!await this.repository.activeSector(sectorId)) throw notFound("Setor não encontrado.");
+    return this.repository.transaction(async (repository) => {
+      if (!await repository.removeNpsOverride(sectorId)) throw notFound("Override de NPS não encontrado.");
+      await repository.audit(actor.userId, "nps.override_removed", sectorId);
+    });
   }
 
   async reorderSector(actor: AuthIdentity, sectorId: number, ids: number[]) {
