@@ -20,9 +20,30 @@ class Repository implements AuthRepository {
 const clock: Clock = { now: () => new Date("2026-01-01T00:00:00Z") };
 
 describe("administrative HTTP contracts", () => {
+  it("returns the persisted resource in data for administrative state changes", async () => {
+    const hash = await argon2.hash("superuser-password");
+    const repository = new Repository({ id: 1, fullName: "Admin", email: "admin@hospital.test", passwordHash: hash, role: "superuser", deletedAt: null, mustChangePassword: false, temporaryPasswordExpiresAt: null });
+    const auth = new AuthService(repository, clock, config);
+    const admin = {
+      deactivateManager: async () => ({ id: 2, deletedAt: new Date("2026-01-01T00:00:00Z") }),
+      reactivateManager: async () => ({ id: 2, deletedAt: null }),
+      deactivateSector: async (_actor: unknown, id: number, deleted: boolean) => ({ id, deletedAt: deleted ? new Date("2026-01-01T00:00:00Z") : null, isActive: !deleted }),
+    } as unknown as AdminService;
+    const app = createApp(config, { authService: auth, adminService: admin });
+    const login = await auth.login("admin@hospital.test", "superuser-password");
+    const requestWithCsrf = (path: string) => request(app).post(path)
+      .set("Cookie", `access_token=${login.accessToken}`)
+      .set("x-csrf-token", login.csrfToken);
+
+    await requestWithCsrf("/api/managers/2/deactivate").expect(200).expect({ data: { id: 2, deletedAt: "2026-01-01T00:00:00.000Z" } });
+    await requestWithCsrf("/api/managers/2/reactivate").send({ temporaryPassword: "temporary-password" }).expect(200).expect({ data: { id: 2, deletedAt: null } });
+    await requestWithCsrf("/api/sectors/7/deactivate").expect(200).expect({ data: { id: 7, deletedAt: "2026-01-01T00:00:00.000Z", isActive: false } });
+    await requestWithCsrf("/api/sectors/7/reactivate").expect(200).expect({ data: { id: 7, deletedAt: null, isActive: true } });
+  });
+
   it("requires a current superuser and CSRF token for manager creation", async () => {
     const hash = await argon2.hash("superuser-password");
-    const repository = new Repository({ id: 1, email: "admin@hospital.test", passwordHash: hash, role: "superuser", deletedAt: null, mustChangePassword: false, temporaryPasswordExpiresAt: null });
+    const repository = new Repository({ id: 1, fullName: "Admin", email: "admin@hospital.test", passwordHash: hash, role: "superuser", deletedAt: null, mustChangePassword: false, temporaryPasswordExpiresAt: null });
     const auth = new AuthService(repository, clock, config);
     const received: unknown[] = [];
     const admin = { listManagers: async () => [{ id: 2, fullName: "Gestor", email: "gestor@hospital.test" }], createManager: async (...args: unknown[]) => { received.push(args); return { id: 2, fullName: "Novo gestor", email: "novo@hospital.test" }; } } as unknown as AdminService;
@@ -42,7 +63,7 @@ describe("administrative HTTP contracts", () => {
 
   it("uses the authenticated session CSRF token for sectors without a refresh cookie", async () => {
     const hash = await argon2.hash("superuser-password");
-    const repository = new Repository({ id: 1, email: "admin@hospital.test", passwordHash: hash, role: "superuser", deletedAt: null, mustChangePassword: false, temporaryPasswordExpiresAt: null });
+    const repository = new Repository({ id: 1, fullName: "Admin", email: "admin@hospital.test", passwordHash: hash, role: "superuser", deletedAt: null, mustChangePassword: false, temporaryPasswordExpiresAt: null });
     const auth = new AuthService(repository, clock, config);
     const createSector = jest.fn(async () => ({ id: 1, code: "ER", name: "Emergência" }));
     const app = createApp(config, {
@@ -76,7 +97,7 @@ describe("administrative HTTP contracts", () => {
     const createManagerApp = async (id: number, email: string, password: string) => {
       const hash = await argon2.hash(password);
       const repository = new Repository({
-        id,
+        id, fullName: "Gestor",
         email,
         passwordHash: hash,
         role: "sector_manager",

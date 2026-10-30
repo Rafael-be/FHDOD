@@ -1,23 +1,19 @@
 -- Execute once with psql and an administrative connection, outside the API.
 -- This command intentionally contains no password. Set it interactively after
 -- provisioning with: \password fhdod_audit_maintenance
-CREATE ROLE fhdod_audit_maintenance
-    LOGIN
-    NOINHERIT
-    NOSUPERUSER
-    NOCREATEDB
-    NOCREATEROLE
-    NOREPLICATION
-    NOBYPASSRLS;
+DO $provision$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'fhdod_audit_maintenance') THEN
+        CREATE ROLE fhdod_audit_maintenance
+            LOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+    END IF;
 
-CREATE ROLE fhdod_audit_retention_owner
-    NOLOGIN
-    NOINHERIT
-    NOSUPERUSER
-    NOCREATEDB
-    NOCREATEROLE
-    NOREPLICATION
-    NOBYPASSRLS;
+    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'fhdod_audit_retention_owner') THEN
+        CREATE ROLE fhdod_audit_retention_owner
+            NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS;
+    END IF;
+END;
+$provision$;
 
 GRANT USAGE ON SCHEMA public TO fhdod_audit_maintenance;
 GRANT USAGE ON SCHEMA public TO fhdod_audit_retention_owner;

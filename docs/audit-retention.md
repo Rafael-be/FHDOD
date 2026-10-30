@@ -20,7 +20,8 @@ tabela é referenciada com schema explícito e a rotina não usa SQL dinâmico.
 O administrador deve executar, uma única vez e fora do processo HTTP:
 
 1. `scripts/audit-retention/provision-role.sql` com `psql` administrativo. Ele
-   cria a role de execução e a role sem login proprietária da função.
+   cria, de forma idempotente, a role de execução e a role sem login proprietária
+   da função.
 2. Definir a senha de `fhdod_audit_maintenance` interativamente, sem registrá-la
    no repositório.
 3. `scripts/audit-retention/install-purge-function.sql` com credencial capaz de
@@ -32,6 +33,22 @@ Os scripts não são executados automaticamente e não devem ser aplicados em
 bancos de produção sem aprovação operacional. Enquanto o baseline Drizzle não
 for reconciliado, a função é um script operacional versionado, não uma migration
 Drizzle registrada.
+
+## Teste local isolado
+
+Em um PostgreSQL local descartável, após criar o banco
+`fhdod_audit_retention_test`, aplicar o bootstrap/migrations aprovados e executar
+os dois scripts acima com credencial administrativa, configure somente no shell:
+
+```bash
+AUDIT_RETENTION_ADMIN_DATABASE_URL_TEST=postgres://...@localhost/fhdod_audit_retention_test \
+AUDIT_RETENTION_DATABASE_URL_TEST=postgres://fhdod_audit_maintenance:...@localhost/fhdod_audit_retention_test \
+AUDIT_RETENTION_API_DATABASE_URL_TEST=postgres://fhdod_api:...@localhost/fhdod_audit_retention_test \
+npm test -- audit-retention.integration.test.ts
+```
+
+O teste se recusa a executar fora de `localhost`/`127.0.0.1`/`::1` e desse nome
+de banco. Não use URLs remotas nem credenciais de produção.
 
 ## Execução e monitoramento
 

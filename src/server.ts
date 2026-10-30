@@ -14,6 +14,8 @@ import { HealthRepository } from "./modules/health/health.repository.js";
 import { HealthService } from "./modules/health/health.service.js";
 import { ContentRepository } from "./modules/content/content.repository.js";
 import { ContentService } from "./modules/content/content.service.js";
+import { QuestionsRepository } from "./modules/questions/questions.repository.js";
+import { QuestionsService } from "./modules/questions/questions.service.js";
 import {
   logServerShutdownTimedOut,
   logServerStarted,
@@ -63,10 +65,12 @@ async function startServer(): Promise<void> {
       new AdminRepository(database.client),
       clock,
       config.PERFORMANCE_MEASUREMENTS,
+      new QuestionsRepository(database.client),
     ),
     auditService: new AuditService(new AuditRepository(database.client)),
     healthService,
     contentService: new ContentService(new ContentRepository(database.client)),
+    questionsService: new QuestionsService(new QuestionsRepository(database.client)),
   });
   const server = app.listen(config.PORT, () => logServerStarted(config.PORT));
 

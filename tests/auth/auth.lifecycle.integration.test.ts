@@ -15,13 +15,13 @@ import { PostgresAuthRepository } from "../../src/modules/auth/auth.repository.j
 import { AuthService } from "../../src/modules/auth/auth.service.js";
 
 import { SystemClock } from "../../src/shared/core.js";
-import { usesIsolatedDatabase } from "../helpers/database.js";
+import { testDatabaseUrl, usesIsolatedDatabase } from "../helpers/database.js";
 
 // -----------------------------------------------------------------------------
 // Configuração do ambiente
 // -----------------------------------------------------------------------------
 
-const testUrl = process.env.DATABASE_URL_TEST;
+const testUrl = testDatabaseUrl();
 const runtimeUrl = process.env.DATABASE_URL;
 
 const hasIsolatedDatabase = usesIsolatedDatabase(testUrl, runtimeUrl);
@@ -396,9 +396,15 @@ integration("authentication lifecycle PostgreSQL integration", () => {
           }
         );
 
-        expect(refreshed.body.data.csrfToken).toEqual(
-          expect.any(String)
+        expect(refreshed.body.user).toEqual(
+          expect.objectContaining({
+            id: user.id,
+            email: changedEmail,
+            mustChangePassword: false,
+          })
         );
+
+        const refreshedCsrf = await agent.get("/api/auth/csrf").expect(200);
 
         // ---------------------------------------------------------------------
         // 12. Encerrar sessão
@@ -411,7 +417,7 @@ integration("authentication lifecycle PostgreSQL integration", () => {
               .post("/api/auth/logout")
               .set(
                 "X-CSRF-Token",
-                refreshed.body.data.csrfToken
+                refreshedCsrf.body.data.csrfToken
               )
               .expect(204);
           }

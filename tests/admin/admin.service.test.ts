@@ -1,4 +1,5 @@
 import { AdminService } from "../../src/modules/admin/admin.service.js";
+import { jest } from "@jest/globals";
 import type { AuthIdentity } from "../../src/modules/auth/auth.service.js";
 import type { Clock } from "../../src/shared/core.js";
 import type { AdminRepository } from "../../src/modules/admin/admin.repository.js";
@@ -24,6 +25,19 @@ describe("AdminService manager sector scope", () => {
     const service = new AdminService(repository, clock);
     await expect(service.sectorStatus(superuser, 7)).resolves.toEqual({ sectorId: 7, status: "preparing", missingRequirements: ["shift_ranges", "nps"] });
     await expect(service.sectorStatus(managerA, 7)).rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("returns a lightweight sector detail and loads effective questions only when requested", async () => {
+    const effectiveQuestions = jest.fn(async () => [
+      { id: 1, questionKind: "sector" as const, isNps: false, text: "Local", versionNumber: 1, displayOrder: 1 },
+      { id: 2, questionKind: "standard" as const, isNps: false, text: "Padrão", versionNumber: 1, displayOrder: 1 },
+      { id: 3, questionKind: "standard" as const, isNps: true, text: "NPS", versionNumber: 1, displayOrder: 2147483647 },
+    ]);
+    const repository = { sector: async () => ({ id: 7, code: "uti", name: "UTI", deletedAt: null }), readiness: async () => ({ hasShiftRanges: true, hasNps: true }), effectiveQuestions } as unknown as AdminRepository;
+    const service = new AdminService(repository, clock);
+    await expect(service.getSector(superuser, 7, false)).resolves.toMatchObject({ isActive: true, operationalStatus: "active" });
+    expect(effectiveQuestions).not.toHaveBeenCalled();
+    await expect(service.getSector(superuser, 7, true)).resolves.toMatchObject({ questions: { sector: [{ id: 1 }], standard: [{ id: 2 }], nps: { id: 3 } } });
   });
 
   it("keeps manager A and manager B isolated to their own sectors", async () => {
@@ -62,6 +76,28 @@ describe("AdminService manager sector scope", () => {
       .rejects.toMatchObject({ code: "NOT_FOUND" });
     expect(revoked).toBe(false);
     expect(audited).toBe(false);
+  });
+
+  it("returns the persisted resource after manager and sector state changes", async () => {
+    const manager = { id: 10, fullName: "Gestor", deletedAt: new Date("2026-01-01T00:00:00Z") };
+    const sector = { id: 7, code: "uti", name: "UTI", deletedAt: null };
+    const repository = {
+      transaction: async <T>(work: (repository: AdminRepository) => Promise<T>) => work(repository as unknown as AdminRepository),
+      deactivateManager: async () => manager,
+      reactivateManager: async () => ({ ...manager, deletedAt: null }),
+      setSectorDeleted: async (_id: number, deleted: boolean) => ({ ...sector, deletedAt: deleted ? new Date("2026-01-01T00:00:00Z") : null }),
+      revokeSessions: async () => undefined,
+      audit: async () => undefined,
+    } as unknown as AdminRepository;
+    const service = new AdminService(repository, clock);
+
+    await expect(service.deactivateManager(superuser, manager.id)).resolves.toBe(manager);
+    await expect(service.reactivateManager(superuser, manager.id, "temporary-password"))
+      .resolves.toMatchObject({ id: manager.id, deletedAt: null });
+    await expect(service.deactivateSector(superuser, sector.id, true))
+      .resolves.toMatchObject({ id: sector.id, isActive: false });
+    await expect(service.deactivateSector(superuser, sector.id, false))
+      .resolves.toMatchObject({ id: sector.id, isActive: true });
   });
 
   it("returns a sector-code conflict only for the sector code constraint", async () => {
