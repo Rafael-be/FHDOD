@@ -15,7 +15,7 @@ function accessTokenCandidates(request: Request): string[] {
   return [...new Set(values.reverse())];
 }
 
-export function authenticate(service: AuthService) {
+export function authenticate(service: AuthService, options: { touchSession?: boolean } = {}) {
   return async (
     request: Request,
     _response: Response,
@@ -25,7 +25,9 @@ export function authenticate(service: AuthService) {
 
     for (const token of tokens) {
       try {
-        request.identity = await service.authenticate(token);
+        request.identity = options.touchSession === false
+          ? await service.authenticate(token, options)
+          : await service.authenticate(token);
         return next();
       } catch (error) {
         if (error instanceof DomainError && error.code === "UNAUTHENTICATED") {

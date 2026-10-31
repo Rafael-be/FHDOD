@@ -2,7 +2,7 @@
 
 ## Sequência de inicialização
 
-1. Obtenha a versão aprovada do bootstrap SQL por meio do canal seguro do projeto. O arquivo `FHDOD.sql` não é versionado neste repositório; não o recrie nem aplique SQL de origem desconhecida.
+1. Revise o bootstrap SQL aprovado em `src/db/bootstrap/FHDOD.sql`. Não o recrie nem aplique SQL de outra origem.
 2. Revise o bootstrap e aplique-o **uma única vez** em um banco PostgreSQL vazio, usando conexão administrativa. Nunca use `DATABASE_URL` para DDL.
 3. Execute as migrations Drizzle com `DATABASE_URL_MIGRATIONS`. O bootstrap deve sempre ocorrer antes das migrations; a migration atual pressupõe que suas tabelas já existam.
 4. Forneça as três variáveis `INITIAL_SUPERUSER_*` apenas no ambiente seguro e rode `npm run seed`. O seed ocorre depois do bootstrap e das migrations. Ele é idempotente: não troca a senha nem reativa a conta já existente. Uma conta criada pelo seed recebe senha temporária, com troca obrigatória e validade de 48 horas. Ele cria a página LGPD com conteúdo vazio, que não é publicação jurídica.
@@ -12,10 +12,16 @@ Nunca reaplique o bootstrap em um banco existente. Ele não é uma migration, n�
 
 ## Drizzle e baseline
 
-O schema Drizzle e o snapshot atual ainda não representam o banco completo. Por isso,
-**não execute `drizzle-kit generate`** até que o baseline seja reconciliado e revisado
-em banco isolado. Uma migration gerada agora pode ser incompleta ou incompatível com
-um banco inicializado pelo bootstrap aprovado.
+Atualização P1: o baseline foi reconciliado em `src/db/schema/baseline.ts` e
+`src/db/migrations/meta/0003_snapshot.json`. A configuração agora aponta só
+para `baseline.ts`; o texto histórico desta seção sobre snapshot pendente não
+se aplica mais. Gere migrations somente a partir desse schema completo,
+revise o SQL produzido e nunca use `drizzle-kit push`.
+
+O schema Drizzle da Fase 2 está descrito em `src/db/schema/questions.ts`, mas o
+snapshot atual ainda não representa o banco completo. Por isso, **não execute
+`drizzle-kit generate`** até que o baseline seja reconciliado e revisado em banco
+isolado. Consulte `docs/database-baseline.md` antes de gerar migrations.
 
 A versão instalada de `drizzle-kit` não suporta `drizzle-kit pull --init`. Use a
 introspecção somente para inspeção de um banco isolado, apontando a saída para um
@@ -41,24 +47,28 @@ restrita `fhdod_api`. `DATABASE_URL_MIGRATIONS` é validada somente pelo seed e
 pelas operações administrativas offline. Não a forneça ao processo HTTP, à imagem de
 runtime da API, ao frontend ou a logs de produção.
 
-## Autorização e RLS na Fase 1
+## Autorização na API e RLS
 
-O RLS permanece desabilitado na Fase 1. A migration
+O RLS permanece deliberadamente desabilitado, inclusive para as tabelas da Fase
+2. As migrations
 `0000_enforce_runtime_rls_policies.sql` cria 26 policies permissivas (`USING (true)`
-e `WITH CHECK (true)`) em 12 tabelas, mas não habilita RLS. Essas policies não
+e `WITH CHECK (true)`) para o runtime, mas não habilitam RLS. Essas policies não
 oferecem isolamento por linha e não devem ser consideradas uma barreira de segurança.
 
-A autorização de usuários é responsabilidade dos middlewares e services da API: a
+A autorização por usuário e setor é responsabilidade dos middlewares e services da API: a
 sessão atual define a identidade e o perfil, e os services limitam operações de
 gestores aos vínculos ativos com seus setores. A role PostgreSQL `fhdod_api` continua
 sendo a conexão restrita compartilhada pelo runtime, sem `DELETE`, DDL ou bypass de
-RLS.
+RLS. Isso só é seguro enquanto o banco não for exposto diretamente: a Data API
+deve permanecer desabilitada, o frontend não pode receber URLs/credenciais do
+banco e as credenciais administrativas/service_role devem ficar fora do runtime.
 
 Antes do deploy, valide em ambiente autorizado e isolado os privilégios efetivos, o
 owner das tabelas, os atributos da role `fhdod_api` e a exposição da Data API. Em
 especial, confirme que roles expostas pela Data API não receberam grants inesperados
 e que credenciais administrativas ou `service_role` nunca são distribuídas ao
-frontend.
+frontend. RLS não pode ser citado como camada de isolamento até ser habilitado e
+as policies forem substituídas por regras restritivas.
 
 ## Limite de falhas de login
 

@@ -7,14 +7,19 @@ import { DomainError, normalizeEmail } from "../../shared/core.js";
 import { logAuthenticationFailure, type AuthenticationFailureReason } from "../../shared/logger.js";
 import { measurePerformance } from "../../shared/performance.js";
 import type { AuthRepository, AuthUser, Role, Session } from "./auth.repository.js";
+import type { PublicAuthUser } from "./auth.schemas.js";
 
 const HOUR = 3_600_000;
 const REFERENCE_PASSWORD_HASH = "$argon2id$v=19$m=19456,p=1,t=2$XjLQ8tr1tw5H70kpf+O3WQ$Ukqa+/1eXvgWWRQyt1319/oLYw0jYVZleU4L5VtSzO0";
 /** Server-only authorization context; csrfToken is never serialized into a response. */
 export interface AuthIdentity { userId: number; sessionId: string; role: Role; mustChangePassword: boolean; csrfToken?: string; }
-export interface AuthResult { accessToken: string; refreshToken: string; csrfToken: string; expiresAt: Date; }
+export interface AuthResult { accessToken: string; refreshToken: string; csrfToken: string; expiresAt: Date; user: PublicAuthUser; }
 const hashToken = (value: string) => createHash("sha256").update(value).digest("hex");
 const opaqueToken = () => randomBytes(48).toString("base64url");
+/** Maps database users to the only account representation allowed in HTTP responses. */
+export function toPublicAuthUser(user: AuthUser): PublicAuthUser {
+  return { id: user.id, name: user.fullName, email: user.email, role: user.role, mustChangePassword: user.mustChangePassword };
+}
 function jwtFailureReason(error: unknown): AuthenticationFailureReason { const code = (error as { code?: unknown }).code; if (code === "ERR_JWT_EXPIRED") return "jwt_expired"; if (code === "ERR_JWT_CLAIM_VALIDATION_FAILED") return "jwt_claim_invalid"; return "jwt_invalid"; }
 
 /** Applies the session, JWT, refresh and temporary-password invariants. */
@@ -47,6 +52,7 @@ export class AuthService {
     const refreshToken = opaqueToken();
     const csrfToken = randomBytes(32).toString("base64url");
     const expiresAt = new Date(now.getTime() + 24 * HOUR);
+    let authenticatedUser = user;
     await measured("session_transaction", () => this.repository.transaction(async repository => {
       const lockedUser = await repository.lockUser(user.id);
       const lockedTemporaryPasswordExpired = lockedUser?.mustChangePassword && (
@@ -57,14 +63,15 @@ export class AuthService {
         throw new DomainError("INVALID_CREDENTIALS", "E-mail ou senha inválidos.", 401);
       }
 
+      authenticatedUser = lockedUser;
       await repository.revokeUserSessions(lockedUser.id, now);
       await repository.createSession({ id: sessionId, userId: lockedUser.id, csrfToken, createdAt: now, lastUsedAt: now, expiresAt, revokedAt: null });
       await repository.createRefresh({ id: randomUUID(), sessionId, tokenHash: hashToken(refreshToken), expiresAt, consumedAt: null });
     }));
-    return { accessToken: await measured("jwt_generation", () => this.accessToken(user, sessionId)) as string, refreshToken, csrfToken, expiresAt };
+    return { accessToken: await measured("jwt_generation", () => this.accessToken(authenticatedUser, sessionId)) as string, refreshToken, csrfToken, expiresAt, user: toPublicAuthUser(authenticatedUser) };
   }
   private rejectAuthentication(reason: AuthenticationFailureReason): never { logAuthenticationFailure(reason); throw new DomainError("UNAUTHENTICATED", "Sessão inválida ou expirada.", 401); }
-  async authenticate(token: string): Promise<AuthIdentity> {
+  async authenticate(token: string, options: { touchSession?: boolean } = {}): Promise<AuthIdentity> {
     let payload: { sub?: unknown; sid?: unknown }; let algorithm: string | undefined;
     try {
       const verified = await measurePerformance(this.config.PERFORMANCE_MEASUREMENTS, "auth.authenticate", "jwt_verify", () => jwtVerify(token, this.key, { algorithms: ["HS256"], issuer: this.config.JWT_ISSUER, audience: this.config.JWT_AUDIENCE, requiredClaims: ["sub", "sid", "iat", "exp"] }));
@@ -84,10 +91,18 @@ export class AuthService {
     if (session.revokedAt) return this.rejectAuthentication("session_revoked");
     if (session.expiresAt <= now) return this.rejectAuthentication("session_expired");
     if ((session.lastUsedAt ?? session.createdAt).getTime() + 12 * HOUR <= now.getTime()) return this.rejectAuthentication("session_idle_expired");
-    try { await measurePerformance(this.config.PERFORMANCE_MEASUREMENTS, "auth.authenticate", "session_touch", () => this.repository.touchSession(session.id, now)); } catch (error) { logAuthenticationFailure("database_query_failed", error); throw error; }
+    if (options.touchSession !== false) {
+      try { await measurePerformance(this.config.PERFORMANCE_MEASUREMENTS, "auth.authenticate", "session_touch", () => this.repository.touchSession(session.id, now)); } catch (error) { logAuthenticationFailure("database_query_failed", error); throw error; }
+    }
     return { userId: session.userId, sessionId: session.id, role: session.role, mustChangePassword: session.mustChangePassword, csrfToken: session.csrfToken };
   }
-  async refresh(value: string): Promise<AuthResult> { const now = this.clock.now(); const current = await this.repository.findRefresh(hashToken(value)); if (!current || current.expiresAt <= now) throw new DomainError("INVALID_REFRESH_TOKEN", "Sessão inválida ou expirada.", 401); if (current.consumedAt) { const session=await this.repository.findSession(current.sessionId); if (now.getTime()-current.consumedAt.getTime()<=5_000) throw new DomainError("REFRESH_CONFLICT","A renovação já foi processada; tente novamente.",409); if(session) await this.repository.revokeSession(session.id,now); throw new DomainError("REFRESH_TOKEN_REUSED","Sessão inválida ou expirada.",401); } const session = await this.repository.findSession(current.sessionId); if (!session || !this.valid(session, now)) throw new DomainError("INVALID_REFRESH_TOKEN", "Sessão inválida ou expirada.", 401); const user = await this.repository.findUserById(session.userId); if (!user || user.deletedAt) throw new DomainError("INVALID_REFRESH_TOKEN", "Sessão inválida ou expirada.", 401); const replacementId = randomUUID(), refreshToken = opaqueToken(); await this.repository.transaction(async repository => { if (!(await repository.consumeRefresh(current.id, now))) throw new DomainError("REFRESH_CONFLICT", "A renovação já foi processada; tente novamente.", 409); await repository.createRefresh({ id: replacementId, sessionId: session.id, tokenHash: hashToken(refreshToken), expiresAt: session.expiresAt, consumedAt: null }); await repository.linkRefreshReplacement(current.id, replacementId); }); return { accessToken: await this.accessToken(user, session.id), refreshToken, csrfToken: session.csrfToken, expiresAt: session.expiresAt }; }
+  async refresh(value: string): Promise<AuthResult> { const now = this.clock.now(); const current = await this.repository.findRefresh(hashToken(value)); if (!current || current.expiresAt <= now) throw new DomainError("INVALID_REFRESH_TOKEN", "Sessão inválida ou expirada.", 401); if (current.consumedAt) { const session=await this.repository.findSession(current.sessionId); if (now.getTime()-current.consumedAt.getTime()<=5_000) throw new DomainError("REFRESH_CONFLICT","A renovação já foi processada; tente novamente.",409); if(session) await this.repository.revokeSession(session.id,now); throw new DomainError("REFRESH_TOKEN_REUSED","Sessão inválida ou expirada.",401); } const session = await this.repository.findSession(current.sessionId); if (!session || !this.valid(session, now)) throw new DomainError("INVALID_REFRESH_TOKEN", "Sessão inválida ou expirada.", 401); const user = await this.repository.findUserById(session.userId); if (!user || user.deletedAt) throw new DomainError("INVALID_REFRESH_TOKEN", "Sessão inválida ou expirada.", 401); const replacementId = randomUUID(), refreshToken = opaqueToken(); await this.repository.transaction(async repository => { if (!(await repository.consumeRefresh(current.id, now))) throw new DomainError("REFRESH_CONFLICT", "A renovação já foi processada; tente novamente.", 409); await repository.createRefresh({ id: replacementId, sessionId: session.id, tokenHash: hashToken(refreshToken), expiresAt: session.expiresAt, consumedAt: null }); await repository.linkRefreshReplacement(current.id, replacementId); }); return { accessToken: await this.accessToken(user, session.id), refreshToken, csrfToken: session.csrfToken, expiresAt: session.expiresAt, user: toPublicAuthUser(user) }; }
+  /** Returns current public data after the caller has validated the persisted session. */
+  async currentUser(identity: AuthIdentity): Promise<PublicAuthUser> {
+    const user = await this.repository.findUserById(identity.userId);
+    if (!user || user.deletedAt) this.rejectAuthentication("user_inactive");
+    return toPublicAuthUser(user);
+  }
   async logout(sessionId: string): Promise<void> { await measurePerformance(this.config.PERFORMANCE_MEASUREMENTS, "auth.logout", "session_revocation", () => this.repository.revokeSession(sessionId, this.clock.now())); }
   /** Reuses the synchronizer token loaded from the already validated server-side session. */
   async recoverCsrfForIdentity(identity: AuthIdentity): Promise<string> {

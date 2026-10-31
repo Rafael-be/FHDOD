@@ -2,9 +2,9 @@ import "dotenv/config";
 import { randomUUID } from "node:crypto";
 import postgres from "postgres";
 import { PostgresAuthRepository } from "../../src/modules/auth/auth.repository.js";
-import { usesIsolatedDatabase } from "../helpers/database.js";
+import { testDatabaseUrl, usesIsolatedDatabase } from "../helpers/database.js";
 
-const testUrl = process.env.DATABASE_URL_TEST;
+const testUrl = testDatabaseUrl();
 const runtimeUrl = process.env.DATABASE_URL;
 const integration = usesIsolatedDatabase(testUrl, runtimeUrl) ? describe : describe.skip;
 

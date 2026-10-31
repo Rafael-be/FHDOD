@@ -28,7 +28,7 @@ describe("PostgresAuthRepository timestamp normalization", () => {
   });
 
   it("normalizes temporary-password and refresh-token expiry timestamps", async () => {
-    const user = await repositoryReturning({ id: 1, email: "test@example.test", passwordHash: "hash", role: "superuser", deletedAt: null, mustChangePassword: true, temporaryPasswordExpiresAt: "2026-01-03T00:00:00.000Z" }).findUserById(1);
+    const user = await repositoryReturning({ id: 1, fullName: "Teste", email: "test@example.test", passwordHash: "hash", role: "superuser", deletedAt: null, mustChangePassword: true, temporaryPasswordExpiresAt: "2026-01-03T00:00:00.000Z" }).findUserById(1);
     const refresh = await repositoryReturning({ id: base.id, sessionId: base.id, tokenHash: "hash", expiresAt: "2026-01-02T00:00:00.456Z", consumedAt: "2026-01-01T02:00:00.000Z" }).findRefresh("hash");
     expect(user?.temporaryPasswordExpiresAt).toBeInstanceOf(Date);
     expect(refresh?.expiresAt).toBeInstanceOf(Date);

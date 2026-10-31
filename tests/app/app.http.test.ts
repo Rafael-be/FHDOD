@@ -9,6 +9,7 @@ import type { AuditService } from "../../src/modules/audit/audit.service.js";
 import type { ContentService } from "../../src/modules/content/content.service.js";
 import type { HealthService } from "../../src/modules/health/health.service.js";
 import type { Clock } from "../../src/shared/core.js";
+import type { QuestionsService } from "../../src/modules/questions/questions.service.js";
 
 const config: AppConfig = { NODE_ENV: "test", PORT: 3000, DATABASE_URL: "postgres://api:pass@localhost/fhdod", ALLOWED_ORIGIN: "http://localhost:5173", JWT_SECRET: "12345678901234567890123456789012", JWT_ISSUER: "fhdod-api", JWT_AUDIENCE: "fhdod-web", PERFORMANCE_MEASUREMENTS: false };
 const repository: AuthRepository = {
@@ -113,6 +114,11 @@ describe("HTTP boundary", () => {
 
   it("serves the OpenAPI interface", async () => {
     await request(app).get("/api-docs/").expect(200).expect("content-type", /html/);
+  });
+
+  it("protects the Fase 2 question routes with authentication", async () => {
+    const questionsApp = createApp(config, { authService: new AuthService(repository, clock, config), questionsService: {} as QuestionsService });
+    await request(questionsApp).get("/api/sectors/7/questions").expect(401).expect({ error: { code: "UNAUTHENTICATED", message: "Autenticação necessária." } });
   });
 
   it("logs internal failures without exposing sensitive values", async () => {

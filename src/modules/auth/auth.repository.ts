@@ -3,6 +3,7 @@ import type postgres from "postgres";
 export type Role = "superuser" | "sector_manager";
 export interface AuthUser {
   id: number;
+  fullName: string;
   email: string;
   passwordHash: string;
   role: Role;
@@ -37,6 +38,7 @@ export interface RefreshToken {
 
 interface RawAuthUser {
   id: number;
+  fullName: string;
   email: string;
   passwordHash: string;
   role: Role;
@@ -90,6 +92,7 @@ function nullableTimestamp(value: unknown, column: string): Date | null {
 function authUser(row: RawAuthUser): AuthUser {
   return {
     id: row.id,
+    fullName: row.fullName,
     email: row.email,
     passwordHash: row.passwordHash,
     role: row.role,
@@ -170,6 +173,7 @@ export class PostgresAuthRepository implements AuthRepository {
     const rows = await this.sql<RawAuthUser[]>`
       select
         u.id,
+        u.full_name as "fullName",
         u.email,
         u.password_hash as "passwordHash",
         r.code as role,
@@ -189,6 +193,7 @@ export class PostgresAuthRepository implements AuthRepository {
     const rows = await this.sql<RawAuthUser[]>`
       select
         u.id,
+        u.full_name as "fullName",
         u.email,
         u.password_hash as "passwordHash",
         r.code as role,
@@ -206,7 +211,7 @@ export class PostgresAuthRepository implements AuthRepository {
   /** Serializes session replacement for one account inside the caller's transaction. */
   async lockUser(id: number): Promise<AuthUser | null> {
     const rows = await this.sql<RawAuthUser[]>`
-      select u.id, u.email, u.password_hash as "passwordHash", r.code as role,
+      select u.id, u.full_name as "fullName", u.email, u.password_hash as "passwordHash", r.code as role,
         u.deleted_at as "deletedAt", u.must_change_password as "mustChangePassword",
         u.temporary_password_expires_at as "temporaryPasswordExpiresAt"
       from users u

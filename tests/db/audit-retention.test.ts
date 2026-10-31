@@ -72,6 +72,18 @@ describe("audit retention job", () => {
     expect(script).not.toContain("FOR UPDATE");
   });
 
+  it("keeps local retention-role provisioning repeatable without versioned credentials", async () => {
+    const script = await readFile(
+      resolve(process.cwd(), "scripts/audit-retention/provision-role.sql"),
+      "utf8",
+    );
+
+    expect(script).toContain("IF NOT EXISTS");
+    expect(script).toContain("fhdod_audit_maintenance");
+    expect(script).toContain("fhdod_audit_retention_owner");
+    expect(script).not.toMatch(/CREATE ROLE[\s\S]*?PASSWORD\s+/i);
+  });
+
   it("records aggregate completion data without audit content", async () => {
     const output = logger();
     const cleanup: AuditRetentionCleanup = {

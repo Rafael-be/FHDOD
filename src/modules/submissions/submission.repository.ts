@@ -1,6 +1,7 @@
 import type postgres from "postgres";
 import type { SubmissionAnswerInput, SubmissionQuestion, SubmissionStart } from "./submission.service.js";
 import { DomainError } from "../../shared/core.js";
+import { listEffectiveQuestions } from "../questions/effective-question-resolver.js";
 
 export interface SubmissionRepository {
   transaction<T>(work: (repository: SubmissionRepository) => Promise<T>): Promise<T>;
@@ -31,27 +32,16 @@ export class PostgresSubmissionRepository implements SubmissionRepository {
       limit 1
     `;
     if (!shift[0]) throw new DomainError("SHIFT_NOT_FOUND", "Nenhum turno vigente para o setor e horário informados.", 404);
-    const questions = await this.sql<SubmissionQuestion[]>`
-      with effective_questions as (
-        select q.id, q.question_kind as "questionKind", q.is_nps as "isNps", q.display_order as "displayOrder", 1 as "sourceRank"
-        from questions q where q.sector_id = ${input.sectorId} and q.deleted_at is null and q.is_nps = false
-        union all
-        select q.id, q.question_kind as "questionKind", q.is_nps as "isNps", a.display_order as "displayOrder", 2 as "sourceRank"
-        from questions q join question_sector_assignments a on a.question_id = q.id and a.sector_id = ${input.sectorId} and a.ended_at is null
-        where q.deleted_at is null and q.is_nps = false
-        union all
-        select q.id, q.question_kind as "questionKind", q.is_nps as "isNps", 1 as "displayOrder", 3 as "sourceRank"
-        from questions q join sector_nps_assignments n on n.question_id = q.id and n.sector_id = ${input.sectorId} and n.ended_at is null
-        where q.deleted_at is null and q.is_nps = true
-      ), ordered as (
-        select distinct on (id) id, "questionKind", "isNps", "displayOrder", "sourceRank"
-        from effective_questions order by id, "sourceRank", "displayOrder"
-      )
-      select o.id as "questionId", v.id as "questionVersionId", v.text,
-             o."questionKind", o."isNps", row_number() over (order by o."sourceRank", o."displayOrder", o.id)::int as position
-      from ordered o join question_versions v on v.question_id = o.id and v.is_current = true
-      order by position
-    `;
+    const effectiveQuestions = await listEffectiveQuestions(this.sql, input.sectorId, false);
+    const questions: SubmissionQuestion[] = effectiveQuestions.map((question, index) => ({
+      questionId: question.id,
+      questionVersionId: question.versionId,
+      text: question.text,
+      questionKind: question.questionKind,
+      isNps: question.isNps,
+      position: index + 1,
+      sessionQuestionId: 0,
+    }));
     const npsCount = questions.filter((question) => question.isNps).length;
     if (npsCount !== 1) throw new DomainError("NPS_CONFIGURATION_CONFLICT", "O setor precisa ter exatamente um NPS efetivo antes de iniciar uma sessão.", 409);
     const sessionRows = await this.sql<{ id: string }[]>`

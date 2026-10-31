@@ -3,9 +3,9 @@ import { randomUUID } from "node:crypto";
 import argon2 from "argon2";
 import postgres from "postgres";
 import { seedInitialData } from "../../src/db/seed/initial-seed.js";
-import { usesIsolatedDatabase } from "../helpers/database.js";
+import { testDatabaseUrl, usesIsolatedDatabase } from "../helpers/database.js";
 
-const testUrl = process.env.DATABASE_URL_TEST;
+const testUrl = testDatabaseUrl();
 const runtimeUrl = process.env.DATABASE_URL;
 const integration = usesIsolatedDatabase(testUrl, runtimeUrl) ? describe : describe.skip;
 

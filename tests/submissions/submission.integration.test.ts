@@ -2,10 +2,10 @@ import "dotenv/config";
 import postgres from "postgres";
 import { SubmissionService } from "../../src/modules/submissions/submission.service.js";
 import { PostgresSubmissionRepository } from "../../src/modules/submissions/submission.repository.js";
-import { usesIsolatedDatabase } from "../helpers/database.js";
+import { testDatabaseUrl, usesIsolatedDatabase } from "../helpers/database.js";
 import type { Clock } from "../../src/shared/core.js";
 
-const testUrl = process.env.DATABASE_URL_TEST;
+const testUrl = testDatabaseUrl();
 const runtimeUrl = process.env.DATABASE_URL;
 const describeIntegration = usesIsolatedDatabase(testUrl, runtimeUrl) ? describe : describe.skip;
 const clock: Clock = { now: () => new Date("2026-01-01T12:00:00Z") };

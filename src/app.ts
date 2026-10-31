@@ -25,6 +25,8 @@ import type { SubmissionService } from "./modules/submissions/submission.service
 import { submissionRoutes } from "./modules/submissions/submission.routes.js";
 import { submissionAnswerRoutes } from "./modules/submissions/submission.answer.routes.js";
 import { submissionRestartRoutes } from "./modules/submissions/submission.restart.routes.js";
+import type { QuestionsService } from "./modules/questions/questions.service.js";
+import { questionsRoutes } from "./modules/questions/questions.routes.js";
 
 export interface AppDependencies {
   authService: AuthService;
@@ -34,6 +36,7 @@ export interface AppDependencies {
   contentService?: ContentService;
   shiftSheetService?: ShiftSheetService;
   submissionService?: SubmissionService;
+  questionsService?: QuestionsService;
 }
 
 function validateRuntimeDependencies(
@@ -68,6 +71,7 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
     contentService,
     shiftSheetService,
     submissionService,
+    questionsService,
   } = dependencies;
   const app = express();
   app.disable("x-powered-by");
@@ -85,6 +89,7 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
   if (shiftSheetService) app.use("/api", authenticate(authService), shiftSheetRoutes(shiftSheetService, authService));
   if (auditService) app.use("/api", authenticate(authService), auditRoutes(auditService));
   if (contentService) app.use("/api", contentRoutes(contentService, authService));
+  if (questionsService) app.use("/api", authenticate(authService), questionsRoutes(questionsService, authService));
   app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openapiDocument, { explorer: false }));
   app.use(notFoundHandler);
   app.use(errorHandler);
