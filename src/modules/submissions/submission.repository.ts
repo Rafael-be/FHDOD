@@ -66,7 +66,7 @@ export class PostgresSubmissionRepository implements SubmissionRepository {
              q.question_id as "questionId", q.question_kind as "questionKind", q.is_nps as "isNps", q.question_version_id as "questionVersionId"
       from submission_sessions s join submission_session_questions q on q.session_id = s.id
       where s.id = ${sessionId} and q.id = ${input.sessionQuestionId}
-      for update
+      for update of s
     `;
     const item = target[0];
     if (!item) throw new DomainError("SUBMISSION_QUESTION_NOT_FOUND", "Pergunta não pertence à sessão.", 404);

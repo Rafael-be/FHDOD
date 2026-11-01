@@ -36,19 +36,22 @@ Drizzle registrada.
 
 ## Teste local isolado
 
-Em um PostgreSQL local descartável, após criar o banco
-`fhdod_audit_retention_test`, aplicar o bootstrap/migrations aprovados e executar
+Em um PostgreSQL local descartável, após criar o banco `fhdod_test`, instalar o
+marcador `fhdod.disposable=true`, aplicar o bootstrap/migrations aprovados e executar
 os dois scripts acima com credencial administrativa, configure somente no shell:
 
 ```bash
-AUDIT_RETENTION_ADMIN_DATABASE_URL_TEST=postgres://...@localhost/fhdod_audit_retention_test \
-AUDIT_RETENTION_DATABASE_URL_TEST=postgres://fhdod_audit_maintenance:...@localhost/fhdod_audit_retention_test \
-AUDIT_RETENTION_API_DATABASE_URL_TEST=postgres://fhdod_api:...@localhost/fhdod_audit_retention_test \
+POSTGRES_INTEGRATION_TESTS=true \
+LOCAL_DATABASE_URL=postgres://...@localhost/fhdod_test \
+DATABASE_URL=postgres://fhdod_api:...@localhost/fhdod_test \
+AUDIT_RETENTION_ADMIN_DATABASE_URL_TEST=postgres://...@localhost/fhdod_test \
+AUDIT_RETENTION_DATABASE_URL_TEST=postgres://fhdod_audit_maintenance:...@localhost/fhdod_test \
+AUDIT_RETENTION_API_DATABASE_URL_TEST=postgres://fhdod_api:...@localhost/fhdod_test \
 npm test -- audit-retention.integration.test.ts
 ```
 
-O teste se recusa a executar fora de `localhost`/`127.0.0.1`/`::1` e desse nome
-de banco. Não use URLs remotas nem credenciais de produção.
+O teste exige o mesmo endpoint `fhdod_test` validado pelo setup global das
+integrações. Não use URLs remotas nem credenciais de produção.
 
 ## Execução e monitoramento
 

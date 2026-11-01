@@ -848,6 +848,40 @@ INSERT INTO public.shift_sheet_versions
 VALUES
     (1, NULL, now(), now(), true);
 
+-- The runtime uses a non-owner, non-bypass role.  Keep RLS enabled from the
+-- initial state; migrations 0000 through 0004 install the command-specific
+-- fhdod_api policies after this bootstrap completes.
+ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.auth_refresh_tokens ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.auth_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.content_page_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.content_pages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.dashboard_dirty_groups ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.dashboard_summary_state ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.employee_shift_assignments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.employees ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.hourly_answer_summaries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.hourly_ombudsman_summaries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.hourly_session_summaries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ombudsman_notes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ombudsman_tickets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.permissions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.question_sector_assignments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.question_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.questions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.role_permissions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.roles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sector_nps_assignments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sector_shift_ranges ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sectors ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.shift_sheet_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.shift_upload_attempts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.submission_answers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.submission_session_questions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.submission_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_sector_assignments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+
 -- ---------------------------------------------------------------------------
 -- Segurança: nenhum acesso de navegador/anon/authenticated/service_role aos
 -- objetos públicos desta aplicação. A Data API também deve ser desligada no

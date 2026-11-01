@@ -31,9 +31,17 @@ automaticamente.
 ## Configuração
 
 `DATABASE_URL` é a única conexão usada pelo servidor HTTP e deve utilizar a
-role restrita `fhdod_api`. `DATABASE_URL_MIGRATIONS` é exclusiva para operações
-administrativas offline, como seed e introspecção; ela não deve ser fornecida ao
-processo da API em produção.
+role restrita `fhdod_api`. `DATABASE_URL_MIGRATIONS` é exclusiva para bootstrap,
+migrations, seed e introspecção administrativos offline; ela não deve ser
+fornecida ao processo da API em produção. O runtime não recebe DDL, `DELETE`,
+ownership de tabelas nem `BYPASSRLS`.
+
+As tabelas públicas do aplicativo usam RLS. As policies de `fhdod_api` limitam
+as operações SQL permitidas; a autorização por superusuário, gestor e setor
+continua sendo responsabilidade da API Express. O navegador não usa a Data API
+para acessar essas tabelas. Consulte [a inicialização segura do banco](docs/bootstrap.md)
+e [a reconciliação de migrations](docs/database-baseline.md) antes de alterar um
+ambiente existente.
 
 As demais variáveis obrigatórias são `ALLOWED_ORIGIN`, `JWT_SECRET`,
 `JWT_ISSUER` e `JWT_AUDIENCE`. Veja os exemplos e comentários em
@@ -74,6 +82,8 @@ npm run build
 npm test
 ```
 
-Testes de integração só executam quando `DATABASE_URL_TEST` aponta para um
-banco físico isolado de `DATABASE_URL`. Use um banco descartável; detalhes em
-[docs/bootstrap.md](docs/bootstrap.md).
+Integrações PostgreSQL só executam com `POSTGRES_INTEGRATION_TESTS=true`.
+O setup global então exige `LOCAL_DATABASE_URL` e `DATABASE_URL` no mesmo
+endpoint loopback, banco descartável `fhdod_test`, runtime `fhdod_api` e o
+marcador documentado em [docs/bootstrap.md](docs/bootstrap.md). Sem opt-in,
+somente testes que não dependem de PostgreSQL são executados.

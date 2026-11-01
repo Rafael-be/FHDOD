@@ -22,7 +22,7 @@ export const roles = pgTable("roles", {
 }, (table) => [
 	unique("roles_code_key").on(table.code),
 	pgPolicy("fhdod_api_roles_select", { as: "permissive", for: "select", to: ["fhdod_api"], using: sql`true` }),
-]);
+]).enableRLS();
 
 export const permissions = pgTable("permissions", {
 	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "permissions_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
@@ -31,7 +31,7 @@ export const permissions = pgTable("permissions", {
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
 	unique("permissions_code_key").on(table.code),
-]);
+]).enableRLS();
 
 export const users = pgTable("users", {
 	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "users_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
@@ -57,7 +57,7 @@ export const users = pgTable("users", {
 	pgPolicy("fhdod_api_users_insert", { as: "permissive", for: "insert", to: ["fhdod_api"] }),
 	pgPolicy("fhdod_api_users_select", { as: "permissive", for: "select", to: ["fhdod_api"] }),
 	check("users_temporary_password_expiry_check", sql`must_change_password OR (temporary_password_expires_at IS NULL)`),
-]);
+]).enableRLS();
 
 export const authSessions = pgTable("auth_sessions", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
@@ -81,7 +81,7 @@ export const authSessions = pgTable("auth_sessions", {
 	pgPolicy("fhdod_api_auth_sessions_select", { as: "permissive", for: "select", to: ["fhdod_api"] }),
 	check("auth_sessions_expiry_check", sql`expires_at > created_at`),
 	check("auth_sessions_csrf_token_length_check", sql`length(csrf_token) >= 32`),
-]);
+]).enableRLS();
 
 export const authRefreshTokens = pgTable("auth_refresh_tokens", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
@@ -112,7 +112,7 @@ export const authRefreshTokens = pgTable("auth_refresh_tokens", {
 	check("auth_refresh_tokens_expiry_check", sql`expires_at > issued_at`),
 	check("auth_refresh_tokens_consumed_check", sql`(consumed_at IS NULL) OR (consumed_at >= issued_at)`),
 	check("auth_refresh_tokens_not_self_replaced_check", sql`(replaced_by_token_id IS NULL) OR (replaced_by_token_id <> id)`),
-]);
+]).enableRLS();
 
 export const sectors = pgTable("sectors", {
 	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "sectors_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
@@ -133,7 +133,7 @@ export const sectors = pgTable("sectors", {
 	pgPolicy("fhdod_api_sectors_update", { as: "permissive", for: "update", to: ["fhdod_api"], using: sql`true`, withCheck: sql`true`  }),
 	pgPolicy("fhdod_api_sectors_insert", { as: "permissive", for: "insert", to: ["fhdod_api"] }),
 	pgPolicy("fhdod_api_sectors_select", { as: "permissive", for: "select", to: ["fhdod_api"] }),
-]);
+]).enableRLS();
 
 export const userSectorAssignments = pgTable("user_sector_assignments", {
 	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "user_sector_assignments_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
@@ -171,7 +171,7 @@ export const userSectorAssignments = pgTable("user_sector_assignments", {
 	pgPolicy("fhdod_api_user_sector_assignments_insert", { as: "permissive", for: "insert", to: ["fhdod_api"] }),
 	pgPolicy("fhdod_api_user_sector_assignments_select", { as: "permissive", for: "select", to: ["fhdod_api"] }),
 	check("user_sector_assignment_dates_check", sql`(unassigned_at IS NULL) OR (unassigned_at >= assigned_at)`),
-]);
+]).enableRLS();
 
 export const questions = pgTable("questions", {
 	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "questions_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
@@ -204,7 +204,7 @@ export const questions = pgTable("questions", {
 	pgPolicy("fhdod_api_questions_select", { as: "permissive", for: "select", to: ["fhdod_api"] }),
 	check("questions_kind_scope_check", sql`((question_kind = 'sector'::question_kind) AND (sector_id IS NOT NULL) AND (scope = 'sector_only'::question_scope) AND (is_nps = false)) OR ((question_kind = 'standard'::question_kind) AND (sector_id IS NULL) AND (scope = ANY (ARRAY['all_sectors'::question_scope, 'selected_sectors'::question_scope])))`),
 	check("questions_order_positive_check", sql`display_order >= 1`),
-]);
+]).enableRLS();
 
 export const questionVersions = pgTable("question_versions", {
 	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "question_versions_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
@@ -233,7 +233,7 @@ export const questionVersions = pgTable("question_versions", {
 	pgPolicy("fhdod_api_question_versions_insert", { as: "permissive", for: "insert", to: ["fhdod_api"] }),
 	pgPolicy("fhdod_api_question_versions_select", { as: "permissive", for: "select", to: ["fhdod_api"] }),
 	check("question_versions_number_positive_check", sql`version_number >= 1`),
-]);
+]).enableRLS();
 
 export const questionSectorAssignments = pgTable("question_sector_assignments", {
 	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "question_sector_assignments_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
@@ -268,7 +268,7 @@ export const questionSectorAssignments = pgTable("question_sector_assignments", 
 	pgPolicy("fhdod_api_question_sector_assignments_select", { as: "permissive", for: "select", to: ["fhdod_api"] }),
 	check("question_sector_assignment_order_check", sql`display_order >= 1`),
 	check("question_sector_assignment_dates_check", sql`(ended_at IS NULL) OR (ended_at >= assigned_at)`),
-]);
+]).enableRLS();
 
 export const sectorNpsAssignments = pgTable("sector_nps_assignments", {
 	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "sector_nps_assignments_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
@@ -300,7 +300,7 @@ export const sectorNpsAssignments = pgTable("sector_nps_assignments", {
 	pgPolicy("fhdod_api_sector_nps_assignments_insert", { as: "permissive", for: "insert", to: ["fhdod_api"] }),
 	pgPolicy("fhdod_api_sector_nps_assignments_select", { as: "permissive", for: "select", to: ["fhdod_api"] }),
 	check("sector_nps_assignment_dates_check", sql`(ended_at IS NULL) OR (ended_at >= assigned_at)`),
-]);
+]).enableRLS();
 
 export const shiftSheetVersions = pgTable("shift_sheet_versions", {
 	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "shift_sheet_versions_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
@@ -318,9 +318,11 @@ export const shiftSheetVersions = pgTable("shift_sheet_versions", {
 			name: "shift_sheet_versions_uploaded_by_user_id_fkey"
 		}).onDelete("restrict"),
 	unique("shift_sheet_versions_version_number_key").on(table.versionNumber),
+	pgPolicy("fhdod_api_shift_sheet_versions_update", { as: "permissive", for: "update", to: ["fhdod_api"], using: sql`true`, withCheck: sql`true` }),
+	pgPolicy("fhdod_api_shift_sheet_versions_insert", { as: "permissive", for: "insert", to: ["fhdod_api"], withCheck: sql`true` }),
 	pgPolicy("fhdod_api_shift_sheet_versions_select", { as: "permissive", for: "select", to: ["fhdod_api"], using: sql`true` }),
 	check("shift_sheet_version_number_check", sql`version_number >= 1`),
-]);
+]).enableRLS();
 
 export const employees = pgTable("employees", {
 	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "employees_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
@@ -332,7 +334,8 @@ export const employees = pgTable("employees", {
 }, (table) => [
 	uniqueIndex("employees_code_normalized_uq").using("btree", sql`lower(btrim(employee_code))`),
 	index("employees_deleted_at_idx").using("btree", table.deletedAt.asc().nullsLast().op("timestamptz_ops")),
-]);
+	pgPolicy("fhdod_api_employees_select", { as: "permissive", for: "select", to: ["fhdod_api"], using: sql`true` }),
+]).enableRLS();
 
 export const submissionSessions = pgTable("submission_sessions", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
@@ -360,7 +363,10 @@ export const submissionSessions = pgTable("submission_sessions", {
 	check("submission_session_activity_check", sql`last_activity_at >= started_at`),
 	check("submission_session_end_check", sql`(ended_at IS NULL) OR (ended_at >= started_at)`),
 	check("submission_session_complete_end_check", sql`(status <> 'complete'::submission_status) OR (ended_at IS NOT NULL)`),
-]);
+	pgPolicy("fhdod_api_submission_sessions_update", { as: "permissive", for: "update", to: ["fhdod_api"], using: sql`true`, withCheck: sql`true` }),
+	pgPolicy("fhdod_api_submission_sessions_insert", { as: "permissive", for: "insert", to: ["fhdod_api"], withCheck: sql`true` }),
+	pgPolicy("fhdod_api_submission_sessions_select", { as: "permissive", for: "select", to: ["fhdod_api"], using: sql`true` }),
+]).enableRLS();
 
 export const submissionAnswers = pgTable("submission_answers", {
 	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "submission_answers_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
@@ -378,7 +384,10 @@ export const submissionAnswers = pgTable("submission_answers", {
 		}).onDelete("restrict"),
 	unique("submission_answers_session_question_id_key").on(table.sessionQuestionId),
 	check("submission_answer_status_score_check", sql`((status = 'answered'::answer_status) AND (score IS NOT NULL)) OR ((status = 'skipped'::answer_status) AND (score IS NULL))`),
-]);
+	pgPolicy("fhdod_api_submission_answers_update", { as: "permissive", for: "update", to: ["fhdod_api"], using: sql`true`, withCheck: sql`true` }),
+	pgPolicy("fhdod_api_submission_answers_insert", { as: "permissive", for: "insert", to: ["fhdod_api"], withCheck: sql`true` }),
+	pgPolicy("fhdod_api_submission_answers_select", { as: "permissive", for: "select", to: ["fhdod_api"], using: sql`true` }),
+]).enableRLS();
 
 export const contentPages = pgTable("content_pages", {
 	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "content_pages_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
@@ -396,7 +405,7 @@ export const contentPages = pgTable("content_pages", {
 	unique("content_pages_slug_key").on(table.slug),
 	pgPolicy("fhdod_api_content_pages_update", { as: "permissive", for: "update", to: ["fhdod_api"], using: sql`true`, withCheck: sql`true`  }),
 	pgPolicy("fhdod_api_content_pages_select", { as: "permissive", for: "select", to: ["fhdod_api"] }),
-]);
+]).enableRLS();
 
 export const contentPageVersions = pgTable("content_page_versions", {
 	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "content_page_versions_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
@@ -426,7 +435,7 @@ export const contentPageVersions = pgTable("content_page_versions", {
 	pgPolicy("fhdod_api_content_page_versions_insert", { as: "permissive", for: "insert", to: ["fhdod_api"] }),
 	pgPolicy("fhdod_api_content_page_versions_select", { as: "permissive", for: "select", to: ["fhdod_api"] }),
 	check("content_page_version_number_check", sql`version_number >= 1`),
-]);
+]).enableRLS();
 
 export const ombudsmanTickets = pgTable("ombudsman_tickets", {
 	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "ombudsman_tickets_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
@@ -462,7 +471,7 @@ export const ombudsmanTickets = pgTable("ombudsman_tickets", {
 			foreignColumns: [sectorShiftRanges.id, sectorShiftRanges.shiftSheetVersionId, sectorShiftRanges.sectorId],
 			name: "ombudsman_ticket_shift_fk"
 		}).onDelete("restrict"),
-]);
+]).enableRLS();
 
 export const sectorShiftRanges = pgTable("sector_shift_ranges", {
 	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "sector_shift_ranges_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
@@ -487,9 +496,10 @@ export const sectorShiftRanges = pgTable("sector_shift_ranges", {
 		}).onDelete("restrict"),
 	unique("sector_shift_range_composite_uq").on(table.id, table.shiftSheetVersionId, table.sectorId),
 	unique("sector_shift_range_duplicate_uq").on(table.shiftSheetVersionId, table.sectorId, table.shiftName, table.startsAt, table.endsAt),
+	pgPolicy("fhdod_api_sector_shift_ranges_insert", { as: "permissive", for: "insert", to: ["fhdod_api"], withCheck: sql`true` }),
 	pgPolicy("fhdod_api_sector_shift_ranges_select", { as: "permissive", for: "select", to: ["fhdod_api"], using: sql`true` }),
 	check("sector_shift_range_nonzero_check", sql`starts_at <> ends_at`),
-]);
+]).enableRLS();
 
 export const employeeShiftAssignments = pgTable("employee_shift_assignments", {
 	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "employee_shift_assignments_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
@@ -517,7 +527,9 @@ export const employeeShiftAssignments = pgTable("employee_shift_assignments", {
 		}).onDelete("restrict"),
 	check("employee_shift_date_or_weekday_check", sql`((work_date IS NOT NULL) AND (day_of_week IS NULL)) OR ((work_date IS NULL) AND (day_of_week IS NOT NULL))`),
 	check("employee_shift_weekday_check", sql`(day_of_week IS NULL) OR ((day_of_week >= 1) AND (day_of_week <= 7))`),
-]);
+	pgPolicy("fhdod_api_employee_shift_assignments_insert", { as: "permissive", for: "insert", to: ["fhdod_api"], withCheck: sql`true` }),
+	pgPolicy("fhdod_api_employee_shift_assignments_select", { as: "permissive", for: "select", to: ["fhdod_api"], using: sql`true` }),
+]).enableRLS();
 
 export const shiftUploadAttempts = pgTable("shift_upload_attempts", {
 	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "shift_upload_attempts_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
@@ -540,7 +552,8 @@ export const shiftUploadAttempts = pgTable("shift_upload_attempts", {
 			name: "shift_upload_attempts_resulting_version_id_fkey"
 		}).onDelete("restrict"),
 	check("shift_upload_result_version_check", sql`((result = 'accepted'::shift_upload_result) AND (resulting_version_id IS NOT NULL)) OR ((result = 'rejected'::shift_upload_result) AND (resulting_version_id IS NULL))`),
-]);
+	pgPolicy("fhdod_api_shift_upload_attempts_insert", { as: "permissive", for: "insert", to: ["fhdod_api"], withCheck: sql`true` }),
+]).enableRLS();
 
 export const submissionSessionQuestions = pgTable("submission_session_questions", {
 	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "submission_session_questions_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
@@ -572,7 +585,9 @@ export const submissionSessionQuestions = pgTable("submission_session_questions"
 	unique("submission_session_question_position_uq").on(table.sessionId, table.position),
 	unique("submission_session_question_once_uq").on(table.sessionId, table.questionId),
 	check("submission_session_question_position_check", sql`"position" >= 1`),
-]);
+	pgPolicy("fhdod_api_submission_session_questions_insert", { as: "permissive", for: "insert", to: ["fhdod_api"], withCheck: sql`true` }),
+	pgPolicy("fhdod_api_submission_session_questions_select", { as: "permissive", for: "select", to: ["fhdod_api"], using: sql`true` }),
+]).enableRLS();
 
 export const ombudsmanNotes = pgTable("ombudsman_notes", {
 	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "ombudsman_notes_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
@@ -592,7 +607,7 @@ export const ombudsmanNotes = pgTable("ombudsman_notes", {
 			foreignColumns: [users.id],
 			name: "ombudsman_notes_author_user_id_fkey"
 		}).onDelete("restrict"),
-]);
+]).enableRLS();
 
 export const auditLogs = pgTable("audit_logs", {
 	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "audit_logs_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
@@ -614,7 +629,7 @@ export const auditLogs = pgTable("audit_logs", {
 		}).onDelete("restrict"),
 	pgPolicy("fhdod_api_audit_logs_insert", { as: "permissive", for: "insert", to: ["fhdod_api"], withCheck: sql`true`  }),
 	pgPolicy("fhdod_api_audit_logs_select", { as: "permissive", for: "select", to: ["fhdod_api"] }),
-]);
+]).enableRLS();
 
 export const dashboardSummaryState = pgTable("dashboard_summary_state", {
 	singletonId: smallint("singleton_id").default(1).primaryKey().notNull(),
@@ -622,7 +637,7 @@ export const dashboardSummaryState = pgTable("dashboard_summary_state", {
 	lastClosedHour: timestamp("last_closed_hour", { withTimezone: true, mode: 'string' }),
 }, (_table) => [
 	check("dashboard_summary_state_singleton_check", sql`singleton_id = 1`),
-]);
+]).enableRLS();
 
 export const dashboardDirtyGroups = pgTable("dashboard_dirty_groups", {
 	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "dashboard_dirty_groups_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
@@ -656,7 +671,8 @@ export const dashboardDirtyGroups = pgTable("dashboard_dirty_groups", {
 			name: "dashboard_dirty_group_question_version_fk"
 		}).onDelete("restrict"),
 	check("dashboard_dirty_group_shape_check", sql`((summary_type = 'answers'::dashboard_summary_type) AND (question_id IS NOT NULL) AND (question_version_id IS NOT NULL) AND (ticket_type IS NULL) AND (ticket_status IS NULL)) OR ((summary_type = 'sessions'::dashboard_summary_type) AND (question_id IS NULL) AND (question_version_id IS NULL) AND (ticket_type IS NULL) AND (ticket_status IS NULL)) OR ((summary_type = 'ombudsman'::dashboard_summary_type) AND (question_id IS NULL) AND (question_version_id IS NULL) AND (ticket_type IS NOT NULL) AND (ticket_status IS NOT NULL))`),
-]);
+	pgPolicy("fhdod_api_dashboard_dirty_groups_insert", { as: "permissive", for: "insert", to: ["fhdod_api"], withCheck: sql`true` }),
+]).enableRLS();
 
 export const rolePermissions = pgTable("role_permissions", {
 	roleId: integer("role_id").notNull(),
@@ -674,7 +690,7 @@ export const rolePermissions = pgTable("role_permissions", {
 			name: "role_permissions_permission_id_fkey"
 		}).onDelete("restrict"),
 	primaryKey({ columns: [table.roleId, table.permissionId], name: "role_permissions_pkey"}),
-]);
+]).enableRLS();
 
 export const hourlySessionSummaries = pgTable("hourly_session_summaries", {
 	hourBucket: timestamp("hour_bucket", { withTimezone: true, mode: 'string' }).notNull(),
@@ -701,7 +717,7 @@ export const hourlySessionSummaries = pgTable("hourly_session_summaries", {
 		}).onDelete("restrict"),
 	primaryKey({ columns: [table.hourBucket, table.sectorId, table.shiftRangeId], name: "hourly_session_summaries_pkey"}),
 	check("hourly_session_summary_counts_check", sql`(complete_count >= 0) AND (incomplete_count >= 0) AND (abandoned_count >= 0)`),
-]);
+]).enableRLS();
 
 export const hourlyOmbudsmanSummaries = pgTable("hourly_ombudsman_summaries", {
 	hourBucket: timestamp("hour_bucket", { withTimezone: true, mode: 'string' }).notNull(),
@@ -726,7 +742,7 @@ export const hourlyOmbudsmanSummaries = pgTable("hourly_ombudsman_summaries", {
 		}).onDelete("restrict"),
 	primaryKey({ columns: [table.hourBucket, table.sectorId, table.shiftRangeId, table.ticketType, table.ticketStatus], name: "hourly_ombudsman_summaries_pkey"}),
 	check("hourly_ombudsman_summary_count_check", sql`ticket_count >= 0`),
-]);
+]).enableRLS();
 
 export const hourlyAnswerSummaries = pgTable("hourly_answer_summaries", {
 	hourBucket: timestamp("hour_bucket", { withTimezone: true, mode: 'string' }).notNull(),
@@ -783,4 +799,4 @@ export const hourlyAnswerSummaries = pgTable("hourly_answer_summaries", {
 			name: "hourly_answer_summary_version_fk"
 		}).onDelete("restrict"),
 	primaryKey({ columns: [table.hourBucket, table.sectorId, table.shiftRangeId, table.questionId, table.questionVersionId], name: "hourly_answer_summaries_pkey"}),
-]);
+]).enableRLS();

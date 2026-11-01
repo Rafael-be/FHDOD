@@ -2,10 +2,13 @@ import "dotenv/config";
 import { randomUUID } from "node:crypto";
 import postgres from "postgres";
 import { PostgresAuditRetentionCleanup } from "../../src/db/audit-retention.js";
+import { testDatabaseUrl, usesIsolatedDatabase } from "../helpers/database.js";
 
 const maintenanceUrl = process.env.AUDIT_RETENTION_DATABASE_URL_TEST;
 const adminUrl = process.env.AUDIT_RETENTION_ADMIN_DATABASE_URL_TEST;
 const apiUrl = process.env.AUDIT_RETENTION_API_DATABASE_URL_TEST;
+const standardAdminUrl = testDatabaseUrl();
+const standardRuntimeUrl = process.env.DATABASE_URL;
 
 function isLocalAuditRetentionTestDatabase(value: string | undefined): boolean {
   if (!value) {
@@ -15,8 +18,8 @@ function isLocalAuditRetentionTestDatabase(value: string | undefined): boolean {
   try {
     const url = new URL(value);
 
-    return ["127.0.0.1", "localhost", "::1"].includes(url.hostname)
-      && url.pathname === "/fhdod_audit_retention_test";
+    return ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)
+      && url.pathname === "/fhdod_test";
   } catch {
     return false;
   }
@@ -25,6 +28,8 @@ function isLocalAuditRetentionTestDatabase(value: string | undefined): boolean {
 const integration = isLocalAuditRetentionTestDatabase(maintenanceUrl)
   && isLocalAuditRetentionTestDatabase(adminUrl)
   && isLocalAuditRetentionTestDatabase(apiUrl)
+  && usesIsolatedDatabase(standardAdminUrl, standardRuntimeUrl)
+  && usesIsolatedDatabase(adminUrl, apiUrl)
   ? describe
   : describe.skip;
 

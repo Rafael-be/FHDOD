@@ -11,7 +11,7 @@ const integration = usesIsolatedDatabase(testUrl, runtimeUrl) ? describe : descr
 const rollbackMarker = "ROLLBACK_RLS_POLICY_TEST";
 
 integration("runtime RLS policies", () => {
-  it("preserves the complete Phase 1 and Phase 2 policy set when the Phase 1 migration is replayed", async () => {
+  it("preserves the complete Phase 1 through Phase 3 policy set when the Phase 1 migration is replayed", async () => {
     const sql = postgres(testUrl!, { max: 1 });
     const migration = await readFile(resolve(process.cwd(), "src/db/migrations/0000_enforce_runtime_rls_policies.sql"), "utf8");
 
@@ -26,7 +26,7 @@ integration("runtime RLS policies", () => {
           where schemaname = 'public' and policyname like 'fhdod_api_%'
           order by tablename, cmd
         `;
-        expect(policies).toHaveLength(37);
+        expect(policies).toHaveLength(53);
         expect(policies.every((policy) => policy.roles.includes("fhdod_api"))).toBe(true);
         expect(policies.some((policy) => policy.cmd === "ALL" || policy.cmd === "DELETE")).toBe(false);
         expect(policies).toEqual(expect.arrayContaining([
@@ -45,6 +45,8 @@ integration("runtime RLS policies", () => {
           expect.objectContaining({ tablename: "question_versions", cmd: "UPDATE" }),
           expect.objectContaining({ tablename: "question_sector_assignments", cmd: "UPDATE" }),
           expect.objectContaining({ tablename: "sector_nps_assignments", cmd: "UPDATE" }),
+          expect.objectContaining({ tablename: "submission_sessions", cmd: "INSERT" }),
+          expect.objectContaining({ tablename: "submission_answers", cmd: "UPDATE" }),
         ]));
 
         throw new Error(rollbackMarker);
