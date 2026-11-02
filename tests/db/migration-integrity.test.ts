@@ -28,7 +28,7 @@ describe("Drizzle migration inventory", () => {
       await expect(readFile(resolve(migrationsDirectory, `${entry.tag}.sql`), "utf8")).resolves.toBeTruthy();
     }
 
-    expect(journal.entries.at(-1)).toMatchObject({ idx: 4, tag: "0004_reconcile_runtime_rls_phase3" });
+    expect(journal.entries.at(-1)).toMatchObject({ idx: 5, tag: "0005_opposite_romulus" });
   });
 
   it("preserves hashes already recorded or pending in the approved sequence", async () => {

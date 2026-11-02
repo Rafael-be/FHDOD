@@ -8,7 +8,6 @@ const input = (name?: string) => new TextEncoder().encode(`\ufeff${header}\n${ro
 function repository(): ShiftSheetRepository {
   return {
     sectors: async () => [{ code: "enfermagem", name: "Enfermagem", active: true }],
-    employees: async () => [{ code: "FIC-1", name: "Ana", active: true }],
     transaction: async (work) => work(repository()),
     replaceCurrentSheet: async () => ({ versionId: 4 }),
   };
@@ -28,6 +27,37 @@ describe("ShiftSheetService", () => {
     await expect(new ShiftSheetService(repo).import(input(), 10)).rejects.toMatchObject({ code: "INVALID_SHIFT_SHEET" });
     expect(replaced).toBe(false);
     expect(attempt).toBe("rejected");
+  });
+
+  it("imports CSV employee snapshots without consulting the employee catalog", async () => {
+    let persisted: Parameters<ShiftSheetRepository["replaceCurrentSheet"]>[0] | undefined;
+    const repo: ShiftSheetRepository = {
+      ...repository(),
+      transaction: async (work) => work(repo),
+      replaceCurrentSheet: async (rows) => { persisted = rows; return { versionId: 8 }; },
+    };
+    const csv = `\ufeff${header}\nenfermagem;Enfermagem;Madrugada;00:00;08:00;LOCAL-1;  Ana Cláudia  ;1\nenfermagem;Enfermagem;Madrugada;00:00;08:00;LOCAL-2;Ana Cláudia;1\nenfermagem;Enfermagem;Dia;08:00;16:00;LOCAL-1;  Ana Cláudia  ;1\nenfermagem;Enfermagem;Dia;08:00;16:00;LOCAL-2;Ana Cláudia;1\nenfermagem;Enfermagem;Noite;16:00;00:00;LOCAL-1;  Ana Cláudia  ;1\nenfermagem;Enfermagem;Noite;16:00;00:00;LOCAL-2;Ana Cláudia;1`;
+    await expect(new ShiftSheetService(repo).import(new TextEncoder().encode(csv))).resolves.toMatchObject({ versionId: 8 });
+    expect(persisted).toEqual(expect.arrayContaining([
+      expect.objectContaining({ codigo_funcionario: "LOCAL-1", nome_funcionario: "Ana Cláudia" }),
+      expect.objectContaining({ codigo_funcionario: "LOCAL-2", nome_funcionario: "Ana Cláudia" }),
+    ]));
+  });
+
+  it("keeps the same displayed name independent across sectors", async () => {
+    const repo: ShiftSheetRepository = {
+      ...repository(),
+      sectors: async () => [
+        { code: "enfermagem", name: "Enfermagem", active: true },
+        { code: "uti", name: "UTI", active: true },
+      ],
+    };
+    const lines = [["enfermagem", "Enfermagem"], ["uti", "UTI"]].flatMap(([prefix, name]) => [
+      `${prefix};${name};Madrugada;00:00;08:00;LOCAL-${prefix};Ana;1`,
+      `${prefix};${name};Dia;08:00;16:00;LOCAL-${prefix};Ana;1`,
+      `${prefix};${name};Noite;16:00;00:00;LOCAL-${prefix};Ana;1`,
+    ]);
+    await expect(new ShiftSheetService(repo).validate(new TextEncoder().encode(`\ufeff${header}\n${lines.join("\n")}`))).resolves.toMatchObject({ issues: [], warnings: [] });
   });
 
   it("rejects oversized files before catalog access", async () => {

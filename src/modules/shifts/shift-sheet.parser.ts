@@ -67,7 +67,9 @@ function coverageIssues(rows: ShiftSheetRow[]): ShiftSheetIssue[] {
   }
 
   for (const [key, group] of groups) {
-    const segments = group.flatMap((row) => row.endsAt > row.startsAt
+    const ranges = new Map<string, ShiftSheetRow>();
+    for (const row of group) ranges.set(`${row.startsAt}:${row.endsAt}`, row);
+    const segments = [...ranges.values()].flatMap((row) => row.endsAt > row.startsAt
       ? [{ start: row.startsAt, end: row.endsAt, row }]
       : [{ start: row.startsAt, end: 1440, row }, { start: 0, end: row.endsAt, row }]);
     segments.sort((a, b) => a.start - b.start || a.end - b.end);
@@ -112,8 +114,11 @@ export function parseShiftSheet(input: Uint8Array): ParsedShiftSheet {
     if (startsAt === undefined || endsAt === undefined) { issues.push({ line: lineNumber, sectorCode: parsed.data.codigo_setor, reason: "horário inválido" }); continue; }
     if (startsAt === endsAt) { issues.push({ line: lineNumber, sectorCode: parsed.data.codigo_setor, reason: "hora inicial e final não podem ser iguais" }); continue; }
     if (!Number.isInteger(dayOfWeek) || dayOfWeek < 1 || dayOfWeek > 7) { issues.push({ line: lineNumber, sectorCode: parsed.data.codigo_setor, reason: "dia da semana inválido" }); continue; }
-    const key = `${parsed.data.codigo_setor}:${parsed.data.nome_turno}:${dayOfWeek}`;
-    if (seen.has(key)) issues.push({ line: lineNumber, sectorCode: parsed.data.codigo_setor, reason: "faixa duplicada" });
+    const key = `${parsed.data.codigo_setor}:${parsed.data.nome_turno}:${startsAt}:${endsAt}:${dayOfWeek}:${parsed.data.codigo_funcionario.toLowerCase()}:${parsed.data.nome_funcionario.toLowerCase()}`;
+    if (seen.has(key)) {
+      issues.push({ line: lineNumber, sectorCode: parsed.data.codigo_setor, reason: "atribuição de funcionário duplicada" });
+      continue;
+    }
     seen.add(key);
     rows.push({ ...parsed.data, line: lineNumber, startsAt, endsAt, dayOfWeek });
   }

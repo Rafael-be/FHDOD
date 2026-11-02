@@ -4,7 +4,7 @@
 
 1. Revise o bootstrap SQL aprovado em `src/db/bootstrap/FHDOD.sql`. Não o recrie nem aplique SQL de outra origem.
 2. Revise o bootstrap e aplique-o **uma única vez** em um banco PostgreSQL vazio, usando conexão administrativa. Nunca use `DATABASE_URL` para DDL.
-3. Execute as migrations Drizzle com `DATABASE_URL_MIGRATIONS`. O bootstrap deve sempre ocorrer antes das migrations; as migrations completam as policies de runtime e registram o histórico Drizzle.
+3. Execute `npm run migrate` com `DATABASE_URL_MIGRATIONS`. O comando usa o migrador do Drizzle e só termina com sucesso após conferir os hashes e timestamps do ledger `drizzle.__drizzle_migrations`. O bootstrap deve sempre ocorrer antes das migrations.
 4. Forneça as três variáveis `INITIAL_SUPERUSER_*` apenas no ambiente seguro e rode `npm run seed`. O seed ocorre depois do bootstrap e das migrations. Ele é idempotente: não troca a senha nem reativa a conta já existente. Uma conta criada pelo seed recebe senha temporária, com troca obrigatória e validade de 48 horas. Ele cria a página LGPD com conteúdo vazio, que não é publicação jurídica.
 5. Configure a senha da role `fhdod_api` interativamente e use essa role em `DATABASE_URL`.
 
@@ -38,6 +38,25 @@ bloco `finally`. Portanto, não execute a suíte de integração contra banco de
 produção ou um banco compartilhado com dados reais.
 
 Nenhum comando deste repositório aplica o bootstrap ou migrations automaticamente.
+
+## Verificação de migrations
+
+`npm run migrate` é o procedimento administrativo oficial. Ele requer somente
+`DATABASE_URL_MIGRATIONS`, não usa `DATABASE_URL`, e valida ao final que o ledger
+tem exatamente uma entrada, com hash e timestamp esperados, para cada item do
+journal. `npm run migrate:drizzle` existe apenas para diagnóstico do CLI bruto.
+
+Depois de uma atualização autorizada, confirme em uma conexão administrativa:
+
+```sql
+select id, hash, created_at
+from drizzle.__drizzle_migrations
+order by created_at;
+```
+
+Em novembro de 2026, o Supabase principal continua confirmado somente até
+`0000`–`0002`; não execute bootstrap, seed ou migrations nele sem procedimento
+operacional aprovado.
 
 ## Credenciais por operação
 

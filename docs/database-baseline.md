@@ -7,7 +7,8 @@ Ele não é migration e nunca deve ser reaplicado em banco existente.
 ## Banco novo
 
 1. Aplique o bootstrap uma única vez.
-2. Execute `npm run migrate` com `DATABASE_URL_MIGRATIONS`.
+2. Execute `npm run migrate` com `DATABASE_URL_MIGRATIONS`; ele confirma o ledger
+   Drizzle ao término.
 3. Execute o seed depois das migrations.
 
 ## Banco existente
@@ -21,12 +22,12 @@ Ele não é migration e nunca deve ser reaplicado em banco existente.
 
 `src/db/schema/baseline.ts` é a fonte de verdade do Drizzle Kit para as 30
 tabelas, 10 enums, índices, FKs, checks, RLS e policies que o Kit suporta. Ela
-representa o estado esperado após bootstrap e migrations `0000`–`0004`.
+representa o estado esperado após bootstrap e migrations `0000`–`0005`.
 Os schemas `core.ts` e `questions.ts` permanecem como tipos focados na
 aplicação e não participam da geração, evitando definições duplicadas.
 
-`src/db/migrations/meta/0004_snapshot.json` é o snapshot reconciliado após
-`0004_reconcile_runtime_rls_phase3.sql`. Funções, triggers, roles, grants e SQL
+`src/db/migrations/meta/0005_snapshot.json` é o snapshot após a migration de
+snapshots de profissionais. Funções, triggers, roles, grants e SQL
 `SECURITY DEFINER` continuam no bootstrap e em migrations SQL manuais, pois não
 são inferidos de forma completa pelo Drizzle.
 

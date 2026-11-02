@@ -5,6 +5,8 @@
 - Parser CSV UTF-8 com BOM e separador `;`.
 - Horários que atravessam meia-noite, buracos, sobreposições e horários iguais rejeitados.
 - Upload versionado, rollback e download da versão vigente.
+- Profissionais da planilha são snapshots de código e nome da própria versão; o
+  upload não exige cadastro prévio em `employees`.
 - Registro de tentativas de upload sem persistir o CSV original.
 - Sessões anônimas com snapshot de perguntas e versões históricas.
 - Respostas, pulos, sobrescrita, conclusão e grupos dirty.
@@ -16,7 +18,6 @@
 
 - O rate limiting é local ao processo; múltiplas réplicas exigem armazenamento compartilhado.
 - A suíte de integração depende de `DATABASE_URL_TEST` isolada.
-- O layout de atribuições de funcionários continua provisório conforme a especificação.
 - Dashboards não são calculados nesta fase.
 - O frontend do totem não faz parte deste backend.
 
