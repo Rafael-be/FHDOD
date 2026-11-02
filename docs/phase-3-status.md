@@ -7,6 +7,9 @@
 - Upload versionado, rollback e download da versão vigente.
 - Profissionais da planilha são snapshots de código e nome da própria versão; o
   upload não exige cadastro prévio em `employees`.
+- Sessões usam `America/Sao_Paulo` e a convenção ISO de segunda (`1`) a domingo
+  (`7`) para selecionar a faixa vigente; plantões que cruzam meia-noite pertencem
+  ao dia local em que começaram, com intervalo `[início, fim)`.
 - Registro de tentativas de upload sem persistir o CSV original.
 - Sessões anônimas com snapshot de perguntas e versões históricas.
 - Respostas, pulos, sobrescrita, conclusão e grupos dirty.

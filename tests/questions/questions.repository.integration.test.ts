@@ -17,6 +17,7 @@ describeIntegration("QuestionsRepository PostgreSQL integration", () => {
     try {
       await expect(sql.begin(async (tx) => {
         const repository = new QuestionsRepository(tx as unknown as postgres.Sql);
+        await tx`update questions set deleted_at = now() where is_nps = true and scope = 'all_sectors' and deleted_at is null`;
         const [actor] = await tx<{ id: number }[]>`
           insert into users(role_id,full_name,email,password_hash,created_at,updated_at)
           select r.id,${`Question test ${suffix}`},${`question-${suffix}@test.invalid`},'hash',now(),now()
@@ -48,6 +49,7 @@ describeIntegration("QuestionsRepository PostgreSQL integration", () => {
     try {
       await expect(sql.begin(async (tx) => {
         const repository = new QuestionsRepository(tx as unknown as postgres.Sql);
+        await tx`update questions set deleted_at = now() where is_nps = true and scope = 'all_sectors' and deleted_at is null`;
         const [actor] = await tx<{ id: number }[]>`
           insert into users(role_id,full_name,email,password_hash,created_at,updated_at)
           select r.id,${`Question inherit test ${suffix}`},${`question-inherit-${suffix}@test.invalid`},'hash',now(),now()
@@ -121,6 +123,7 @@ describeIntegration("QuestionsRepository PostgreSQL integration", () => {
     try {
       await expect(sql.begin(async (tx) => {
         const repository = new QuestionsRepository(tx as unknown as postgres.Sql);
+        await tx`update questions set deleted_at = now() where is_nps = true and scope = 'all_sectors' and deleted_at is null`;
         const [actor] = await tx<{ id: number }[]>`
           insert into users(role_id,full_name,email,password_hash,created_at,updated_at)
           select r.id,${`Global NPS ${suffix}`},${`global-nps-${suffix}@test.invalid`},'hash',now(),now()
@@ -131,6 +134,7 @@ describeIntegration("QuestionsRepository PostgreSQL integration", () => {
       })).rejects.toMatchObject({ code: "23505" });
       await expect(sql.begin(async (tx) => {
         const repository = new QuestionsRepository(tx as unknown as postgres.Sql);
+        await tx`update questions set deleted_at = now() where is_nps = true and scope = 'all_sectors' and deleted_at is null`;
         const [actor] = await tx<{ id: number }[]>`
           insert into users(role_id,full_name,email,password_hash,created_at,updated_at)
           select r.id,${`Version NPS ${suffix}`},${`version-nps-${suffix}@test.invalid`},'hash',now(),now()
@@ -153,6 +157,7 @@ describeIntegration("QuestionsRepository PostgreSQL integration", () => {
     try {
       await expect(sql.begin(async (tx) => {
         const repository = new QuestionsRepository(tx as unknown as postgres.Sql);
+        await tx`update questions set deleted_at = now() where is_nps = true and scope = 'all_sectors' and deleted_at is null`;
         const [actor] = await tx<{ id: number }[]>`
           insert into users(role_id,full_name,email,password_hash,created_at,updated_at)
           select r.id,${`Dynamic NPS ${suffix}`},${`dynamic-nps-${suffix}@test.invalid`},'hash',now(),now()

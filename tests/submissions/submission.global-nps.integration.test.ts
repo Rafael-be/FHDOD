@@ -15,6 +15,7 @@ describeIntegration("anonymous submissions dynamic global NPS integration", () =
     const sql = postgres(testUrl!, { max: 1 });
     try {
       await expect(sql.begin(async (tx) => {
+        await tx`update questions set deleted_at = now() where is_nps = true and scope = 'all_sectors' and deleted_at is null`;
         const [user] = await tx<{ id: number }[]>`
           insert into users (role_id, full_name, email, password_hash, created_at, updated_at)
           values (1, 'NPS integration', ${`global-${Date.now()}@test.invalid`}, 'hash', now(), now())
@@ -39,6 +40,12 @@ describeIntegration("anonymous submissions dynamic global NPS integration", () =
             insert into sector_shift_ranges (shift_sheet_version_id, sector_id, shift_name, starts_at, ends_at)
             values (${sheet!.id}, ${sectorId}, 'Day', '08:00', '16:00')`;
         }
+        await tx`
+          insert into employee_shift_assignments (shift_sheet_version_id, sector_id, shift_range_id, employee_code, employee_name, day_of_week)
+          select ${sheet!.id}, r.sector_id, r.id, concat('NPS-', r.id), 'Profissional', 4
+          from sector_shift_ranges r
+          where r.shift_sheet_version_id = ${sheet!.id}
+        `;
 
         const sectorQuestions: number[] = [];
         for (const [index, sectorId] of sectors.entries()) {

@@ -56,9 +56,10 @@ describeIntegration("Phase 3 runtime RLS contract", () => {
       sectorId = sector[0]!.id;
       const employee = await admin<{ id: number }[]>`insert into employees (employee_code, full_name) values (${`EMP-${suffix}`}, 'Funcionário RLS') returning id`;
       employeeId = employee[0]!.id;
-      const question = await admin<{ id: number }[]>`insert into questions (question_kind, scope, sector_id, is_nps, display_order, created_by_user_id, created_at, updated_at) values ('standard', 'all_sectors', null, true, 2147483647, ${userId}, now(), now()) returning id`;
+      const question = await admin<{ id: number }[]>`insert into questions (question_kind, scope, sector_id, is_nps, display_order, created_by_user_id, created_at, updated_at) values ('standard', 'selected_sectors', null, true, 2147483647, ${userId}, now(), now()) returning id`;
       questionId = question[0]!.id;
       await admin`insert into question_versions (question_id, version_number, text, is_current, created_by_user_id, created_at) values (${questionId}, 1, 'NPS RLS', true, ${userId}, now())`;
+      await admin`insert into sector_nps_assignments (sector_id, question_id, assignment_source, assigned_at, assigned_by_user_id) values (${sectorId}, ${questionId}, 'specific', now(), ${userId})`;
 
       const shifts = new PostgresShiftSheetRepository(runtime);
       const sheet = await shifts.transaction((repository) => repository.replaceCurrentSheet([{
@@ -84,6 +85,7 @@ describeIntegration("Phase 3 runtime RLS contract", () => {
         sessionId,
         sectorId,
         dayOfWeek: 4,
+        previousDayOfWeek: 3,
         localTime: "09:00",
         now,
       }));
@@ -112,6 +114,7 @@ describeIntegration("Phase 3 runtime RLS contract", () => {
       await restoreCurrentVersions(admin, originalCurrentVersionIds);
       await expect(currentVersionIds(admin)).resolves.toEqual(originalCurrentVersionIds);
       if (questionId) {
+        await admin`delete from sector_nps_assignments where question_id = ${questionId}`;
         await admin`delete from question_versions where question_id = ${questionId}`;
         await admin`delete from questions where id = ${questionId}`;
       }

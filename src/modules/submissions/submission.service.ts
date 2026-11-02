@@ -2,21 +2,22 @@ import { randomUUID } from "node:crypto";
 import type { Clock } from "../../shared/core.js";
 import type { SubmissionRepository } from "./submission.repository.js";
 import { DomainError } from "../../shared/core.js";
+import { HOSPITAL_TIME_ZONE, hospitalShiftTime } from "./submission-time.js";
 
-export interface SubmissionStart { sessionId: string; sectorId: number; dayOfWeek: number; localTime: string; now: Date; }
+export interface SubmissionStart { sessionId: string; sectorId: number; dayOfWeek: number; previousDayOfWeek: number; localTime: string; now: Date; }
 export interface SubmissionQuestion { sessionQuestionId: number; questionId: number; questionVersionId: number; text: string; questionKind: "sector" | "standard"; isNps: boolean; position: number; }
 export interface SubmissionCapability { sessionId: string; token: string; }
 export type SubmissionAnswerInput = { sessionQuestionId: number; status: "answered" | "skipped"; score: number | null };
 
 export class SubmissionService {
   private readonly capabilities = new Map<string, string>();
-  constructor(private readonly repository: SubmissionRepository, private readonly clock: Clock) {}
+  constructor(private readonly repository: SubmissionRepository, private readonly clock: Clock, private readonly hospitalTimeZone = HOSPITAL_TIME_ZONE) {}
 
-  async start(sectorId: number, dayOfWeek: number, localTime: string): Promise<{ capability: SubmissionCapability; session: unknown; questions: SubmissionQuestion[] }> {
+  async start(sectorId: number, dayOfWeek: number, localTime: string, now = this.clock.now()): Promise<{ capability: SubmissionCapability; session: unknown; questions: SubmissionQuestion[] }> {
     const sessionId = randomUUID();
     const result = await this.repository.transaction(async (repository) => {
-      if (repository.reconcileExpired) await repository.reconcileExpired(this.clock.now());
-      return repository.createSessionSnapshot({ sessionId, sectorId, dayOfWeek, localTime, now: this.clock.now() });
+      if (repository.reconcileExpired) await repository.reconcileExpired(now);
+      return repository.createSessionSnapshot({ sessionId, sectorId, dayOfWeek, previousDayOfWeek: dayOfWeek === 1 ? 7 : dayOfWeek - 1, localTime, now });
     });
     const token = randomUUID();
     this.capabilities.set(sessionId, token);
@@ -25,12 +26,8 @@ export class SubmissionService {
 
   async startNow(sectorId: number): Promise<{ capability: SubmissionCapability; session: unknown; questions: SubmissionQuestion[] }> {
     const now = this.clock.now();
-    const parts = new Intl.DateTimeFormat("en-US", { timeZone: "America/Sao_Paulo", weekday: "short", hour: "2-digit", minute: "2-digit", hour12: false }).formatToParts(now);
-    const weekdayByName: Record<string, number> = { Mon: 1, Tue: 2, Wed: 3, Thu: 4, Fri: 5, Sat: 6, Sun: 7 };
-    const weekday = weekdayByName[parts.find((part) => part.type === "weekday")?.value ?? ""];
-    const hour = parts.find((part) => part.type === "hour")?.value ?? "00";
-    const minute = parts.find((part) => part.type === "minute")?.value ?? "00";
-    return this.start(sectorId, weekday ?? 1, `${hour}:${minute}`);
+    const local = hospitalShiftTime(now, this.hospitalTimeZone);
+    return this.start(sectorId, local.dayOfWeek, local.localTime, now);
   }
 
   authorize(sessionId: string, token: string): boolean { return this.capabilities.get(sessionId) === token; }

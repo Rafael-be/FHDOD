@@ -20,18 +20,26 @@ export class PostgresSubmissionRepository implements SubmissionRepository {
   }
 
   async createSessionSnapshot(input: SubmissionStart) {
-    const shift = await this.sql<{ versionId: number; rangeId: number }[]>`
-      select v.id as "versionId", r.id as "rangeId"
+    const shifts = await this.sql<{ versionId: number; rangeId: number }[]>`
+      select distinct v.id as "versionId", r.id as "rangeId"
       from shift_sheet_versions v
       join sector_shift_ranges r on r.shift_sheet_version_id = v.id and r.sector_id = ${input.sectorId}
+      join employee_shift_assignments a on a.shift_sheet_version_id = v.id and a.sector_id = r.sector_id and a.shift_range_id = r.id
       join sectors s on s.id = r.sector_id and s.deleted_at is null
       where v.is_current = true
-        and ((r.ends_at > r.starts_at and ${input.localTime}::time >= r.starts_at and ${input.localTime}::time < r.ends_at)
-          or (r.ends_at < r.starts_at and (${input.localTime}::time >= r.starts_at or ${input.localTime}::time < r.ends_at)))
-      order by r.starts_at
-      limit 1
+        and (
+          (r.ends_at > r.starts_at
+            and a.day_of_week = ${input.dayOfWeek}
+            and ${input.localTime}::time >= r.starts_at
+            and ${input.localTime}::time < r.ends_at)
+          or (r.ends_at < r.starts_at
+            and ((a.day_of_week = ${input.dayOfWeek} and ${input.localTime}::time >= r.starts_at)
+              or (a.day_of_week = ${input.previousDayOfWeek} and ${input.localTime}::time < r.ends_at)))
+        )
     `;
-    if (!shift[0]) throw new DomainError("SHIFT_NOT_FOUND", "Nenhum turno vigente para o setor e horário informados.", 404);
+    if (!shifts[0]) throw new DomainError("SHIFT_NOT_FOUND", "Nenhum turno vigente para o setor e horário informados.", 404);
+    if (shifts.length > 1) throw new DomainError("SHIFT_AMBIGUOUS", "Há mais de um turno vigente para o setor e horário informados.", 409);
+    const shift = shifts[0];
     const effectiveQuestions = await listEffectiveQuestions(this.sql, input.sectorId, false);
     const questions: SubmissionQuestion[] = effectiveQuestions.map((question, index) => ({
       questionId: question.id,
@@ -46,7 +54,7 @@ export class PostgresSubmissionRepository implements SubmissionRepository {
     if (npsCount !== 1) throw new DomainError("NPS_CONFIGURATION_CONFLICT", "O setor precisa ter exatamente um NPS efetivo antes de iniciar uma sessão.", 409);
     const sessionRows = await this.sql<{ id: string }[]>`
       insert into submission_sessions (id, sector_id, shift_sheet_version_id, shift_range_id, started_at, last_activity_at, status)
-      values (${input.sessionId}, ${input.sectorId}, ${shift[0].versionId}, ${shift[0].rangeId}, ${input.now.toISOString()}, ${input.now.toISOString()}, 'incomplete')
+      values (${input.sessionId}, ${input.sectorId}, ${shift.versionId}, ${shift.rangeId}, ${input.now.toISOString()}, ${input.now.toISOString()}, 'incomplete')
       returning id
     `;
     for (const question of questions) {
@@ -57,7 +65,7 @@ export class PostgresSubmissionRepository implements SubmissionRepository {
     `;
       question.sessionQuestionId = inserted[0]!.id;
     }
-    return { session: { id: sessionRows[0]!.id, sectorId: input.sectorId, shiftSheetVersionId: shift[0].versionId, shiftRangeId: shift[0].rangeId }, questions };
+    return { session: { id: sessionRows[0]!.id, sectorId: input.sectorId, shiftSheetVersionId: shift.versionId, shiftRangeId: shift.rangeId }, questions };
   }
 
   async saveAnswer(sessionId: string, input: SubmissionAnswerInput, now: Date) {
