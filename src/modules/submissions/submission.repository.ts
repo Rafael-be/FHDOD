@@ -98,16 +98,16 @@ export class PostgresSubmissionRepository implements SubmissionRepository {
       values ('answers', date_trunc('hour', ${item.startedAt.toISOString()}::timestamptz), ${item.sectorId}, ${item.shiftRangeId}, ${item.questionId}, ${item.questionVersionId}, ${now.toISOString()})
       on conflict do nothing
     `;
-    const counts = await this.sql<{ total: number; answered: number; skippedSector: number; npsAnswered: number }[]>`
-      select count(*)::int as total,
-             count(*) filter (where a.status = 'answered')::int as answered,
-             count(*) filter (where a.status = 'skipped' and q.question_kind = 'sector')::int as "skippedSector",
+    const counts = await this.sql<{ required: number; requiredAnswered: number; npsTotal: number; npsAnswered: number }[]>`
+      select count(*) filter (where q.question_kind = 'standard')::int as required,
+             count(*) filter (where q.question_kind = 'standard' and a.status = 'answered')::int as "requiredAnswered",
+             count(*) filter (where q.is_nps)::int as "npsTotal",
              count(*) filter (where q.is_nps and a.status = 'answered')::int as "npsAnswered"
       from submission_session_questions q left join submission_answers a on a.session_question_id = q.id
       where q.session_id = ${sessionId}
     `;
     const count = counts[0]!;
-    const complete = count.answered === count.total && count.skippedSector === 0 && count.npsAnswered === 1;
+    const complete = count.requiredAnswered === count.required && count.npsTotal === 1 && count.npsAnswered === 1;
     if (complete) await this.sql`update submission_sessions set status = 'complete', ended_at = ${now.toISOString()} where id = ${sessionId}`;
     return { sessionId, status: complete ? "complete" as const : "incomplete" as const, answered: input.status === "answered" };
   }

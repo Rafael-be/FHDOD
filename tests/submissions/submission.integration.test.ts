@@ -11,7 +11,7 @@ const describeIntegration = usesIsolatedDatabase(testUrl, runtimeUrl) ? describe
 const clock: Clock = { now: () => new Date("2026-01-01T12:00:00Z") };
 
 describeIntegration("anonymous submissions integration", () => {
-  it("snapshots questions and overwrites one answer state", async () => {
+  it("completes with skipped or unanswered sector questions while requiring standard and NPS answers", async () => {
     const sql = postgres(testUrl!, { max: 1 });
     try {
       await sql.begin(async (tx) => {
@@ -32,10 +32,25 @@ describeIntegration("anonymous submissions integration", () => {
         const started = await service.start(sector[0]!.id, 4, "09:00");
         expect(started.questions).toHaveLength(3);
         const sectorItem = started.questions.find((question) => question.questionKind === "sector")!;
+        const standardItem = started.questions.find((question) => question.questionKind === "standard" && !question.isNps)!;
+        const npsItem = started.questions.find((question) => question.isNps)!;
+        await expect(service.answer(started.capability.sessionId, started.capability.token, { sessionQuestionId: sectorItem.sessionQuestionId!, status: "answered", score: 6 })).rejects.toMatchObject({ code: "INVALID_ANSWER_SCORE" });
         await expect(service.answer(started.capability.sessionId, started.capability.token, { sessionQuestionId: sectorItem.sessionQuestionId!, status: "skipped", score: null })).resolves.toMatchObject({ status: "incomplete" });
-        await expect(service.answer(started.capability.sessionId, started.capability.token, { sessionQuestionId: sectorItem.sessionQuestionId!, status: "answered", score: 5 })).resolves.toMatchObject({ status: "incomplete" });
+        await expect(service.answer(started.capability.sessionId, started.capability.token, { sessionQuestionId: npsItem.sessionQuestionId!, status: "answered", score: 10 })).resolves.toMatchObject({ status: "incomplete" });
+        await expect(service.answer(started.capability.sessionId, started.capability.token, { sessionQuestionId: standardItem.sessionQuestionId!, status: "answered", score: 5 })).resolves.toMatchObject({ status: "complete" });
         const answer = await tx<{ status: string; score: number }[]>`select status, score from submission_answers where session_question_id=${sectorItem.sessionQuestionId}`;
-        expect(answer).toEqual([{ status: "answered", score: 5 }]);
+        expect(answer).toEqual([{ status: "skipped", score: null }]);
+
+        const withoutOptionalAnswer = await service.start(sector[0]!.id, 4, "09:00");
+        const required = withoutOptionalAnswer.questions.filter((question) => question.questionKind === "standard");
+        await expect(service.answer(withoutOptionalAnswer.capability.sessionId, withoutOptionalAnswer.capability.token, { sessionQuestionId: required.find((question) => !question.isNps)!.sessionQuestionId, status: "answered", score: 5 })).resolves.toMatchObject({ status: "incomplete" });
+        await expect(service.answer(withoutOptionalAnswer.capability.sessionId, withoutOptionalAnswer.capability.token, { sessionQuestionId: required.find((question) => question.isNps)!.sessionQuestionId, status: "answered", score: 10 })).resolves.toMatchObject({ status: "complete" });
+        const optionalAnswers = await tx<{ count: number }[]>`
+          select count(*)::int as count
+          from submission_answers a join submission_session_questions q on q.id = a.session_question_id
+          where q.session_id = ${withoutOptionalAnswer.capability.sessionId} and q.question_kind = 'sector'
+        `;
+        expect(optionalAnswers[0]!.count).toBe(0);
       });
     } finally { await sql.end({ timeout: 5 }); }
   });
