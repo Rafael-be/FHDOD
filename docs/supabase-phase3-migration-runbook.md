@@ -139,6 +139,15 @@ Não execute SQL avulso para “marcar” migrations. O migrador valida o ledger
 fim. Em caso de falha, pare: não tente reaplicar bootstrap nem corrigir o ledger
 manualmente.
 
+## Dependência operacional de retenção de auditoria
+
+A retenção não é migration Drizzle. Após a atualização do schema e somente em
+operação administrativa separada e autorizada, aplique os scripts versionados de
+provisionamento e instalação da retenção. Eles criam a role de manutenção, o owner
+sem login, a função `SECURITY DEFINER` e policies RLS que permitem ao owner ler e
+remover somente registros vencidos. Não conceda `BYPASSRLS`, `DELETE` ao runtime
+ou uma policy ampla para substituir essas policies restritas.
+
 ## Fase 4 — validação pós-migration e deploy separado
 
 Confirme novamente ledger, schema de `employee_shift_assignments`, RLS, policies,

@@ -15,6 +15,13 @@ necessárias para avaliar o predicado temporal e a ordenação; a role não tem 
 nem acesso ao conteúdo dos registros. O `search_path` é fixado em `pg_catalog`, a
 tabela é referenciada com schema explícito e a rotina não usa SQL dinâmico.
 
+Como a função `SECURITY DEFINER` continua sujeita ao RLS da tabela, o script de
+instalação cria duas policies exclusivamente para esse owner sem login. Elas
+permitem `SELECT` e `DELETE` apenas quando `created_at < now() - interval '48 hours'`.
+O predicado é repetido dentro da função, que ainda limita o lote a 1.000 linhas.
+`fhdod_audit_maintenance` recebe somente `EXECUTE`; `fhdod_api` não recebe
+`DELETE` nem `EXECUTE` na função.
+
 ## Provisionamento aprovado pelo administrador
 
 O administrador deve executar, uma única vez e fora do processo HTTP:
@@ -52,6 +59,10 @@ npm test -- audit-retention.integration.test.ts
 
 O teste exige o mesmo endpoint `fhdod_test` validado pelo setup global das
 integrações. Não use URLs remotas nem credenciais de produção.
+
+O workflow de CI provisiona essas roles, policies e função somente no serviço
+PostgreSQL 17 efêmero do job, depois do bootstrap e das migrations locais. Nenhuma
+credencial ou role de produção é usada no CI.
 
 ## Execução e monitoramento
 

@@ -28,6 +28,9 @@ jobs:
       LOCAL_DATABASE_URL: postgres://postgres@127.0.0.1:5432/fhdod_test
       DATABASE_URL: postgres://fhdod_api@127.0.0.1:5432/fhdod_test
       DATABASE_URL_MIGRATIONS: postgres://postgres@127.0.0.1:5432/fhdod_test
+      AUDIT_RETENTION_ADMIN_DATABASE_URL_TEST: postgres://postgres@127.0.0.1:5432/fhdod_test
+      AUDIT_RETENTION_DATABASE_URL_TEST: postgres://fhdod_audit_maintenance@127.0.0.1:5432/fhdod_test
+      AUDIT_RETENTION_API_DATABASE_URL_TEST: postgres://fhdod_api@127.0.0.1:5432/fhdod_test
 
     steps:
       - name: Check out repository
@@ -54,6 +57,9 @@ jobs:
           psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 5432 -U postgres -d fhdod_test \
             -f src/db/bootstrap/FHDOD.sql
           npm run migrate
+          psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 5432 -U postgres -d fhdod_test \
+            -f scripts/audit-retention/provision-role.sql \
+            -f scripts/audit-retention/install-purge-function.sql
 
       - name: Type check
         run: npm run typecheck
@@ -65,6 +71,4 @@ jobs:
         run: npm run build
 
       - name: Run tests
-        # Audit-retention integration remains opt-in: its SECURITY DEFINER owner
-        # intentionally has no BYPASSRLS or permissive audit_logs policy in CI.
         run: npm test
