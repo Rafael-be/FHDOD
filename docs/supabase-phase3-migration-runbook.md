@@ -1,178 +1,192 @@
-# Runbook — migrations da Fase 3 no Supabase
+# Runbook — atualização da Fase 3 no Supabase
 
-## Escopo e limite de autorização
+## Escopo e regra de autorização
 
-Este roteiro prepara uma operação futura para as migrations `0003`, `0004` e
-`0005`. Ele **não autoriza** conexão, SQL, backup, migration, deploy ou mudança
-de configuração no Supabase. O banco principal foi confirmado anteriormente
-somente com os hashes de `0000`–`0002`; a presença de tabelas não prova o
-registro no ledger e deve ser confirmada de novo na janela autorizada.
+Este runbook prepara uma futura aplicação das migrations `0003`, `0004` e
+`0005`. Ele não autoriza conexão, SQL, backup, migration, deploy ou alteração
+de configuração no Supabase. Use somente conexão administrativa aprovada; nunca
+use a URL runtime `fhdod_api`, o bootstrap, seed ou SQL manual para marcar o
+ledger. Não grave URLs, dumps, tokens ou credenciais no repositório.
 
-Nunca use o bootstrap em banco existente, nunca insira linhas manualmente em
-`drizzle.__drizzle_migrations`, e nunca use a URL runtime (`fhdod_api`) para
-migrations. Não grave URLs, dumps ou credenciais neste repositório.
+O único SQL fora do journal é o órfão histórico documentado
+`0001_shift_sheet_versions.sql`; não o aplique nem o adicione ao journal.
 
-## Estado local validado
+## Contrato local e migrador
 
-O journal local contém, nesta ordem, `0000`, `0001`, `0002`, `0003`, `0004` e
-`0005`. O único SQL fora do journal é o órfão histórico documentado
-`0001_shift_sheet_versions.sql`, que não deve ser aplicado nem adicionado ao
-journal. O migrador oficial é `npm run migrate`; ele compara hashes e
-timestamps do ledger após a execução.
+O journal contém `0000` a `0005`, nessa ordem. `npm run migrate` é o único
+mecanismo de aplicação: após o Drizzle executar o journal, [migrate.ts](../src/db/migrate.ts) lê `drizzle.__drizzle_migrations`, ordena por
+`created_at` e exige igualdade exata de quantidade, hash e timestamp. Ele não
+repara divergências. Uma entrada inesperada, ausente, reordenada ou com hash ou
+timestamp distinto bloqueia a operação.
 
-| Migration | Efeito principal | Risco operacional |
+| Migration | Hash SHA-256 | Efeito e risco operacional |
 | --- | --- | --- |
-| `0003_make_global_nps_dynamic` | Fecha associações ativas materializadas de NPS global; overrides específicos permanecem ativos. | A mudança é de dados históricos; validar associações antes da janela. |
-| `0004_reconcile_runtime_rls_phase3` | Habilita RLS nas 30 tabelas e cria policies necessárias ao runtime `fhdod_api`. | Policies permissivas não implementam isolamento por setor; a autorização continua no Express. |
-| `0005_opposite_romulus` | Copia código/nome de `employees` para atribuições, torna `employee_id` opcional e recria índices. | Pode bloquear em DDL; falha se legado não tiver funcionário/código/nome válido ou houver colisão normalizada. |
+| `0000` | `b642fb03d4c9b7a6058adc35f89d55faae427dfea122ad19d9e1d058997dde73` | Policies RLS iniciais. |
+| `0001` | `2fd073c471546c8dc202f4ad12b6f49082e49844b6e256030416351791221dc1` | Policies de perguntas. |
+| `0002` | `9ea865b9f2e509496bec3f19c0de48c17ae3e133bd0b77aa5bcbd8e1ff8d9726` | `UPDATE` em versões de perguntas. |
+| `0003` | `90954af8cff4f995c7194fd31f5a10ad42e17e74229517777afbd7bbbeaf9539` | Fecha histórico NPS global materializado. |
+| `0004` | `dd79954fcea2b059ad855fa3fe18cc56100c9f62c1ad40f4922f9feac62a3aeb` | RLS nas 30 tabelas e 16 policies de runtime. |
+| `0005` | `a88fbac69749a7a705428dd415ad53440692ef820471032a77462252befb2403` | Retropreenchimento de atribuições e DDL com locks. |
 
-Em PostgreSQL descartável, `0005` foi validada para upgrade de ledger
-`0000`–`0002`, segunda execução idempotente e falha atômica diante de dado
-histórico inválido. Isso não substitui as pré-verificações produtivas.
+Os timestamps são os valores `when` de
+`src/db/migrations/meta/_journal.json`; o script de pré-verificação os inclui
+para comparação. O snapshot `0005_snapshot.json` e o baseline representam o
+estado esperado após `0005`.
 
-## Fase 1 — pré-verificação somente leitura
+## Fase 1 — pré-verificação produtiva, somente leitura
 
-**PRODUÇÃO — NÃO EXECUTAR SEM AUTORIZAÇÃO.** Execute estas consultas somente
-com conexão administrativa aprovada, no projeto confirmado pelo responsável.
+**Não execute sem autorização explícita de leitura e confirmação independente
+do projeto produtivo.** Abra uma sessão administrativa com transação somente
+leitura e execute [verify-phase3-production-readiness.sql](../scripts/db/verify-phase3-production-readiness.sql). Ele usa `BEGIN READ
+ONLY`, `SET LOCAL statement_timeout`, `SET LOCAL lock_timeout` e apenas
+catálogos ou `SELECT`; não chama funções da aplicação.
 
-```sql
--- Ledger: hashes e ordem devem ser comparados ao journal local.
-select id, hash, created_at
-from drizzle.__drizzle_migrations
-order by created_at, id;
+Registre com acesso restrito: operador, data/hora, identificador não sensível do
+projeto, resultado do ledger e contagens retornadas. Não registre conteúdo de
+pacientes, funcionários, connection strings ou dumps.
 
--- Schema de atribuições esperado antes de 0005.
-select column_name, data_type, is_nullable
-from information_schema.columns
-where table_schema = 'public'
-  and table_name = 'employee_shift_assignments'
-order by ordinal_position;
+### Critério de decisão
 
--- Pré-condição exata de 0005: FK ausente ou código/nome inválido bloqueia.
-select a.id, a.employee_id, e.employee_code, e.full_name
-from public.employee_shift_assignments a
-left join public.employees e on e.id = a.employee_id
-where e.id is null
-   or btrim(e.employee_code) = ''
-   or btrim(e.full_name) = '';
+| Resultado | Condição |
+| --- | --- |
+| **APTO** | Ledger contém exatamente `0000`–`0002` esperadas; `0003`–`0005` estão ausentes; 30 tabelas existem com RLS; nenhuma das 16 policies de `0004` já existe; grants/role são compatíveis; `0005` não tem dados inválidos, colisões nem estado parcial. |
+| **BLOQUEADO** | Divergência de ledger, tabela ausente, policy homônima, RLS/grant/owner inesperado, atributo privilegiado em `fhdod_api`, dado inválido, colisão, schema parcial ou backup indisponível. Não remova ou substitua policy existente automaticamente. |
+| **INDETERMINADO** | Consulta não executada, conexão/projeto não confirmados, schema não reconhecido, resultado truncado ou evidência insuficiente. |
 
--- Colisões que surgiriam nos índices de 0005, com a mesma normalização SQL.
-select a.shift_range_id, lower(btrim(e.employee_code)) as employee_code,
-       lower(btrim(e.full_name)) as employee_name, a.work_date, count(*)
-from public.employee_shift_assignments a
-join public.employees e on e.id = a.employee_id
-where a.work_date is not null
-group by a.shift_range_id, lower(btrim(e.employee_code)),
-         lower(btrim(e.full_name)), a.work_date
-having count(*) > 1;
+Presença de tabela, coluna ou índice não prova que uma migration foi registrada.
+Não insira ou edite linhas em `drizzle.__drizzle_migrations`.
 
-select a.shift_range_id, lower(btrim(e.employee_code)) as employee_code,
-       lower(btrim(e.full_name)) as employee_name, a.day_of_week, count(*)
-from public.employee_shift_assignments a
-join public.employees e on e.id = a.employee_id
-where a.day_of_week is not null
-group by a.shift_range_id, lower(btrim(e.employee_code)),
-         lower(btrim(e.full_name)), a.day_of_week
-having count(*) > 1;
+### Migration 0003 — NPS global dinâmico
 
--- Dados que 0003 pode encerrar como histórico materializado.
-select a.id, a.sector_id, a.question_id, a.assigned_at
-from public.sector_nps_assignments a
-join public.questions q on q.id = a.question_id
-where a.ended_at is null
-  and a.assignment_source = 'global'
-  and q.is_nps = true
-  and q.scope = 'all_sectors';
+A consulta do script usa exatamente o predicado do `UPDATE`: associação ativa,
+fonte `global`, pergunta `is_nps = true` e `scope = 'all_sectors'`. Ela retorna
+somente contagens, IDs técnicos e datas agregadas. Zero linhas elegíveis é
+válido. Associações `specific` ativas são apenas reportadas; não são fechadas.
 
--- RLS, policies, grants e atributos relevantes da role runtime.
-select c.relname, c.relrowsecurity, c.relforcerowsecurity
-from pg_class c
-where c.relnamespace = 'public'::regnamespace and c.relkind = 'r'
-order by c.relname;
+`0003` não atualiza `submission_session_questions`: snapshots existentes são
+preservados. Ainda assim, o backend antigo pode esperar NPS global materializado;
+isso exige confirmação da versão implantada antes da janela.
 
-select schemaname, tablename, policyname, permissive, roles, cmd, qual, with_check
-from pg_policies
-where schemaname = 'public'
-order by tablename, policyname;
+### Migration 0004 — RLS e policies
 
-select rolname, rolbypassrls, rolsuper, rolcreaterole, rolcreatedb
-from pg_roles
-where rolname = 'fhdod_api';
+A migration habilita RLS nas 30 tabelas do script e cria exatamente 16 policies:
 
-select table_name, privilege_type
-from information_schema.role_table_grants
-where grantee = 'fhdod_api' and table_schema = 'public'
-order by table_name, privilege_type;
-```
+- `fhdod_api_dashboard_dirty_groups_insert`
+- `fhdod_api_employee_shift_assignments_insert`
+- `fhdod_api_employee_shift_assignments_select`
+- `fhdod_api_employees_select`
+- `fhdod_api_sector_shift_ranges_insert`
+- `fhdod_api_shift_sheet_versions_update`
+- `fhdod_api_shift_sheet_versions_insert`
+- `fhdod_api_shift_upload_attempts_insert`
+- `fhdod_api_submission_answers_update`
+- `fhdod_api_submission_answers_insert`
+- `fhdod_api_submission_answers_select`
+- `fhdod_api_submission_session_questions_insert`
+- `fhdod_api_submission_session_questions_select`
+- `fhdod_api_submission_sessions_update`
+- `fhdod_api_submission_sessions_insert`
+- `fhdod_api_submission_sessions_select`
 
-Bloqueie a operação se o ledger não for exatamente reconciliável com os hashes
-locais, se qualquer consulta de `0005` retornar linha, se existirem policies
-homônimas inesperadas para `0004`, se o backup não for verificável, ou se a
-Data API não puder ser confirmada como fora da arquitetura administrativa.
+Qualquer policy homônima retornada pelo script bloqueia `0004`, mesmo se parecer
+equivalente: os `CREATE POLICY` históricos não usam `IF NOT EXISTS`. Avalie a
+origem da divergência antes de autorizar uma migration corretiva futura. Confirme
+também que `fhdod_api` não é superuser, não possui `BYPASSRLS`, não é owner e
+não recebe `DELETE` indevido. Policies permissivas para a role runtime não são
+isolamento por setor; a autorização continua no backend.
 
-## Fase 2 — backup e janela
+SQL confirma RLS, roles, ownership, policies e grants. A exposição da Data API,
+roles de API e schemas expostos exigem conferência separada no Dashboard do
+Supabase; RLS habilitado não comprova esse isolamento.
 
-**PRODUÇÃO — NÃO EXECUTAR SEM AUTORIZAÇÃO.** Antes da aplicação, o responsável
-deve confirmar projeto/ambiente, autorização, horário, armazenamento protegido,
-backup recente e procedimento de restauração testável. Backups podem conter
-dados hospitalares: mantenha-os cifrados, com acesso mínimo, sem enviá-los a
-serviços externos ou ao repositório.
+### Migration 0005 — dados, normalização e estado parcial
 
-Registre: operador, data/hora, projeto, hashes do ledger anterior, resultado das
-pré-verificações, localização protegida do backup e decisão de compatibilidade
-do backend. Prepare comunicação para indisponibilidade e impeça escritas se a
-janela exigir consistência operacional.
+O script classifica separadamente funcionário inexistente, código/nome `NULL`,
+vazio e composto apenas por espaços. A primeira validação histórica de `0005`
+captura referência inexistente e valores vazios/apenas espaços; `NULL` também é
+diagnosticado porque falharia na validação posterior após o retropreenchimento.
+Isso não exige alterar a migration: uma falha aborta a migration, devendo ser
+resolvida antes da janela.
 
-## Fase 3 — aplicação controlada futura
+As consultas de colisão reproduzem exatamente os novos índices: `shift_range_id`,
+`lower(btrim(employee_code))`, `lower(btrim(employee_name))` e, separadamente,
+`work_date IS NOT NULL` ou `day_of_week IS NOT NULL`. Não expõem códigos ou
+nomes, somente IDs técnicos, faixa, data/dia e contagem.
 
-**PRODUÇÃO — NÃO EXECUTAR SEM AUTORIZAÇÃO.** Somente após todas as condições
-anteriores, forneça ao ambiente administrativo uma `DATABASE_URL_MIGRATIONS`
-efêmera e execute o migrador oficial:
+Antes de `0005`, espera-se `employee_id` não nulo, ausência de
+`employee_code`/`employee_name` e os dois índices antigos presentes. Colunas
+novas, índices recriados, constraints novas ou valores retropreenchidos sem
+ledger correspondente são estado parcial/incompatível: **bloqueie**, não tente
+reconciliar por SQL avulso.
+
+`0005` usa `ALTER TABLE`, `DROP INDEX`, `UPDATE` e criação de índices não
+concorrente. Planeje janela com escritas suspensas e monitore locks; ela não é
+segura para atualização gradual sem esse controle.
+
+## Fase 2 — backup e recuperação futura autorizada
+
+Não crie nem restaure backup nesta preparação. Antes da migration, com aprovação
+separada, o operador deve:
+
+1. Criar um dump novo, cifrado e fora do repositório, por conexão administrativa
+   aprovada, imediatamente antes da janela.
+2. Registrar horário, operador, projeto confirmado, tamanho, checksum e local de
+   armazenamento com acesso mínimo; não registrar a URL de conexão.
+3. Validar a estrutura do archive (`pg_restore --list`) e, quando apropriado,
+   restaurar uma cópia em instância isolada descartável para teste de recuperação.
+4. Confirmar espaço, permissões, procedimento de restauração e decisão sobre
+   escritas ocorridas após o ponto de recuperação.
+
+Exemplo para a janela futura autorizada (substitua somente por variáveis
+efêmeras fora do histórico de shell e fora do repositório):
 
 ```bash
-# A URL administrativa não deve ser exibida, registrada em shell history ou
-# compartilhada com o runtime. O comando aplica o journal na ordem 0003, 0004, 0005.
-npm run migrate
+pg_dump --format=custom --file "$BACKUP_FILE" "$DATABASE_URL_MIGRATIONS"
+sha256sum "$BACKUP_FILE" > "$BACKUP_FILE.sha256"
+pg_restore --list --file "$BACKUP_FILE" > /dev/null
 ```
 
-Não execute SQL avulso para “marcar” migrations. O migrador valida o ledger ao
-fim. Em caso de falha, pare: não tente reaplicar bootstrap nem corrigir o ledger
-manualmente.
+O `pg_restore --list` valida que o archive pode ser lido; não substitui uma
+restauração de teste em instância isolada. Essa restauração é uma operação
+mutável futura, nunca uma ação no banco produtivo durante a pré-verificação.
 
-## Dependência operacional de retenção de auditoria
+Sucesso de `pg_dump` não prova restaurabilidade. Ausência de backup recente,
+checksum, validação de archive ou plano para dados posteriores ao backup bloqueia
+a aplicação. Nunca versione dumps hospitalares no Git.
 
-A retenção não é migration Drizzle. Após a atualização do schema e somente em
-operação administrativa separada e autorizada, aplique os scripts versionados de
-provisionamento e instalação da retenção. Eles criam a role de manutenção, o owner
-sem login, a função `SECURITY DEFINER` e policies RLS que permitem ao owner ler e
-remover somente registros vencidos. Não conceda `BYPASSRLS`, `DELETE` ao runtime
-ou uma policy ampla para substituir essas policies restritas.
+## Fase 3 — sequência futura controlada
 
-## Fase 4 — validação pós-migration e deploy separado
+1. Autorizar leitura, confirmar projeto e executar a pré-verificação.
+2. Resolver qualquer bloqueio com proposta aprovada; não corrigir ledger, RLS ou
+   dados diretamente durante a pré-verificação.
+3. Obter backup recente e verificável; aprovar janela, operador e suspensão de
+   escritas.
+4. Com conexão administrativa efêmera, executar somente `npm run migrate`.
+5. Parar em qualquer falha. Não reaplicar bootstrap, não marcar ledger à mão e
+   não prometer rollback automático.
+6. Confirmar ledger final, RLS/policies/grants, schema/retropreenchimento e
+   cenários Fase 3 antes do deploy separado.
 
-Confirme novamente ledger, schema de `employee_shift_assignments`, RLS, policies,
-grants e atributos de `fhdod_api`. Valide, em ambiente e janela autorizados:
-
-- upload CSV com profissional não cadastrado;
-- seleção por setor e plantão noturno;
-- criação de sessão, snapshots e NPS efetivo;
-- conclusão com pergunta setorial omitida;
-- inexistência de respostas fictícias;
-- Data API isolada da arquitetura administrativa.
-
-Deploy é uma decisão separada. O backend Fase 3 não é compatível com schema
-produtivo ainda em `0000`–`0002`: a importação CSV depende das colunas de
-`0005`, e operações runtime da Fase 3 dependem das policies de `0004`.
-
-| Backend | Schema até `0002` | Schema após `0003`–`0005` |
+| Backend | Schema até `0002` | Schema após `0005` |
 | --- | --- | --- |
-| Implantado atualmente | Não verificado nesta preparação. | Não verificado; `0003` pode alterar a expectativa de NPS materializado. |
-| Fase 3 | Incompatível para CSV/RLS de Fase 3. | Compatibilidade validada localmente. |
+| Backend implantado | **NÃO VERIFICADO** | **NÃO VERIFICADO**; `0003` pode alterar expectativa de NPS materializado. |
+| Backend Fase 3 | Incompatível: CSV depende de `employee_code`/`employee_name` e operações dependem das policies de `0004`. | Validado localmente; ainda requer verificação pós-migration e deploy separado. |
+
+Não faça deploy da Fase 3 antes de confirmar `0003`–`0005`. A compatibilidade do
+backend antigo não pode ser atribuída sem identificar a versão realmente ativa.
+
+## Retenção de auditoria: operação separada
+
+A retenção não é migration Drizzle e não faz parte de `npm run migrate`. Depois
+das migrations e somente mediante aprovação administrativa própria, os scripts
+versionados de retenção podem provisionar `fhdod_audit_maintenance`, o owner sem
+login, a função `SECURITY DEFINER` e policies RLS restritas a registros vencidos.
+Não conceda `BYPASSRLS`, `DELETE` ao runtime ou policy ampla. Essa operação não
+remove nenhum critério de prontidão de `0003`–`0005`.
 
 ## Recuperação
 
-Não há rollback automático. Uma falha antes do commit da migration deve deixar o
-ledger sem a entrada correspondente; confirme isso antes de qualquer ação.
-Depois de uma migration confirmada, recuperação pode exigir migration corretiva
-ou restauração do backup, com avaliação dos dados criados após a janela. Não
-restaure sem decisão humana sobre esses dados e sobre a versão do backend ativa.
+Não existe rollback automático. Antes do commit de uma migration, confirme o
+estado do ledger e pare. Depois de uma migration confirmada, a decisão entre
+migration corretiva, suspensão do deploy ou restauração deve considerar os dados
+criados depois do backup e ser tomada por responsável autorizado.
