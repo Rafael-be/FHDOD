@@ -11,6 +11,23 @@ jobs:
   validate:
     name: Validate API
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      POSTGRES_INTEGRATION_TESTS: "true"
+      LOCAL_DATABASE_URL: postgres://postgres@127.0.0.1:5432/fhdod_test
+      DATABASE_URL: postgres://fhdod_api@127.0.0.1:5432/fhdod_test
+      DATABASE_URL_MIGRATIONS: postgres://postgres@127.0.0.1:5432/fhdod_test
 
     steps:
       - name: Check out repository
@@ -25,6 +42,19 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Provision disposable PostgreSQL integration database
+        shell: bash
+        run: |
+          set -euo pipefail
+          until pg_isready -h 127.0.0.1 -p 5432 -U postgres -d postgres; do sleep 1; done
+          psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 5432 -U postgres -d postgres \
+            -c "CREATE DATABASE fhdod_test"
+          psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 5432 -U postgres -d postgres \
+            -c "ALTER DATABASE fhdod_test SET fhdod.disposable = 'true'"
+          psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 5432 -U postgres -d fhdod_test \
+            -f src/db/bootstrap/FHDOD.sql
+          npm run migrate
+
       - name: Type check
         run: npm run typecheck
 
@@ -35,4 +65,6 @@ jobs:
         run: npm run build
 
       - name: Run tests
+        # Audit-retention integration remains opt-in: its SECURITY DEFINER owner
+        # intentionally has no BYPASSRLS or permissive audit_logs policy in CI.
         run: npm test
