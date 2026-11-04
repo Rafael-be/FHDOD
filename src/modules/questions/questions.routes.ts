@@ -7,7 +7,6 @@ import type { QuestionsService } from "./questions.service.js";
 const id = z.coerce.number().int().positive();
 const sectorId = z.coerce.number().int().positive();
 const text = z.string().trim().min(1).max(2000);
-const order = z.number().int().positive();
 const scope = z.enum(["all_sectors", "selected_sectors"]);
 const scopedQuestion = z.object({ text, scope, sectorIds: z.array(id).max(100).default([]) }).superRefine(({ scope: value, sectorIds }, context) => {
   if (new Set(sectorIds).size !== sectorIds.length) context.addIssue({ code: "custom", path: ["sectorIds"], message: "Os setores devem ser distintos." });
