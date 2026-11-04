@@ -268,29 +268,43 @@ export class QuestionsRepository {
   }
 
   async reactivateScoped(question: QuestionRow): Promise<void> {
-    if (question.isNps) {
-      if (question.scope === "all_sectors") {
-        await this.sql`update questions set deleted_at=null,updated_at=now() where id=${question.id} and deleted_at is not null`;
-        return;
-      }
-      const targets = await this.sql<{ sectorId: number }[]>`select distinct sector_id as "sectorId" from sector_nps_assignments where question_id=${question.id}`;
-      for (const target of targets) {
-        const conflict = await this.sql<{ present: boolean }[]>`select exists(select 1 from sector_nps_assignments where sector_id=${target.sectorId} and ended_at is null and question_id<>${question.id}) as present`;
-        if (conflict[0]?.present) throw new Error("NPS reactivation conflict");
-      }
-      await this.sql`update questions set deleted_at=null,updated_at=now() where id=${question.id} and deleted_at is not null`;
-      for (const target of targets) await this.sql`insert into sector_nps_assignments(sector_id,question_id,assignment_source,assigned_by_user_id) values(${target.sectorId},${question.id},'specific',null)`;
-      return;
-    }
-    const targets = question.scope === "all_sectors"
-      ? await this.sql<{ sectorId: number; displayOrder: number }[]>`select s.id as "sectorId",coalesce((select a.display_order from question_sector_assignments a where a.question_id=${question.id} and a.sector_id=s.id order by a.assigned_at desc limit 1),(select coalesce(max(x.display_order),0)+1 from question_sector_assignments x where x.sector_id=s.id and x.ended_at is null)) as "displayOrder" from sectors s where s.deleted_at is null`
-      : await this.sql<{ sectorId: number; displayOrder: number }[]>`select distinct on (sector_id) sector_id as "sectorId",display_order as "displayOrder" from question_sector_assignments where question_id=${question.id} order by sector_id,assigned_at desc`;
-    for (const target of targets) {
-      const conflict = await this.sql<{ present: boolean }[]>`select exists(select 1 from question_sector_assignments where sector_id=${target.sectorId} and display_order=${target.displayOrder} and ended_at is null and question_id<>${question.id}) as present`;
-      if (conflict[0]?.present) throw new Error("standard question reactivation conflict");
-    }
     await this.sql`update questions set deleted_at=null,updated_at=now() where id=${question.id} and deleted_at is not null`;
-    for (const target of targets) await this.sql`insert into question_sector_assignments(question_id,sector_id,assignment_source,display_order,assigned_by_user_id) values(${question.id},${target.sectorId},${question.scope === "all_sectors" ? "global" : "selected"},${target.displayOrder},null)`;
+  }
+
+  /** Changes only one standard-question/sector link and keeps its historical row. */
+  async setStandardAssignmentActive(questionId: number, sectorId: number, active: boolean): Promise<boolean> {
+    await this.sql`select pg_advisory_xact_lock(912004, ${sectorId})`;
+    if (!active) {
+      const rows = await this.sql<{ id: number }[]>`
+        update question_sector_assignments
+        set ended_at=now()
+        where question_id=${questionId} and sector_id=${sectorId} and ended_at is null
+        returning id`;
+      return rows.length === 1;
+    }
+
+    const rows = await this.sql<{ id: number; displayOrder: number }[]>`
+      select distinct on (a.question_id,a.sector_id) a.id,a.display_order as "displayOrder"
+      from question_sector_assignments a
+      where a.question_id=${questionId} and a.sector_id=${sectorId} and a.ended_at is not null
+      order by a.question_id,a.sector_id,a.assigned_at desc,a.id desc`;
+    const previous = rows[0];
+    if (!previous) return false;
+    const conflicts = await this.sql<{ present: boolean }[]>`
+      select exists(
+        select 1 from question_sector_assignments
+        where sector_id=${sectorId} and ended_at is null and question_id<>${questionId}
+          and display_order=${previous.displayOrder}
+      ) as present`;
+    const next = conflicts[0]?.present
+      ? await this.sql<{ displayOrder: number }[]>`select coalesce(max(display_order),0)+1 as "displayOrder" from question_sector_assignments where sector_id=${sectorId}`
+      : [{ displayOrder: previous.displayOrder }];
+    const updated = await this.sql<{ id: number }[]>`
+      update question_sector_assignments
+      set ended_at=null,display_order=${next[0]!.displayOrder}
+      where id=${previous.id} and ended_at is not null
+      returning id`;
+    return updated.length === 1;
   }
 
   async inheritForSectorOn(sql: postgres.Sql, sectorId: number, actorId: number): Promise<void> {

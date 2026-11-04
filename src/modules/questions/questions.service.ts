@@ -157,11 +157,27 @@ export class QuestionsService {
     }
     return this.repository.transaction(async (repository) => {
       if (!await repository.setDeleted(id, deleted)) throw new DomainError("CONFLICT", "A pergunta já está nesse estado.", 409);
-      if (deleted) await repository.endAssignments(id, question.isNps);
       await repository.audit(actor.userId, deleted ? "question.deactivated" : "question.reactivated", id);
       const row = await repository.findQuestion(id);
       if (!row) throw notFound();
       return dto(row);
     });
+  }
+
+  async setStandardAssignmentActive(actor: AuthIdentity, questionId: number, sectorId: number, active: boolean) {
+    this.requireSuperuser(actor);
+    if (!await this.repository.activeSector(sectorId)) throw notFound("Setor não encontrado.");
+    const question = await this.repository.findQuestion(questionId);
+    if (!question || question.questionKind !== "standard" || question.isNps) throw notFound("Pergunta padrão não encontrada.");
+    try {
+      return await this.repository.transaction(async (repository) => {
+        if (!await repository.setStandardAssignmentActive(questionId, sectorId, active)) {
+          throw new DomainError("CONFLICT", active ? "O vínculo da pergunta não existe ou já está ativo." : "O vínculo da pergunta não está ativo.", 409);
+        }
+        await repository.audit(actor.userId, active ? "standard_question.assignment_reactivated" : "standard_question.assignment_deactivated", questionId);
+      });
+    } catch (error) {
+      throw mapQuestionConflict(error) ?? error;
+    }
   }
 }
