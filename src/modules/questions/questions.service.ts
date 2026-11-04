@@ -59,10 +59,10 @@ export class QuestionsService {
     }
   }
 
-  async createStandard(actor: AuthIdentity, input: { text: string; scope: "all_sectors" | "selected_sectors"; sectorIds: number[]; displayOrder: number }) {
+  async createStandard(actor: AuthIdentity, input: { text: string; scope: "all_sectors" | "selected_sectors"; sectorIds: number[] }) {
     this.requireSuperuser(actor);
     await this.validateScope(input.scope, input.sectorIds);
-    try { return await this.repository.transaction(async (repository) => { const row = await repository.createStandard(input.text, input.scope, input.sectorIds, input.displayOrder, actor.userId); await repository.audit(actor.userId, "standard_question.created", row.id); return dto(row); }); } catch (error) { throw mapQuestionConflict(error) ?? mapQuestionScopeError(error) ?? error; }
+    try { return await this.repository.transaction(async (repository) => { const row = await repository.createStandard(input.text, input.scope, input.sectorIds, actor.userId); await repository.audit(actor.userId, "standard_question.created", row.id); return dto(row); }); } catch (error) { throw mapQuestionConflict(error) ?? mapQuestionScopeError(error) ?? error; }
   }
 
   async createNps(actor: AuthIdentity, input: { text: string; scope: "all_sectors" | "selected_sectors"; sectorIds: number[]; replaceGlobal?: boolean }) {
@@ -115,10 +115,10 @@ export class QuestionsService {
     });
   }
 
-  async createSector(actor: AuthIdentity, sectorId: number, text: string, displayOrder: number) {
+  async createSector(actor: AuthIdentity, sectorId: number, text: string) {
     await this.authorize(actor, sectorId);
     if (!await this.repository.activeSector(sectorId)) throw notFound("Setor não encontrado.");
-    try { return await this.repository.transaction(async (repository) => { const row = await repository.createSector(sectorId, text, displayOrder, actor.userId); await repository.audit(actor.userId, "question.created", row.id); return dto(row); }); } catch (error) { throw mapQuestionConflict(error) ?? error; }
+    try { return await this.repository.transaction(async (repository) => { const row = await repository.createSector(sectorId, text, actor.userId); await repository.audit(actor.userId, "question.created", row.id); return dto(row); }); } catch (error) { throw mapQuestionConflict(error) ?? error; }
   }
 
   async updateText(actor: AuthIdentity, id: number, text: string) {

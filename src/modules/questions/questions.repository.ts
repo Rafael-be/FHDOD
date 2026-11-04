@@ -118,20 +118,26 @@ export class QuestionsRepository {
     return direct[0] ?? null;
   }
 
-  async createStandard(text: string, scope: "all_sectors" | "selected_sectors", sectorIds: number[], order: number, actorId: number): Promise<QuestionRow> {
+  async createStandard(text: string, scope: "all_sectors" | "selected_sectors", sectorIds: number[], actorId: number): Promise<QuestionRow> {
     const rows = await this.sql<QuestionRow[]>`
       insert into questions(question_kind,scope,sector_id,is_nps,display_order,created_by_user_id)
-      values ('standard',${scope},null,false,${order},${actorId})
+      values ('standard',${scope},null,false,1,${actorId})
       returning id,question_kind as "questionKind",scope,sector_id as "sectorId",is_nps as "isNps",display_order as "displayOrder",deleted_at as "deletedAt",1 as "versionNumber",${text}::text as text`;
     const question = rows[0]!;
     await this.sql`insert into question_versions(question_id,version_number,text,is_current,created_by_user_id) values(${question.id},1,${text},true,${actorId})`;
+    await this.sql`select pg_advisory_xact_lock(912004, id) from sectors where deleted_at is null ${scope === "selected_sectors" ? this.sql`and id = any(${sectorIds})` : this.sql``}`;
     const targets = scope === "all_sectors"
-      ? await this.sql<{ id: number }[]>`select id from sectors where deleted_at is null`
-      : await this.sql<{ id: number }[]>`select id from sectors where id = any(${sectorIds}) and deleted_at is null`;
-    if (targets.length !== (scope === "all_sectors" ? targets.length : new Set(sectorIds).size)) throw new Error("Invalid standard question sector scope");
-    for (const target of targets) {
-      await this.sql`insert into question_sector_assignments(question_id,sector_id,assignment_source,display_order,assigned_by_user_id) values(${question.id},${target.id},${scope === "all_sectors" ? "global" : "selected"},${order},${actorId})`;
-    }
+      ? this.sql`where s.deleted_at is null`
+      : this.sql`where s.id = any(${sectorIds}) and s.deleted_at is null`;
+    const inserted = await this.sql<{ id: number }[]>`
+      insert into question_sector_assignments(question_id,sector_id,assignment_source,display_order,assigned_by_user_id)
+      select ${question.id},s.id,${scope === "all_sectors" ? "global" : "selected"},coalesce(max(a.display_order),0)+1,${actorId}
+      from sectors s
+      left join question_sector_assignments a on a.sector_id=s.id
+      ${targets}
+      group by s.id
+      returning id`;
+    if (inserted.length !== (scope === "all_sectors" ? inserted.length : new Set(sectorIds).size)) throw new Error("Invalid standard question sector scope");
     return question;
   }
 
@@ -211,10 +217,12 @@ export class QuestionsRepository {
     for (const [index, id] of ids.entries()) await this.sql`update question_sector_assignments set display_order=${index + 1} where sector_id=${sectorId} and question_id=${id} and ended_at is null`;
   }
 
-  async createSector(sectorId: number, text: string, order: number, actorId: number): Promise<QuestionRow> {
+  async createSector(sectorId: number, text: string, actorId: number): Promise<QuestionRow> {
+    await this.sql`select pg_advisory_xact_lock(912004, ${sectorId})`;
     const rows = await this.sql<QuestionRow[]>`
       insert into questions(question_kind,scope,sector_id,is_nps,display_order,created_by_user_id)
-      values ('sector','sector_only',${sectorId},false,${order},${actorId})
+      select 'sector','sector_only',${sectorId},false,coalesce(max(display_order),0)+1,${actorId}
+      from questions where question_kind='sector' and sector_id=${sectorId}
       returning id,question_kind as "questionKind",scope,sector_id as "sectorId",is_nps as "isNps",display_order as "displayOrder",deleted_at as "deletedAt",
         1 as "versionNumber",${text}::text as text`;
     const question = rows[0]!;
@@ -286,13 +294,10 @@ export class QuestionsRepository {
   }
 
   async inheritForSectorOn(sql: postgres.Sql, sectorId: number, actorId: number): Promise<void> {
-    const standards = await sql<{ id: number; displayOrder: number }[]>`
-      select id,display_order as "displayOrder" from questions
+    await sql`insert into question_sector_assignments(question_id,sector_id,assignment_source,display_order,assigned_by_user_id)
+      select id,${sectorId},'global',row_number() over (order by id),${actorId}
+      from questions
       where question_kind='standard' and is_nps=false and scope='all_sectors' and deleted_at is null`;
-    for (const question of standards) {
-      await sql`insert into question_sector_assignments(question_id,sector_id,assignment_source,display_order,assigned_by_user_id)
-        values(${question.id},${sectorId},'global',${question.displayOrder},${actorId})`;
-    }
     // NPS global is resolved dynamically in listEffective; new sectors need no NPS row.
   }
 
