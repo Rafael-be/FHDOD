@@ -87,6 +87,6 @@ export class AdminRepository {
     where q.deleted_at is null and ((q.question_kind='sector' and q.sector_id=${sectorId})
       or (q.question_kind='standard' and q.is_nps=false and a.id is not null)
       or (q.is_nps=true and (override.id is not null or (global_nps.id=q.id and sector_override.id is null))))
-    order by q.is_nps, case when q.question_kind='sector' then 0 else 1 end, "displayOrder", q.id`; }
+    order by q.is_nps, "displayOrder", q.id`; }
   async audit(actor:number,action:string,entity:string,id:number,oldValues:object|null,newValues:object|null):Promise<void>{await this.sql`insert into audit_logs(actor_user_id,action,entity_type,entity_id,old_values,new_values,created_at) values(${actor},${action},${entity},${id},${oldValues === null ? null : JSON.stringify(oldValues)},${newValues === null ? null : JSON.stringify(newValues)},now())`;}
 }

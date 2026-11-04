@@ -76,7 +76,7 @@ export class QuestionsRepository {
       where ((q.question_kind='sector' and q.sector_id=${sectorId})
         or (q.question_kind='standard' and q.is_nps=false and a.id is not null)
         or (q.is_nps=true and (override.id is not null or (global_nps.id=q.id and sector_override.id is null)))) ${deleted}
-      order by q.is_nps, case when q.question_kind='sector' then 0 else 1 end, "displayOrder", q.id`;
+      order by q.is_nps, "displayOrder", q.id`;
   }
 
   /** Administrative catalogue: current version and active associations in one paginated query. */
@@ -131,7 +131,7 @@ export class QuestionsRepository {
       : this.sql`where s.id = any(${sectorIds}) and s.deleted_at is null`;
     const inserted = await this.sql<{ id: number }[]>`
       insert into question_sector_assignments(question_id,sector_id,assignment_source,display_order,assigned_by_user_id)
-      select ${question.id},s.id,${scope === "all_sectors" ? "global" : "selected"},coalesce(max(a.display_order),0)+1,${actorId}
+      select ${question.id},s.id,${scope === "all_sectors" ? "global" : "selected"},greatest(coalesce(max(a.display_order),0),coalesce((select max(local.display_order) from questions local where local.question_kind='sector' and local.sector_id=s.id),0))+1,${actorId}
       from sectors s
       left join question_sector_assignments a on a.sector_id=s.id
       ${targets}
@@ -197,32 +197,38 @@ export class QuestionsRepository {
   }
 
   async reorderSectorQuestions(sectorId: number, ids: number[]): Promise<void> {
-    const rows = await this.sql<{ id: number }[]>`
-      select id from questions where question_kind='sector' and sector_id=${sectorId} and deleted_at is null for update`;
+    const rows = await this.sql<{ id: number; kind: "sector" | "standard" }[]>`
+      select id,'sector'::text as kind from questions
+      where question_kind='sector' and sector_id=${sectorId} and deleted_at is null
+      union all
+      select a.question_id as id,'standard'::text as kind
+      from question_sector_assignments a join questions q on q.id=a.question_id
+      where a.sector_id=${sectorId} and a.ended_at is null and q.deleted_at is null and q.is_nps=false`;
     const expected = rows.map((row) => row.id).sort((a, b) => a - b);
     const received = [...ids].sort((a, b) => a - b);
-    if (expected.length !== received.length || expected.some((id, index) => id !== received[index])) throw new Error("Question reorder must contain every active sector question");
-    for (const [index, id] of ids.entries()) await this.sql`update questions set display_order=${1000000000 + index} where id=${id}`;
-    for (const [index, id] of ids.entries()) await this.sql`update questions set display_order=${index + 1},updated_at=now() where id=${id}`;
+    if (expected.length !== received.length || expected.some((id, index) => id !== received[index])) throw new Error("Question reorder must contain every active common question");
+    for (const [index, id] of ids.entries()) {
+      const row = rows.find((candidate) => candidate.id === id)!;
+      if (row.kind === "sector") await this.sql`update questions set display_order=${1000000000 + index} where id=${id}`;
+      else await this.sql`update question_sector_assignments set display_order=${1000000000 + index} where sector_id=${sectorId} and question_id=${id} and ended_at is null`;
+    }
+    for (const [index, id] of ids.entries()) {
+      const row = rows.find((candidate) => candidate.id === id)!;
+      if (row.kind === "sector") await this.sql`update questions set display_order=${index + 1},updated_at=now() where id=${id}`;
+      else await this.sql`update question_sector_assignments set display_order=${index + 1} where sector_id=${sectorId} and question_id=${id} and ended_at is null`;
+    }
   }
 
   async reorderStandardQuestions(sectorId: number, ids: number[]): Promise<void> {
-    const rows = await this.sql<{ id: number }[]>`
-      select a.question_id as id from question_sector_assignments a join questions q on q.id=a.question_id
-      where a.sector_id=${sectorId} and a.ended_at is null and q.deleted_at is null and q.is_nps=false for update`;
-    const expected = rows.map((row) => row.id).sort((a, b) => a - b);
-    const received = [...ids].sort((a, b) => a - b);
-    if (expected.length !== received.length || expected.some((id, index) => id !== received[index])) throw new Error("Question reorder must contain every active standard question");
-    for (const [index, id] of ids.entries()) await this.sql`update question_sector_assignments set display_order=${1000000000 + index} where sector_id=${sectorId} and question_id=${id} and ended_at is null`;
-    for (const [index, id] of ids.entries()) await this.sql`update question_sector_assignments set display_order=${index + 1} where sector_id=${sectorId} and question_id=${id} and ended_at is null`;
+    await this.reorderSectorQuestions(sectorId, ids);
   }
 
   async createSector(sectorId: number, text: string, actorId: number): Promise<QuestionRow> {
     await this.sql`select pg_advisory_xact_lock(912004, ${sectorId})`;
     const rows = await this.sql<QuestionRow[]>`
       insert into questions(question_kind,scope,sector_id,is_nps,display_order,created_by_user_id)
-      select 'sector','sector_only',${sectorId},false,coalesce(max(display_order),0)+1,${actorId}
-      from questions where question_kind='sector' and sector_id=${sectorId}
+      select 'sector','sector_only',${sectorId},false,greatest(coalesce(max(local.display_order),0),coalesce((select max(a.display_order) from question_sector_assignments a where a.sector_id=${sectorId}),0))+1,${actorId}
+      from questions local where local.question_kind='sector' and local.sector_id=${sectorId}
       returning id,question_kind as "questionKind",scope,sector_id as "sectorId",is_nps as "isNps",display_order as "displayOrder",deleted_at as "deletedAt",
         1 as "versionNumber",${text}::text as text`;
     const question = rows[0]!;

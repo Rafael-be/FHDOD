@@ -23,18 +23,27 @@ describeIntegration("QuestionsRepository PostgreSQL integration", () => {
           from roles r where r.code='superuser' returning id`;
         const [sector] = await tx<{ id: number }[]>`
           insert into sectors(code,name,created_at,updated_at) values(${`question-${suffix}`},'Question test',now(),now()) returning id`;
-        const question = await repository.createSector(sector!.id, "Texto inicial", 1, actor!.id);
+        const question = await repository.createSector(sector!.id, "Texto inicial", actor!.id);
         const updated = await repository.updateText(question.id, "Texto revisado", actor!.id);
         expect(updated).toMatchObject({ id: question.id, versionNumber: 2, text: "Texto revisado" });
         expect((await repository.listEffective(sector!.id, false))[0]).toMatchObject({ id: question.id, text: "Texto revisado" });
-        const standard = await repository.createStandard("Pergunta padrão", "all_sectors", [], 1, actor!.id);
+        const standard = await repository.createStandard("Pergunta padrão", "all_sectors", [], actor!.id);
         const updatedStandard = await repository.updateText(standard.id, "Texto padrão revisado", actor!.id);
         expect(updatedStandard).toMatchObject({ id: standard.id, questionKind: "standard", versionNumber: 2, text: "Texto padrão revisado" });
         const [secondSector] = await tx<{ id: number }[]>`
           insert into sectors(code,name,created_at,updated_at) values(${`question-second-${suffix}`},'Question test 2',now(),now()) returning id`;
         await repository.inheritForSectorOn(tx as unknown as postgres.Sql, secondSector!.id, actor!.id);
         expect((await repository.listEffective(secondSector!.id, false)).map((item) => item.id)).toContain(standard.id);
-        await repository.reorderSectorQuestions(sector!.id, [question.id]);
+        const secondStandard = await repository.createStandard("Outra pergunta padrão", "all_sectors", [], actor!.id);
+        const firstOrder = await tx<{ displayOrder: number }[]>`select display_order as "displayOrder" from question_sector_assignments where question_id=${standard.id} and sector_id=${sector!.id} and ended_at is null`;
+        const secondOrder = await tx<{ displayOrder: number }[]>`select display_order as "displayOrder" from question_sector_assignments where question_id=${secondStandard.id} and sector_id=${sector!.id} and ended_at is null`;
+        expect(firstOrder[0]?.displayOrder).toBe(2);
+        expect(secondOrder[0]?.displayOrder).toBe(3);
+        await repository.setStandardAssignmentActive(standard.id, sector!.id, false);
+        expect((await repository.listEffective(sector!.id, false)).map((item) => item.id)).not.toContain(standard.id);
+        await repository.setStandardAssignmentActive(standard.id, sector!.id, true);
+        await repository.reorderSectorQuestions(sector!.id, [secondStandard.id, question.id, standard.id]);
+        expect((await repository.listEffective(sector!.id, false)).map((item) => item.id)).toEqual([secondStandard.id, question.id, standard.id]);
         await repository.audit(actor!.id, "question.integration", question.id);
         throw new Error("ROLLBACK_TEST");
       })).rejects.toThrow("ROLLBACK_TEST");
@@ -134,7 +143,7 @@ describeIntegration("QuestionsRepository PostgreSQL integration", () => {
         const repository = new QuestionsRepository(tx as unknown as postgres.Sql);
         const [actor] = await tx<{ id: number }[]>`insert into users(role_id,full_name,email,password_hash,created_at,updated_at) select id,${`Catalogue ${suffix}`},${`catalogue-${suffix}@test.invalid`},'hash',now(),now() from roles where code='superuser' returning id`;
         const [sector] = await tx<{ id: number }[]>`insert into sectors(code,name,created_at,updated_at) values(${`catalogue-${suffix}`},'Catalogue',now(),now()) returning id`;
-        const standard = await repository.createStandard("Catalogue standard", "selected_sectors", [sector!.id], 1, actor!.id);
+        const standard = await repository.createStandard("Catalogue standard", "selected_sectors", [sector!.id], actor!.id);
         const nps = await repository.createNps("Catalogue NPS", "selected_sectors", [sector!.id], actor!.id);
         const standards = await repository.listCatalog({ type: "standard", state: "active", sectorId: sector!.id, limit: 25, offset: 0 });
         expect(standards).toEqual(expect.arrayContaining([expect.objectContaining({ id: standard.id, associations: [expect.objectContaining({ sectorId: sector!.id, active: true })] })]));
