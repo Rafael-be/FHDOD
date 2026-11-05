@@ -10,7 +10,7 @@ const preservedHashes: Record<string, string> = {
   "0002_add_question_versions_update_rls": "9ea865b9f2e509496bec3f19c0de48c17ae3e133bd0b77aa5bcbd8e1ff8d9726",
   "0003_make_global_nps_dynamic": "90954af8cff4f995c7194fd31f5a10ad42e17e74229517777afbd7bbbeaf9539",
   "0004_reconcile_runtime_rls_phase3": "dd79954fcea2b059ad855fa3fe18cc56100c9f62c1ad40f4922f9feac62a3aeb",
-  "0006_enforce_question_link_integrity": "81683f190c5a171cc5c357824e9670394cd2ed9e76da5d86db35d95333c8bea3",
+  "0006_enforce_question_link_integrity": "d4f6245133125beddd6f92dc8ac863d1c0a4b4cbbd0a4648335b3aeab6c7c88a",
 };
 
 describe("Drizzle migration inventory", () => {

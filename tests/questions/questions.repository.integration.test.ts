@@ -150,9 +150,9 @@ describeIntegration("QuestionsRepository PostgreSQL integration", () => {
         const standard = await repository.createStandard("Padrão", "selected_sectors", [sector!.id], actor!.id);
         const nps = await repository.createNps("NPS", "selected_sectors", [sector!.id], actor!.id);
 
-        await expect(tx`insert into question_sector_assignments(question_id,sector_id,assignment_source,display_order) values(${local.id},${sector!.id},'selected',99)`).rejects.toMatchObject({ code: "23514" });
-        await expect(tx`insert into question_sector_assignments(question_id,sector_id,assignment_source,display_order) values(${nps.id},${sector!.id},'selected',99)`).rejects.toMatchObject({ code: "23514" });
-        await expect(tx`insert into sector_nps_assignments(sector_id,question_id,assignment_source) values(${sector!.id},${standard.id},'specific')`).rejects.toMatchObject({ code: "23514" });
+        await expect(tx.savepoint((savepoint) => savepoint`insert into question_sector_assignments(question_id,sector_id,assignment_source,display_order) values(${local.id},${sector!.id},'selected',99)`)).rejects.toMatchObject({ code: "23514" });
+        await expect(tx.savepoint((savepoint) => savepoint`insert into question_sector_assignments(question_id,sector_id,assignment_source,display_order) values(${nps.id},${sector!.id},'selected',99)`)).rejects.toMatchObject({ code: "23514" });
+        await expect(tx.savepoint((savepoint) => savepoint`insert into sector_nps_assignments(sector_id,question_id,assignment_source) values(${sector!.id},${standard.id},'specific')`)).rejects.toMatchObject({ code: "23514" });
         expect(await repository.listEffective(sector!.id, false)).toEqual(expect.arrayContaining([
           expect.objectContaining({ id: standard.id }),
           expect.objectContaining({ id: nps.id }),

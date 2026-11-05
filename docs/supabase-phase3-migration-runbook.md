@@ -26,7 +26,7 @@ timestamp distinto bloqueia a operação.
 | `0003` | `90954af8cff4f995c7194fd31f5a10ad42e17e74229517777afbd7bbbeaf9539` | Fecha histórico NPS global materializado. |
 | `0004` | `dd79954fcea2b059ad855fa3fe18cc56100c9f62c1ad40f4922f9feac62a3aeb` | RLS nas 30 tabelas e 16 policies de runtime. |
 | `0005` | `a88fbac69749a7a705428dd415ad53440692ef820471032a77462252befb2403` | Retropreenchimento de atribuições e DDL com locks. |
-| `0006` | `81683f190c5a171cc5c357824e9670394cd2ed9e76da5d86db35d95333c8bea3` | Valida tipo de pergunta nos vínculos comuns/NPS e bloqueia reclassificação incompatível. |
+| `0006` | `d4f6245133125beddd6f92dc8ac863d1c0a4b4cbbd0a4648335b3aeab6c7c88a` | Valida tipo de pergunta nos vínculos comuns/NPS e bloqueia reclassificação incompatível. |
 
 Os timestamps são os valores `when` de
 `src/db/migrations/meta/_journal.json`; o script de pré-verificação os inclui

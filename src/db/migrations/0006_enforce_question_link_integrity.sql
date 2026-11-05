@@ -61,6 +61,10 @@ BEGIN
 END
 $$;--> statement-breakpoint
 
+DROP TRIGGER IF EXISTS question_sector_assignments_validate_question_kind ON public.question_sector_assignments;--> statement-breakpoint
+DROP TRIGGER IF EXISTS sector_nps_assignments_validate_question_kind ON public.sector_nps_assignments;--> statement-breakpoint
+DROP TRIGGER IF EXISTS questions_validate_linked_question_classification ON public.questions;--> statement-breakpoint
+
 CREATE TRIGGER question_sector_assignments_validate_question_kind
 BEFORE INSERT OR UPDATE OF question_id ON public.question_sector_assignments
 FOR EACH ROW EXECUTE FUNCTION public.validate_question_link_integrity();--> statement-breakpoint
