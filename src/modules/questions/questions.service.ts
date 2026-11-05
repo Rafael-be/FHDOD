@@ -59,10 +59,10 @@ export class QuestionsService {
     }
   }
 
-  async createStandard(actor: AuthIdentity, input: { text: string; scope: "all_sectors" | "selected_sectors"; sectorIds: number[]; displayOrder: number }) {
+  async createStandard(actor: AuthIdentity, input: { text: string; scope: "all_sectors" | "selected_sectors"; sectorIds: number[] }) {
     this.requireSuperuser(actor);
     await this.validateScope(input.scope, input.sectorIds);
-    try { return await this.repository.transaction(async (repository) => { const row = await repository.createStandard(input.text, input.scope, input.sectorIds, input.displayOrder, actor.userId); await repository.audit(actor.userId, "standard_question.created", row.id); return dto(row); }); } catch (error) { throw mapQuestionConflict(error) ?? mapQuestionScopeError(error) ?? error; }
+    try { return await this.repository.transaction(async (repository) => { const row = await repository.createStandard(input.text, input.scope, input.sectorIds, actor.userId); await repository.audit(actor.userId, "standard_question.created", row.id); return dto(row); }); } catch (error) { throw mapQuestionConflict(error) ?? mapQuestionScopeError(error) ?? error; }
   }
 
   async createNps(actor: AuthIdentity, input: { text: string; scope: "all_sectors" | "selected_sectors"; sectorIds: number[]; replaceGlobal?: boolean }) {
@@ -102,7 +102,7 @@ export class QuestionsService {
   async reorderSector(actor: AuthIdentity, sectorId: number, ids: number[]) {
     await this.authorize(actor, sectorId);
     return this.repository.transaction(async (repository) => {
-      try { await repository.reorderSectorQuestions(sectorId, ids); } catch (error) { if (error instanceof Error && error.message.includes("must contain")) throw new DomainError("INVALID_ORDER", "A ordem deve conter todas as perguntas ativas do setor.", 409); throw mapQuestionConflict(error) ?? error; }
+      try { await repository.reorderSectorQuestions(sectorId, ids); } catch (error) { if (error instanceof Error && error.message.includes("must contain")) throw new DomainError("INVALID_ORDER", "A ordem deve conter todas as perguntas comuns ativas do setor.", 409); throw mapQuestionConflict(error) ?? error; }
       await repository.audit(actor.userId, "question.reordered", sectorId);
     });
   }
@@ -110,15 +110,15 @@ export class QuestionsService {
   async reorderStandard(actor: AuthIdentity, sectorId: number, ids: number[]) {
     this.requireSuperuser(actor);
     return this.repository.transaction(async (repository) => {
-      try { await repository.reorderStandardQuestions(sectorId, ids); } catch (error) { if (error instanceof Error && error.message.includes("must contain")) throw new DomainError("INVALID_ORDER", "A ordem deve conter todas as perguntas padrão ativas do setor.", 409); throw mapQuestionConflict(error) ?? error; }
+      try { await repository.reorderStandardQuestions(sectorId, ids); } catch (error) { if (error instanceof Error && error.message.includes("must contain")) throw new DomainError("INVALID_ORDER", "A ordem deve conter todas as perguntas comuns ativas do setor.", 409); throw mapQuestionConflict(error) ?? error; }
       await repository.audit(actor.userId, "standard_question.reordered", sectorId);
     });
   }
 
-  async createSector(actor: AuthIdentity, sectorId: number, text: string, displayOrder: number) {
+  async createSector(actor: AuthIdentity, sectorId: number, text: string) {
     await this.authorize(actor, sectorId);
     if (!await this.repository.activeSector(sectorId)) throw notFound("Setor não encontrado.");
-    try { return await this.repository.transaction(async (repository) => { const row = await repository.createSector(sectorId, text, displayOrder, actor.userId); await repository.audit(actor.userId, "question.created", row.id); return dto(row); }); } catch (error) { throw mapQuestionConflict(error) ?? error; }
+    try { return await this.repository.transaction(async (repository) => { const row = await repository.createSector(sectorId, text, actor.userId); await repository.audit(actor.userId, "question.created", row.id); return dto(row); }); } catch (error) { throw mapQuestionConflict(error) ?? error; }
   }
 
   async updateText(actor: AuthIdentity, id: number, text: string) {
@@ -157,11 +157,27 @@ export class QuestionsService {
     }
     return this.repository.transaction(async (repository) => {
       if (!await repository.setDeleted(id, deleted)) throw new DomainError("CONFLICT", "A pergunta já está nesse estado.", 409);
-      if (deleted) await repository.endAssignments(id, question.isNps);
       await repository.audit(actor.userId, deleted ? "question.deactivated" : "question.reactivated", id);
       const row = await repository.findQuestion(id);
       if (!row) throw notFound();
       return dto(row);
     });
+  }
+
+  async setStandardAssignmentActive(actor: AuthIdentity, questionId: number, sectorId: number, active: boolean) {
+    this.requireSuperuser(actor);
+    if (!await this.repository.activeSector(sectorId)) throw notFound("Setor não encontrado.");
+    const question = await this.repository.findQuestion(questionId);
+    if (!question || question.questionKind !== "standard" || question.isNps) throw notFound("Pergunta padrão não encontrada.");
+    try {
+      return await this.repository.transaction(async (repository) => {
+        if (!await repository.setStandardAssignmentActive(questionId, sectorId, active)) {
+          throw new DomainError("CONFLICT", active ? "O vínculo da pergunta não existe ou já está ativo." : "O vínculo da pergunta não está ativo.", 409);
+        }
+        await repository.audit(actor.userId, active ? "standard_question.assignment_reactivated" : "standard_question.assignment_deactivated", questionId);
+      });
+    } catch (error) {
+      throw mapQuestionConflict(error) ?? error;
+    }
   }
 }

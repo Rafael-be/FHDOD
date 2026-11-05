@@ -43,6 +43,13 @@
       "when": 1793636951186,
       "tag": "0005_opposite_romulus",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793903993237,
+      "tag": "0006_enforce_question_link_integrity",
+      "breakpoints": true
     }
   ]
 }
