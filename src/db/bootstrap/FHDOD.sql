@@ -370,6 +370,56 @@ CREATE UNIQUE INDEX sector_nps_one_current_per_sector_uq
 CREATE INDEX sector_nps_question_idx
     ON public.sector_nps_assignments (question_id, ended_at);
 
+-- A FK simples não consegue expressar o tipo de pergunta permitido por cada
+-- tabela polimórfica de vínculo. As triggers protegem tanto inserções diretas
+-- quanto mudanças posteriores de classificação, sem apagar histórico.
+CREATE FUNCTION public.validate_question_link_integrity()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+DECLARE
+    linked_question public.questions%ROWTYPE;
+BEGIN
+    SELECT * INTO linked_question FROM public.questions WHERE id = NEW.question_id;
+    IF TG_TABLE_NAME = 'question_sector_assignments'
+       AND (linked_question.question_kind <> 'standard' OR linked_question.is_nps) THEN
+        RAISE EXCEPTION 'Vínculos comuns exigem pergunta padrão não-NPS.' USING ERRCODE = '23514';
+    END IF;
+    IF TG_TABLE_NAME = 'sector_nps_assignments'
+       AND (linked_question.question_kind <> 'standard' OR NOT linked_question.is_nps) THEN
+        RAISE EXCEPTION 'Vínculos NPS exigem pergunta NPS padrão.' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END
+$$;
+
+CREATE FUNCTION public.validate_question_classification_integrity()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF (NEW.question_kind <> 'standard' OR NEW.is_nps)
+       AND EXISTS (SELECT 1 FROM public.question_sector_assignments WHERE question_id = NEW.id) THEN
+        RAISE EXCEPTION 'Não é permitido tornar incompatível uma pergunta com vínculos comuns históricos.' USING ERRCODE = '23514';
+    END IF;
+    IF (NEW.question_kind <> 'standard' OR NOT NEW.is_nps)
+       AND EXISTS (SELECT 1 FROM public.sector_nps_assignments WHERE question_id = NEW.id) THEN
+        RAISE EXCEPTION 'Não é permitido tornar incompatível uma pergunta com vínculos NPS históricos.' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END
+$$;
+
+CREATE TRIGGER question_sector_assignments_validate_question_kind
+    BEFORE INSERT OR UPDATE OF question_id ON public.question_sector_assignments
+    FOR EACH ROW EXECUTE FUNCTION public.validate_question_link_integrity();
+CREATE TRIGGER sector_nps_assignments_validate_question_kind
+    BEFORE INSERT OR UPDATE OF question_id ON public.sector_nps_assignments
+    FOR EACH ROW EXECUTE FUNCTION public.validate_question_link_integrity();
+CREATE TRIGGER questions_validate_linked_question_classification
+    BEFORE UPDATE OF question_kind, is_nps ON public.questions
+    FOR EACH ROW EXECUTE FUNCTION public.validate_question_classification_integrity();
+
 -- ---------------------------------------------------------------------------
 -- Planilhas versionadas, faixas de turno e escala de funcionários
 -- O CSV original nunca é armazenado. Faixas e atribuições normalizadas são
@@ -848,6 +898,40 @@ INSERT INTO public.shift_sheet_versions
 VALUES
     (1, NULL, now(), now(), true);
 
+-- The runtime uses a non-owner, non-bypass role.  Keep RLS enabled from the
+-- initial state; migrations 0000 through 0004 install the command-specific
+-- fhdod_api policies after this bootstrap completes.
+ALTER TABLE public.audit_logs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.auth_refresh_tokens ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.auth_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.content_page_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.content_pages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.dashboard_dirty_groups ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.dashboard_summary_state ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.employee_shift_assignments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.employees ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.hourly_answer_summaries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.hourly_ombudsman_summaries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.hourly_session_summaries ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ombudsman_notes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.ombudsman_tickets ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.permissions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.question_sector_assignments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.question_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.questions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.role_permissions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.roles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sector_nps_assignments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sector_shift_ranges ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.sectors ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.shift_sheet_versions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.shift_upload_attempts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.submission_answers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.submission_session_questions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.submission_sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.user_sector_assignments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.users ENABLE ROW LEVEL SECURITY;
+
 -- ---------------------------------------------------------------------------
 -- Segurança: nenhum acesso de navegador/anon/authenticated/service_role aos
 -- objetos públicos desta aplicação. A Data API também deve ser desligada no
@@ -970,4 +1054,3 @@ COMMIT;
 -- * ativação/configuração de pg_cron, conforme disponibilidade no projeto Supabase;
 -- * configuração da senha de fhdod_api fora do repositório;
 -- * revisão dos grants em cada migração futura que criar novas tabelas/sequências.
-

@@ -19,6 +19,12 @@ import { healthRoutes } from "./modules/health/health.routes.js";
 import type { ContentService } from "./modules/content/content.service.js";
 import { contentRoutes } from "./modules/content/content.routes.js";
 import { performanceRequestLogger } from "./shared/performance.js";
+import type { ShiftSheetService } from "./modules/shifts/shift-sheet.service.js";
+import { shiftSheetRoutes } from "./modules/shifts/shift-sheet.routes.js";
+import type { SubmissionService } from "./modules/submissions/submission.service.js";
+import { submissionRoutes } from "./modules/submissions/submission.routes.js";
+import { submissionAnswerRoutes } from "./modules/submissions/submission.answer.routes.js";
+import { submissionRestartRoutes } from "./modules/submissions/submission.restart.routes.js";
 import type { QuestionsService } from "./modules/questions/questions.service.js";
 import { questionsRoutes } from "./modules/questions/questions.routes.js";
 
@@ -28,6 +34,8 @@ export interface AppDependencies {
   auditService?: AuditService;
   healthService?: HealthService;
   contentService?: ContentService;
+  shiftSheetService?: ShiftSheetService;
+  submissionService?: SubmissionService;
   questionsService?: QuestionsService;
 }
 
@@ -61,6 +69,8 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
     auditService,
     healthService,
     contentService,
+    shiftSheetService,
+    submissionService,
     questionsService,
   } = dependencies;
   const app = express();
@@ -69,11 +79,14 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
   app.use(helmet());
   app.use(cors({ origin: (origin, callback) => callback(null, !origin || origin === config.ALLOWED_ORIGIN), credentials: true, methods: ["GET", "POST", "PUT", "PATCH", "DELETE"] }));
   app.use(express.json({ limit: "32kb" })); app.use(cookieParser());
+  app.use(express.raw({ type: "application/octet-stream", limit: "5mb" }));
   app.use(performanceRequestLogger(config.PERFORMANCE_MEASUREMENTS));
   if (healthService) app.use(healthRoutes(healthService));
   else app.get("/health", (_request, response) => response.status(200).json({ data: { status: "ok" } }));
   app.use("/api/auth", authRoutes(authService, config));
+  if (submissionService) { app.use("/api", submissionRoutes(submissionService)); app.use("/api", submissionAnswerRoutes(submissionService)); app.use("/api", submissionRestartRoutes(submissionService)); }
   if (adminService) app.use("/api", authenticate(authService), adminRoutes(adminService, authService));
+  if (shiftSheetService) app.use("/api", authenticate(authService), shiftSheetRoutes(shiftSheetService, authService));
   if (auditService) app.use("/api", authenticate(authService), auditRoutes(auditService));
   if (contentService) app.use("/api", contentRoutes(contentService, authService));
   if (questionsService) app.use("/api", authenticate(authService), questionsRoutes(questionsService, authService));

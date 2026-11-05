@@ -14,6 +14,10 @@ import { HealthRepository } from "./modules/health/health.repository.js";
 import { HealthService } from "./modules/health/health.service.js";
 import { ContentRepository } from "./modules/content/content.repository.js";
 import { ContentService } from "./modules/content/content.service.js";
+import { PostgresShiftSheetRepository } from "./modules/shifts/shift-sheet.repository.js";
+import { ShiftSheetService } from "./modules/shifts/shift-sheet.service.js";
+import { PostgresSubmissionRepository } from "./modules/submissions/submission.repository.js";
+import { SubmissionService } from "./modules/submissions/submission.service.js";
 import { QuestionsRepository } from "./modules/questions/questions.repository.js";
 import { QuestionsService } from "./modules/questions/questions.service.js";
 import {
@@ -70,6 +74,8 @@ async function startServer(): Promise<void> {
     auditService: new AuditService(new AuditRepository(database.client)),
     healthService,
     contentService: new ContentService(new ContentRepository(database.client)),
+    shiftSheetService: new ShiftSheetService(new PostgresShiftSheetRepository(database.client), clock.now.bind(clock)),
+    submissionService: new SubmissionService(new PostgresSubmissionRepository(database.client), clock),
     questionsService: new QuestionsService(new QuestionsRepository(database.client)),
   });
   const server = app.listen(config.PORT, () => logServerStarted(config.PORT));

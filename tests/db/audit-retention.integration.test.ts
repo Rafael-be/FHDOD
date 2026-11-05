@@ -2,10 +2,13 @@ import "dotenv/config";
 import { randomUUID } from "node:crypto";
 import postgres from "postgres";
 import { PostgresAuditRetentionCleanup } from "../../src/db/audit-retention.js";
+import { testDatabaseUrl, usesIsolatedDatabase } from "../helpers/database.js";
 
 const maintenanceUrl = process.env.AUDIT_RETENTION_DATABASE_URL_TEST;
 const adminUrl = process.env.AUDIT_RETENTION_ADMIN_DATABASE_URL_TEST;
 const apiUrl = process.env.AUDIT_RETENTION_API_DATABASE_URL_TEST;
+const standardAdminUrl = testDatabaseUrl();
+const standardRuntimeUrl = process.env.DATABASE_URL;
 
 function isLocalAuditRetentionTestDatabase(value: string | undefined): boolean {
   if (!value) {
@@ -15,8 +18,8 @@ function isLocalAuditRetentionTestDatabase(value: string | undefined): boolean {
   try {
     const url = new URL(value);
 
-    return ["127.0.0.1", "localhost", "::1"].includes(url.hostname)
-      && url.pathname === "/fhdod_audit_retention_test";
+    return ["127.0.0.1", "localhost", "[::1]"].includes(url.hostname)
+      && url.pathname === "/fhdod_test";
   } catch {
     return false;
   }
@@ -25,6 +28,8 @@ function isLocalAuditRetentionTestDatabase(value: string | undefined): boolean {
 const integration = isLocalAuditRetentionTestDatabase(maintenanceUrl)
   && isLocalAuditRetentionTestDatabase(adminUrl)
   && isLocalAuditRetentionTestDatabase(apiUrl)
+  && usesIsolatedDatabase(standardAdminUrl, standardRuntimeUrl)
+  && usesIsolatedDatabase(adminUrl, apiUrl)
   ? describe
   : describe.skip;
 
@@ -170,5 +175,24 @@ integration("audit retention database routine", () => {
         'SELECT'
       ) as "canReadContent"
     `).resolves.toEqual([{ canReadContent: false }]);
+    await expect(admin<{ canLogin: boolean; bypassRls: boolean }[]>`
+      select rolcanlogin as "canLogin", rolbypassrls as "bypassRls"
+      from pg_roles where rolname = 'fhdod_audit_retention_owner'
+    `).resolves.toEqual([{ canLogin: false, bypassRls: false }]);
+    await expect(admin<{ rowSecurity: boolean }[]>`
+      select relrowsecurity as "rowSecurity"
+      from pg_class
+      where oid = 'public.audit_logs'::regclass
+    `).resolves.toEqual([{ rowSecurity: true }]);
+    await expect(admin<{ policyName: string; command: string; roles: string[] }[]>`
+      select policyname as "policyName", cmd as command, roles
+      from pg_policies
+      where schemaname = 'public' and tablename = 'audit_logs'
+        and policyname in ('fhdod_audit_retention_owner_expired_select', 'fhdod_audit_retention_owner_expired_delete')
+      order by policyname
+    `).resolves.toEqual([
+      { policyName: 'fhdod_audit_retention_owner_expired_delete', command: 'DELETE', roles: ['fhdod_audit_retention_owner'] },
+      { policyName: 'fhdod_audit_retention_owner_expired_select', command: 'SELECT', roles: ['fhdod_audit_retention_owner'] },
+    ]);
   });
 });

@@ -29,6 +29,42 @@ describe("OpenAPI request contracts", () => {
     for (const [path, method] of bodyOperations) expect(paths[path]![method]!.requestBody).toBeDefined();
   });
 
+  it("documents the protected shift sheet upload", () => {
+    const upload = openapiDocument.paths["/api/shift-sheets"].post;
+    expect(upload.security).toEqual([{ cookieAuth: [] }]);
+    expect(upload.requestBody.content["application/octet-stream"].schema).toMatchObject({ format: "binary" });
+  });
+
+  it("documents the shift sheet download", () => {
+    expect(openapiDocument.paths["/api/shift-sheets"].get).toMatchObject({ security: [{ cookieAuth: [] }] });
+  });
+
+  it("documents the anonymous submission start", () => {
+    expect(openapiDocument.info.description).toContain("Fases 1, 2 e 3");
+    expect(openapiDocument.paths["/api/public/sectors/{sectorId}/submissions"].post).toMatchObject({ responses: { "409": expect.anything(), "429": expect.anything() } });
+  });
+
+  it("documents anonymous restart", () => {
+    const restart = openapiDocument.paths["/api/public/submissions/{sessionId}/restart"].post;
+    expect(restart).not.toHaveProperty("security");
+    expect(restart.responses).toEqual(expect.objectContaining({ "404": expect.anything(), "429": expect.anything() }));
+  });
+
+  it("documents anonymous answer lifecycle errors", () => {
+    const answer = openapiDocument.paths["/api/public/submissions/{sessionId}/answers"].post;
+    expect(answer.responses).toEqual(expect.objectContaining({ "404": expect.anything(), "409": expect.anything(), "410": expect.anything(), "429": expect.anything() }));
+  });
+
+  it("documents the sector status response codes and cookie wording", () => {
+    expect(openapiDocument.paths["/api/sectors/{id}/deactivate"].post.responses).toEqual(expect.objectContaining({ "200": expect.anything() }));
+    expect(openapiDocument.paths["/api/sectors/{id}/deactivate"].post.responses["204"]).toBeUndefined();
+    expect(openapiDocument.paths["/api/sectors/{id}/reactivate"].post.responses).toEqual(expect.objectContaining({ "200": expect.anything() }));
+    expect(openapiDocument.paths["/api/sectors/{id}/reactivate"].post.responses["204"]).toBeUndefined();
+    expect(openapiDocument.paths["/api/questions/{id}/deactivate"].post.description).toContain("Exige cookie");
+    expect(openapiDocument.paths["/api/questions/{id}/reactivate"].post.description).toContain("Exige cookie");
+    expect(JSON.stringify(openapiDocument)).not.toContain("Exigecookie");
+  });
+
   it("documents the Fase 2 question and NPS request contracts", () => {
     const paths = openapiDocument.paths as Record<string, Record<string, { requestBody?: { content?: { "application/json"?: { schema?: { $ref?: string } } } } }>>;
     expect(paths["/api/sectors/{sectorId}/questions"].post.requestBody?.content?.["application/json"]?.schema?.$ref).toBe("#/components/schemas/QuestionRequest");

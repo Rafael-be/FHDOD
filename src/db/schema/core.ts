@@ -1,4 +1,4 @@
-import { boolean, index, integer, jsonb, pgTable, text, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgTable, text, time, timestamp, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 
 export const roles = pgTable("roles", { id: integer().primaryKey().generatedByDefaultAsIdentity(), code: text().notNull(), name: text().notNull() });
 export const users = pgTable("users", {
@@ -15,3 +15,22 @@ export const authRefreshTokens = pgTable("auth_refresh_tokens", {
 export const sectors = pgTable("sectors", { id: integer().primaryKey().generatedByDefaultAsIdentity(), code: text().notNull(), name: text().notNull(), createdByUserId: integer("created_by_user_id"), createdAt: timestamp("created_at", { withTimezone: true }).notNull(), updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(), deletedAt: timestamp("deleted_at", { withTimezone: true }) });
 export const userSectorAssignments = pgTable("user_sector_assignments", { id: integer().primaryKey().generatedByDefaultAsIdentity(), userId: integer("user_id").notNull(), sectorId: integer("sector_id").notNull(), assignedAt: timestamp("assigned_at", { withTimezone: true }).notNull(), assignedByUserId: integer("assigned_by_user_id"), unassignedAt: timestamp("unassigned_at", { withTimezone: true }), unassignedByUserId: integer("unassigned_by_user_id") });
 export const auditLogs = pgTable("audit_logs", { id: integer().primaryKey().generatedByDefaultAsIdentity(), actorUserId: integer("actor_user_id"), action: text().notNull(), entityType: text("entity_type").notNull(), entityId: integer("entity_id"), oldValues: jsonb("old_values"), newValues: jsonb("new_values"), createdAt: timestamp("created_at", { withTimezone: true }).notNull() });
+export const shiftSheetVersions = pgTable("shift_sheet_versions", {
+  id: integer().primaryKey().generatedByDefaultAsIdentity(),
+  versionNumber: integer("version_number").notNull(),
+  uploadedByUserId: integer("uploaded_by_user_id"),
+  uploadedAt: timestamp("uploaded_at", { withTimezone: true }).notNull(),
+  validFrom: timestamp("valid_from", { withTimezone: true }).notNull(),
+  isCurrent: boolean("is_current").notNull().default(false),
+});
+export const sectorShiftRanges = pgTable("sector_shift_ranges", {
+  id: integer().primaryKey().generatedByDefaultAsIdentity(),
+  shiftSheetVersionId: integer("shift_sheet_version_id").notNull(),
+  sectorId: integer("sector_id").notNull(),
+  shiftName: text("shift_name").notNull(),
+  startsAt: time("starts_at").notNull(),
+  endsAt: time("ends_at").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+});
+export const employees = pgTable("employees", { id: integer().primaryKey().generatedByDefaultAsIdentity(), employeeCode: text("employee_code").notNull(), fullName: text("full_name").notNull(), createdAt: timestamp("created_at", { withTimezone: true }).notNull(), updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(), deletedAt: timestamp("deleted_at", { withTimezone: true }) });
+export const employeeShiftAssignments = pgTable("employee_shift_assignments", { id: integer().primaryKey().generatedByDefaultAsIdentity(), shiftSheetVersionId: integer("shift_sheet_version_id").notNull(), sectorId: integer("sector_id").notNull(), shiftRangeId: integer("shift_range_id").notNull(), employeeId: integer("employee_id"), employeeCode: text("employee_code").notNull(), employeeName: text("employee_name").notNull(), workDate: text("work_date"), dayOfWeek: integer("day_of_week") });

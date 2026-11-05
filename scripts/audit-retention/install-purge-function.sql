@@ -18,6 +18,23 @@ BEGIN
 END
 $$;
 
+-- SECURITY DEFINER still obeys RLS for its non-owner table access. These
+-- policies grant the no-login function owner visibility and deletion only for
+-- the same expired rows enforced by the function body.
+DROP POLICY IF EXISTS fhdod_audit_retention_owner_expired_select ON public.audit_logs;
+CREATE POLICY fhdod_audit_retention_owner_expired_select
+ON public.audit_logs
+FOR SELECT
+TO fhdod_audit_retention_owner
+USING (created_at < now() - interval '48 hours');
+
+DROP POLICY IF EXISTS fhdod_audit_retention_owner_expired_delete ON public.audit_logs;
+CREATE POLICY fhdod_audit_retention_owner_expired_delete
+ON public.audit_logs
+FOR DELETE
+TO fhdod_audit_retention_owner
+USING (created_at < now() - interval '48 hours');
+
 CREATE OR REPLACE FUNCTION public.purge_expired_audit_logs()
 RETURNS TABLE (acquired_lock boolean, deleted_count integer)
 LANGUAGE plpgsql

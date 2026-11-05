@@ -65,4 +65,35 @@ describe("QuestionsService", () => {
     await expect(service.setDeleted(superuser, 9, false)).rejects.toMatchObject({ code: "QUESTION_ALREADY_ACTIVE", status: 409 });
     expect(reactivateScoped).not.toHaveBeenCalled();
   });
+
+  it("reactivates only the question and preserves individual assignment state", async () => {
+    const question = { id: 9, questionKind: "standard" as const, scope: "all_sectors" as const, sectorId: null, isNps: false, displayOrder: 1, deletedAt: new Date(), versionNumber: 1, text: "Pergunta" };
+    const setDeleted = jest.fn(async () => true);
+    const endAssignments = jest.fn(async () => undefined);
+    const service = new QuestionsService(repository({
+      findQuestion: async () => question,
+      setDeleted,
+      endAssignments,
+    }));
+
+    await service.setDeleted(superuser, question.id, true);
+
+    expect(setDeleted).toHaveBeenCalledWith(question.id, true);
+    expect(endAssignments).not.toHaveBeenCalled();
+  });
+
+  it("changes a standard-question link without changing the question globally", async () => {
+    const setStandardAssignmentActive = jest.fn(async () => true);
+    const audit = jest.fn(async () => undefined);
+    const service = new QuestionsService(repository({
+      findQuestion: async () => ({ id: 9, questionKind: "standard", scope: "all_sectors", sectorId: null, isNps: false, displayOrder: 1, deletedAt: null, versionNumber: 1, text: "Pergunta" }),
+      setStandardAssignmentActive,
+      audit,
+    }));
+
+    await service.setStandardAssignmentActive(superuser, 9, 7, false);
+
+    expect(setStandardAssignmentActive).toHaveBeenCalledWith(9, 7, false);
+    expect(audit).toHaveBeenCalledWith(1, "standard_question.assignment_deactivated", 9);
+  });
 });

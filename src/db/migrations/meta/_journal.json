@@ -29,6 +29,27 @@
       "when": 1792700002000,
       "tag": "0003_make_global_nps_dynamic",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793487670540,
+      "tag": "0004_reconcile_runtime_rls_phase3",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793636951186,
+      "tag": "0005_opposite_romulus",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793903993237,
+      "tag": "0006_enforce_question_link_integrity",
+      "breakpoints": true
     }
   ]
 }
