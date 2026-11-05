@@ -54,9 +54,9 @@ from drizzle.__drizzle_migrations
 order by created_at;
 ```
 
-Em novembro de 2026, o Supabase principal continua confirmado somente até
-`0000`–`0002`; não execute bootstrap, seed ou migrations nele sem procedimento
-operacional aprovado.
+Em novembro de 2026, o Supabase principal está confirmado até
+`0006_enforce_question_link_integrity`; não execute bootstrap, seed ou migrations
+futuras nele sem procedimento operacional aprovado.
 
 ## Credenciais por operação
 
