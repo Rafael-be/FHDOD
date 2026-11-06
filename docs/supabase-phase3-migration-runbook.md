@@ -12,7 +12,7 @@ O único SQL fora do journal é o órfão histórico documentado
 
 ## Contrato local e migrador
 
-O journal contém `0000` a `0006`, nessa ordem. `npm run migrate` é o único
+O journal contém `0000` a `0007`, nessa ordem. `npm run migrate` é o único
 mecanismo de aplicação: após o Drizzle executar o journal, [migrate.ts](../src/db/migrate.ts) lê `drizzle.__drizzle_migrations`, ordena por
 `created_at` e exige igualdade exata de quantidade, hash e timestamp. Ele não
 repara divergências. Uma entrada inesperada, ausente, reordenada ou com hash ou
@@ -27,6 +27,7 @@ timestamp distinto bloqueia a operação.
 | `0004` | `dd79954fcea2b059ad855fa3fe18cc56100c9f62c1ad40f4922f9feac62a3aeb` | RLS nas 30 tabelas e 16 policies de runtime. |
 | `0005` | `a88fbac69749a7a705428dd415ad53440692ef820471032a77462252befb2403` | Retropreenchimento de atribuições e DDL com locks. |
 | `0006` | `d4f6245133125beddd6f92dc8ac863d1c0a4b4cbbd0a4648335b3aeab6c7c88a` | Valida tipo de pergunta nos vínculos comuns/NPS e bloqueia reclassificação incompatível. |
+| `0007` | `87026f0698c32a8b23b5316cc6b1917c29fd42aaa48fec108c895a0c3d7265ab` | Impede materializar NPS global por setor, exige overrides `selected_sectors`/`specific` e bloqueia troca de scope com histórico. |
 
 Os timestamps são os valores `when` de
 `src/db/migrations/meta/_journal.json`; o script de pré-verificação os inclui
@@ -131,6 +132,19 @@ alterações se encontrar vínculo comum que não aponte para pergunta padrão
 não-NPS, ou vínculo NPS que não aponte para NPS. Ela não exclui nem reescreve
 histórico válido. As triggers também impedem reclassificar uma pergunta que já
 possui vínculos históricos incompatíveis.
+
+### Migration 0007 — integridade de scope do NPS
+
+Esta migration incremental ainda está **pendente de aplicação remota**. Antes da
+janela, a pré-verificação deve confirmar que cada vínculo NPS é um override
+`selected_sectors` com fonte `specific`, ou um vínculo global histórico já
+encerrado pela `0003` com fonte `global`. A migration aborta se encontrar
+qualquer outra combinação; ela não apaga nem converte o histórico válido.
+
+Após instalada, novos vínculos em `sector_nps_assignments` exigem NPS padrão de
+escopo `selected_sectors` e fonte `specific`. Um NPS que já possui qualquer
+vínculo histórico não pode ter seu scope alterado. O NPS global continua sendo
+resolvido dinamicamente, sem materializar vínculos para setores.
 
 ## Fase 2 — backup e recuperação futura autorizada
 
