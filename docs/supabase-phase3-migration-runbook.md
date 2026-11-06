@@ -27,7 +27,7 @@ timestamp distinto bloqueia a operação.
 | `0004` | `dd79954fcea2b059ad855fa3fe18cc56100c9f62c1ad40f4922f9feac62a3aeb` | RLS nas 30 tabelas e 16 policies de runtime. |
 | `0005` | `a88fbac69749a7a705428dd415ad53440692ef820471032a77462252befb2403` | Retropreenchimento de atribuições e DDL com locks. |
 | `0006` | `d4f6245133125beddd6f92dc8ac863d1c0a4b4cbbd0a4648335b3aeab6c7c88a` | Valida tipo de pergunta nos vínculos comuns/NPS e bloqueia reclassificação incompatível. |
-| `0007` | `56627fc8abbfaccc0d291e94d7218105bad3dd6d17bf69df8a74b61de2bad93d` | Impede materializar NPS global por setor, exige overrides ativos `selected_sectors`/`specific` e bloqueia troca de scope com histórico. |
+| `0007` | `134ec5a9170bd258b2ba5be14a423cd3c71a2f6d75239f951eec9223ed2688b6` | Impede materializar NPS global por setor, exige overrides ativos `selected_sectors`/`specific`, bloqueia reativação de histórico incompatível e bloqueia troca de scope com histórico. |
 
 Os timestamps são os valores `when` de
 `src/db/migrations/meta/_journal.json`; o script de pré-verificação os inclui
@@ -144,10 +144,14 @@ preservados como histórico, inclusive quando foram criados antes dessa regra. A
 migration aborta se encontrar combinação incompatível ativa; ela não apaga nem
 converte o histórico encerrado.
 
-Após instalada, novos vínculos em `sector_nps_assignments` exigem NPS padrão de
-escopo `selected_sectors` e fonte `specific`. Um NPS que já possui qualquer
-vínculo histórico não pode ter seu scope alterado. O NPS global continua sendo
-resolvido dinamicamente, sem materializar vínculos para setores.
+Após instalada, inserções em `sector_nps_assignments` exigem NPS padrão de
+escopo `selected_sectors` e fonte `specific`, mesmo quando já nascem
+encerradas. Um vínculo histórico incompatível pode permanecer consultável, mas
+não pode ser reativado nem ter pergunta ou fonte alteradas de forma incompatível.
+Um NPS que já possui qualquer vínculo histórico não pode ter seu scope alterado.
+Essas proteções são triggers PostgreSQL e também se aplicam a SQL direto. O NPS
+global continua sendo resolvido dinamicamente, sem materializar vínculos para
+setores.
 
 ## Fase 2 — backup e recuperação futura autorizada
 
