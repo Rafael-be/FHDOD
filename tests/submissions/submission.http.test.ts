@@ -11,6 +11,7 @@ const service = {
   restart: async () => ({ capability: { sessionId: "new-session", token: "new-capability" }, session: { sectorId: 7 }, questions: [] }),
 } as unknown as SubmissionService;
 const app = express();
+const sessionId = "00000000-0000-4000-8000-000000000001";
 app.use(express.json());
 app.use("/api", submissionRoutes(service));
 app.use("/api", submissionAnswerRoutes(service));
@@ -23,8 +24,8 @@ describe("anonymous submission HTTP routes", () => {
   });
 
   it("requires the ephemeral capability for answers and restart", async () => {
-    await request(app).post("/api/public/submissions/session/answers").send({ sessionQuestionId: 1, status: "answered", score: 3 }).expect(403);
-    await request(app).post("/api/public/submissions/session/answers").set("x-session-capability", "capability").send({ sessionQuestionId: 1, status: "answered", score: 3 }).expect(200);
-    await request(app).post("/api/public/submissions/session/restart").set("x-session-capability", "capability").expect(201);
+    await request(app).post(`/api/public/submissions/${sessionId}/answers`).send({ sessionQuestionId: 1, status: "answered", score: 3 }).expect(403);
+    await request(app).post(`/api/public/submissions/${sessionId}/answers`).set("x-session-capability", "capability").send({ sessionQuestionId: 1, status: "answered", score: 3 }).expect(200);
+    await request(app).post(`/api/public/submissions/${sessionId}/restart`).set("x-session-capability", "capability").expect(201);
   });
 });
