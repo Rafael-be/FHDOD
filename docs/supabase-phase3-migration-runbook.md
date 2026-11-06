@@ -2,7 +2,7 @@
 
 ## Escopo e regra de autorização
 
-Este runbook prepara uma futura aplicação das migrations `0003` a `0006`. Ele não autoriza conexão, SQL, backup, migration, deploy ou alteração
+Este runbook prepara uma futura aplicação da migration `0007`. Ele não autoriza conexão, SQL, backup, migration, deploy ou alteração
 de configuração no Supabase. Use somente conexão administrativa aprovada; nunca
 use a URL runtime `fhdod_api`, o bootstrap, seed ou SQL manual para marcar o
 ledger. Não grave URLs, dumps, tokens ou credenciais no repositório.
@@ -32,7 +32,7 @@ timestamp distinto bloqueia a operação.
 Os timestamps são os valores `when` de
 `src/db/migrations/meta/_journal.json`; o script de pré-verificação os inclui
 para comparação. O snapshot `0005_snapshot.json` e o baseline representam a
-estrutura declarativa após `0005`; `0006` acrescenta funções e triggers
+estrutura declarativa após `0005`; `0006` e `0007` acrescentam funções e triggers
 PostgreSQL, que não são representadas pelo schema Drizzle.
 
 ## Fase 1 — pré-verificação produtiva, somente leitura
@@ -51,7 +51,7 @@ pacientes, funcionários, connection strings ou dumps.
 
 | Resultado | Condição |
 | --- | --- |
-| **APTO** | Ledger contém exatamente `0000`–`0002` esperadas; `0003`–`0006` estão ausentes; 30 tabelas existem com RLS; nenhuma das 16 policies de `0004` já existe; grants/role são compatíveis; `0005` não tem dados inválidos, colisões nem estado parcial, e `0006` não encontra vínculos de perguntas incompatíveis. |
+| **APTO** | Ledger contém exatamente `0000`–`0006`; `0007` está ausente; 30 tabelas existem com RLS; grants/role são compatíveis; não há vínculos NPS incompatíveis com o scope da `0007`. |
 | **BLOQUEADO** | Divergência de ledger, tabela ausente, policy homônima, RLS/grant/owner inesperado, atributo privilegiado em `fhdod_api`, dado inválido, colisão, schema parcial ou backup indisponível. Não remova ou substitua policy existente automaticamente. |
 | **INDETERMINADO** | Consulta não executada, conexão/projeto não confirmados, schema não reconhecido, resultado truncado ou evidência insuficiente. |
 
@@ -190,13 +190,14 @@ a aplicação. Nunca versione dumps hospitalares no Git.
 6. Confirmar ledger final, RLS/policies/grants, schema/retropreenchimento e
    cenários Fase 3 antes do deploy separado.
 
-| Backend | Schema até `0002` | Schema após `0006` |
+| Backend | Schema até `0006` | Schema após `0007` |
 | --- | --- | --- |
-| Backend implantado | **NÃO VERIFICADO** | **NÃO VERIFICADO**; `0003` pode alterar expectativa de NPS materializado. |
-| Backend Fase 3 | Incompatível: CSV depende de `employee_code`/`employee_name` e operações dependem das policies de `0004`. | Requer validação local e verificação pós-migration antes do deploy separado. |
+| Backend implantado | Confirmado no ambiente de desenvolvimento. | **PENDENTE**; o NPS global continua dinâmico e não pode ter vínculo setorial novo. |
+| Backend Fase 3 | Compatível com o estado atual. | Requer aplicação controlada e verificação pós-migration antes do deploy separado. |
 
-Não faça deploy da Fase 3 antes de confirmar `0003`–`0006`. A compatibilidade do
-backend antigo não pode ser atribuída sem identificar a versão realmente ativa.
+Não faça deploy que dependa da proteção de scope antes de confirmar a `0007`. A
+compatibilidade do backend antigo não pode ser atribuída sem identificar a versão
+realmente ativa.
 
 ## Retenção de auditoria: operação separada
 
@@ -205,7 +206,7 @@ das migrations e somente mediante aprovação administrativa própria, os script
 versionados de retenção podem provisionar `fhdod_audit_maintenance`, o owner sem
 login, a função `SECURITY DEFINER` e policies RLS restritas a registros vencidos.
 Não conceda `BYPASSRLS`, `DELETE` ao runtime ou policy ampla. Essa operação não
-remove nenhum critério de prontidão de `0003`–`0006`.
+remove nenhum critério de prontidão da `0007`.
 
 ## Recuperação
 
