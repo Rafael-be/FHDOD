@@ -38,6 +38,18 @@ describeIntegration("NPS scope integrity PostgreSQL integration", () => {
         const [global] = await tx<{ id: number }[]>`
           insert into questions(question_kind,scope,sector_id,is_nps,display_order,created_by_user_id)
           values('standard','all_sectors',null,true,2147483647,${actor!.id}) returning id`;
+        await tx`set local session_replication_role = replica`;
+        await tx`
+          insert into sector_nps_assignments(
+            sector_id,question_id,assignment_source,assigned_by_user_id,ended_at
+          )
+          values(${otherSector!.id},${global!.id},'specific',${actor!.id},now())`;
+        await tx`set local session_replication_role = origin`;
+        const [{ count: closedHistoryCount }] = await tx<{ count: string }[]>`
+          select count(*)::text as count
+          from sector_nps_assignments
+          where question_id=${global!.id} and ended_at is not null`;
+        expect(closedHistoryCount).toBe("1");
         await expect(tx.savepoint((savepoint) => savepoint`
           insert into sector_nps_assignments(sector_id,question_id,assignment_source,assigned_by_user_id)
           values(${otherSector!.id},${global!.id},'global',${actor!.id})`)).rejects.toMatchObject({ code: "23514" });

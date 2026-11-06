@@ -1,5 +1,5 @@
 -- NPS global is resolved dynamically. Sector rows are valid only for
--- selected-sector overrides; legacy global rows closed by 0003 remain history.
+-- selected-sector overrides; closed historical rows remain immutable history.
 DO $$
 BEGIN
   IF EXISTS (
@@ -8,8 +8,7 @@ BEGIN
     JOIN public.questions q ON q.id = a.question_id
     WHERE q.question_kind <> 'standard'
        OR q.is_nps = false
-       OR (q.scope = 'selected_sectors' AND a.assignment_source <> 'specific')
-       OR (q.scope <> 'selected_sectors' AND (a.ended_at IS NULL OR a.assignment_source <> 'global'))
+       OR (a.ended_at IS NULL AND (q.scope <> 'selected_sectors' OR a.assignment_source <> 'specific'))
   ) THEN
     RAISE EXCEPTION 'Existem vínculos NPS incompatíveis com o escopo; corrija os dados antes de aplicar a migration 0007.';
   END IF;
