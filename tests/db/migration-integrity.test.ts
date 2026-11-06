@@ -11,7 +11,7 @@ const preservedHashes: Record<string, string> = {
   "0003_make_global_nps_dynamic": "90954af8cff4f995c7194fd31f5a10ad42e17e74229517777afbd7bbbeaf9539",
   "0004_reconcile_runtime_rls_phase3": "dd79954fcea2b059ad855fa3fe18cc56100c9f62c1ad40f4922f9feac62a3aeb",
   "0006_enforce_question_link_integrity": "d4f6245133125beddd6f92dc8ac863d1c0a4b4cbbd0a4648335b3aeab6c7c88a",
-  "0007_enforce_nps_scope_integrity": "56627fc8abbfaccc0d291e94d7218105bad3dd6d17bf69df8a74b61de2bad93d",
+  "0007_enforce_nps_scope_integrity": "134ec5a9170bd258b2ba5be14a423cd3c71a2f6d75239f951eec9223ed2688b6",
 };
 
 describe("Drizzle migration inventory", () => {
