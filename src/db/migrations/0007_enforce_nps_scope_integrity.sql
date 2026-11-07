@@ -30,6 +30,12 @@ BEGIN
   END IF;
 
   IF TG_TABLE_NAME = 'sector_nps_assignments' THEN
+    -- Once an assignment is closed it is an audit record. Its sector, question,
+    -- source, timestamps and actor must remain exactly as recorded.
+    IF TG_OP = 'UPDATE' AND OLD.ended_at IS NOT NULL THEN
+      RAISE EXCEPTION 'Não é permitido alterar vínculo NPS histórico encerrado.' USING ERRCODE = '23514';
+    END IF;
+
     IF linked_question.question_kind <> 'standard' OR NOT linked_question.is_nps THEN
       RAISE EXCEPTION 'Vínculos NPS exigem pergunta NPS padrão.' USING ERRCODE = '23514';
     END IF;
@@ -80,5 +86,5 @@ FOR EACH ROW EXECUTE FUNCTION public.validate_question_classification_integrity(
 
 DROP TRIGGER IF EXISTS sector_nps_assignments_validate_question_kind ON public.sector_nps_assignments;--> statement-breakpoint
 CREATE TRIGGER sector_nps_assignments_validate_question_kind
-BEFORE INSERT OR UPDATE OF question_id, assignment_source, ended_at ON public.sector_nps_assignments
+BEFORE INSERT OR UPDATE ON public.sector_nps_assignments
 FOR EACH ROW EXECUTE FUNCTION public.validate_question_link_integrity();

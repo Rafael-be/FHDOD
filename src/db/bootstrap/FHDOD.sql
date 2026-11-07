@@ -387,12 +387,22 @@ BEGIN
         RAISE EXCEPTION 'Vínculos comuns exigem pergunta padrão não-NPS.' USING ERRCODE = '23514';
     END IF;
     IF TG_TABLE_NAME = 'sector_nps_assignments' THEN
+        -- Um vínculo encerrado é registro de auditoria e não pode ser reescrito.
+        IF TG_OP = 'UPDATE' AND OLD.ended_at IS NOT NULL THEN
+            RAISE EXCEPTION 'Não é permitido alterar vínculo NPS histórico encerrado.' USING ERRCODE = '23514';
+        END IF;
         IF linked_question.question_kind <> 'standard' OR NOT linked_question.is_nps THEN
             RAISE EXCEPTION 'Vínculos NPS exigem pergunta NPS padrão.' USING ERRCODE = '23514';
         END IF;
-        IF (TG_OP = 'INSERT' OR NEW.question_id IS DISTINCT FROM OLD.question_id OR NEW.assignment_source IS DISTINCT FROM OLD.assignment_source)
-           AND (linked_question.scope <> 'selected_sectors' OR NEW.assignment_source <> 'specific') THEN
-            RAISE EXCEPTION 'Vínculos NPS novos exigem override específico de pergunta com escopo setorial.' USING ERRCODE = '23514';
+        IF TG_OP = 'INSERT' THEN
+            IF linked_question.scope <> 'selected_sectors' OR NEW.assignment_source <> 'specific' THEN
+                RAISE EXCEPTION 'Vínculos NPS novos exigem override específico de pergunta com escopo setorial.' USING ERRCODE = '23514';
+            END IF;
+        ELSIF (NEW.question_id IS DISTINCT FROM OLD.question_id
+               OR NEW.assignment_source IS DISTINCT FROM OLD.assignment_source
+               OR (NEW.ended_at IS NULL AND OLD.ended_at IS NOT NULL))
+          AND (linked_question.scope <> 'selected_sectors' OR NEW.assignment_source <> 'specific') THEN
+            RAISE EXCEPTION 'Não é permitido reativar ou alterar vínculo NPS histórico incompatível.' USING ERRCODE = '23514';
         END IF;
     END IF;
     RETURN NEW;
@@ -424,7 +434,7 @@ CREATE TRIGGER question_sector_assignments_validate_question_kind
     BEFORE INSERT OR UPDATE OF question_id ON public.question_sector_assignments
     FOR EACH ROW EXECUTE FUNCTION public.validate_question_link_integrity();
 CREATE TRIGGER sector_nps_assignments_validate_question_kind
-    BEFORE INSERT OR UPDATE OF question_id ON public.sector_nps_assignments
+    BEFORE INSERT OR UPDATE ON public.sector_nps_assignments
     FOR EACH ROW EXECUTE FUNCTION public.validate_question_link_integrity();
 CREATE TRIGGER questions_validate_linked_question_classification
     BEFORE UPDATE OF question_kind, is_nps, scope ON public.questions

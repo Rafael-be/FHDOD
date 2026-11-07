@@ -42,6 +42,27 @@ describeIntegration("NPS scope integrity PostgreSQL integration", () => {
           from sector_nps_assignments
           where sector_id=${sector!.id} and question_id=${override!.id} and ended_at is not null`;
         expect(closedOverrideCount).toBe("1");
+        const [otherOverride] = await tx<{ id: number }[]>`
+          insert into questions(question_kind,scope,sector_id,is_nps,display_order,created_by_user_id)
+          values('standard','selected_sectors',null,true,2147483647,${actor!.id}) returning id`;
+        await expect(tx.savepoint((savepoint) => savepoint`
+          update sector_nps_assignments set question_id=${otherOverride!.id}
+          where sector_id=${sector!.id} and question_id=${override!.id}`)).rejects.toMatchObject({ code: "23514" });
+        await expect(tx.savepoint((savepoint) => savepoint`
+          update sector_nps_assignments set sector_id=${otherSector!.id}
+          where sector_id=${sector!.id} and question_id=${override!.id}`)).rejects.toMatchObject({ code: "23514" });
+        await expect(tx.savepoint((savepoint) => savepoint`
+          update sector_nps_assignments set assigned_at=assigned_at - interval '1 minute'
+          where sector_id=${sector!.id} and question_id=${override!.id}`)).rejects.toMatchObject({ code: "23514" });
+        await expect(tx.savepoint((savepoint) => savepoint`
+          update sector_nps_assignments set assigned_by_user_id=null
+          where sector_id=${sector!.id} and question_id=${override!.id}`)).rejects.toMatchObject({ code: "23514" });
+        await expect(tx.savepoint((savepoint) => savepoint`
+          update sector_nps_assignments set assignment_source='global'
+          where sector_id=${sector!.id} and question_id=${override!.id}`)).rejects.toMatchObject({ code: "23514" });
+        await expect(tx.savepoint((savepoint) => savepoint`
+          update sector_nps_assignments set ended_at=ended_at + interval '1 minute'
+          where sector_id=${sector!.id} and question_id=${override!.id}`)).rejects.toMatchObject({ code: "23514" });
 
         await tx`update questions set deleted_at=now() where is_nps=true and scope='all_sectors' and deleted_at is null`;
         const [global] = await tx<{ id: number }[]>`
