@@ -57,6 +57,34 @@ describe("parseShiftSheet", () => {
     ]));
   });
 
+  it("rejects malformed CSV rows and ignores empty physical lines", () => {
+    const validWithEmptyLines = [header, "", row("00:00", "08:00", 1, "Madrugada"), "   ", row("08:00", "16:00", 1, "Dia"), row("16:00", "00:00", 1, "Noite")].join("\n");
+    expect(parseShiftSheet(bytes(validWithEmptyLines)).issues).toEqual([]);
+
+    const extraColumn = [header, `${row("00:00", "08:00")};extra`].join("\n");
+    expect(parseShiftSheet(bytes(extraColumn)).issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ line: 2, reason: "quantidade de colunas inválida" }),
+    ]));
+
+    const unclosedQuote = [header, 'enfermagem;Enfermagem;Madrugada;00:00;08:00;FIC-1;"Ana;1'].join("\n");
+    expect(parseShiftSheet(bytes(unclosedQuote)).issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ line: 2, reason: "aspas não terminadas" }),
+    ]));
+  });
+
+  it("rejects overlapping ranges even when their shift names differ", () => {
+    const input = [
+      header,
+      "enfermagem;Enfermagem;Madrugada;00:00;08:00;FIC-1;Ana;1",
+      "enfermagem;Enfermagem;Dia;08:00;16:00;FIC-1;Ana;1",
+      "enfermagem;Enfermagem;Dia alternativo;08:00;16:00;FIC-2;Bia;1",
+      "enfermagem;Enfermagem;Noite;16:00;00:00;FIC-1;Ana;1",
+    ].join("\n");
+    expect(parseShiftSheet(bytes(input)).issues).toEqual(expect.arrayContaining([
+      expect.objectContaining({ line: 4, reason: "sobreposição de faixas" }),
+    ]));
+  });
+
   it("reports gaps and overlaps by line", () => {
     const input = [header, row("00:00", "08:00"), row("07:59", "16:00"), row("16:00", "00:00")].join("\n");
     const result = parseShiftSheet(bytes(input));

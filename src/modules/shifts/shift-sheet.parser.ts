@@ -41,21 +41,33 @@ function timeInMinutes(value: string): number | undefined {
   return parts[0]! * 60 + parts[1]!;
 }
 
-function parseLine(line: string): string[] {
+function parseLine(line: string): { values: string[]; error?: string } {
   const values: string[] = [];
   let current = "";
   let quoted = false;
+  let quoteClosed = false;
   for (let index = 0; index < line.length; index += 1) {
     const char = line[index];
-    if (char === '"') {
-      if (quoted && line[index + 1] === '"') { current += '"'; index += 1; }
-      else quoted = !quoted;
-    } else if (char === ";" && !quoted) {
-      values.push(current); current = "";
-    } else current += char;
+    if (quoted) {
+      if (char === '"') {
+        if (line[index + 1] === '"') { current += '"'; index += 1; }
+        else { quoted = false; quoteClosed = true; }
+      } else current += char;
+      continue;
+    }
+    if (char === ";") {
+      values.push(current); current = ""; quoteClosed = false;
+    } else if (char === '"') {
+      if (current.length > 0 || quoteClosed) return { values, error: "aspas em posição inválida" };
+      quoted = true;
+    } else {
+      if (quoteClosed) return { values, error: "aspas em posição inválida" };
+      current += char;
+    }
   }
+  if (quoted) return { values, error: "aspas não terminadas" };
   values.push(current);
-  return values;
+  return { values };
 }
 
 function coverageIssues(rows: ShiftSheetRow[]): ShiftSheetIssue[] {
@@ -68,7 +80,7 @@ function coverageIssues(rows: ShiftSheetRow[]): ShiftSheetIssue[] {
 
   for (const [key, group] of groups) {
     const ranges = new Map<string, ShiftSheetRow>();
-    for (const row of group) ranges.set(`${row.startsAt}:${row.endsAt}`, row);
+    for (const row of group) ranges.set(`${row.nome_turno}:${row.startsAt}:${row.endsAt}`, row);
     const segments = [...ranges.values()].flatMap((row) => row.endsAt > row.startsAt
       ? [{ start: row.startsAt, end: row.endsAt, row }]
       : [{ start: row.startsAt, end: 1440, row }, { start: 0, end: row.endsAt, row }]);
@@ -97,14 +109,21 @@ export function parseShiftSheet(input: Uint8Array): ParsedShiftSheet {
   catch { return { rows: [], issues: [{ reason: "codificação UTF-8 inválida" }] }; }
   const lines = text.replace(/\r\n?/g, "\n").split("\n").filter((line, index, all) => !(index === all.length - 1 && line === ""));
   if (lines.length < 2) return { rows: [], issues: [{ reason: "arquivo sem dados" }] };
-  const actualHeaders = parseLine(lines[0]!).map((value) => value.trim());
-  if (actualHeaders.join(";") !== headers.join(";")) return { rows: [], issues: [{ reason: "estrutura de colunas inválida" }] };
+  const headerLine = parseLine(lines[0]!);
+  const actualHeaders = headerLine.values.map((value) => value.trim());
+  if (headerLine.error || actualHeaders.length !== headers.length || actualHeaders.join(";") !== headers.join(";")) return { rows: [], issues: [{ reason: "estrutura de colunas inválida" }] };
 
   const rows: ShiftSheetRow[] = [];
   const seen = new Set<string>();
   for (let index = 1; index < lines.length; index += 1) {
     const lineNumber = index + 1;
-    const values = parseLine(lines[index]!);
+    if (lines[index]!.trim() === "") continue;
+    const csvLine = parseLine(lines[index]!);
+    if (csvLine.error || csvLine.values.length !== headers.length) {
+      issues.push({ line: lineNumber, reason: csvLine.error ?? "quantidade de colunas inválida" });
+      continue;
+    }
+    const values = csvLine.values;
     const raw = Object.fromEntries(headers.map((header, column) => [header, values[column] ?? ""]));
     const parsed = rowSchema.safeParse(raw);
     if (!parsed.success) { issues.push({ line: lineNumber, reason: "campos ausentes ou vazios" }); continue; }

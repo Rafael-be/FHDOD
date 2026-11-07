@@ -28,4 +28,9 @@ describe("public submission routes through createApp", () => {
     await request(app).post("/api/public/submissions/session-http/answers").send({ sessionQuestionId: 1, status: "answered", score: 3 }).expect(403);
     await request(app).post("/api/public/submissions/session-http/restart").expect(403);
   });
+
+  it("rejects malformed public session identifiers before authorization", async () => {
+    await request(app).post("/api/public/submissions/not-a-uuid/answers").set("x-session-capability", "cap-http").send({ sessionQuestionId: 1, status: "answered", score: 3 }).expect(400);
+    await request(app).post("/api/public/submissions/not-a-uuid/restart").set("x-session-capability", "cap-http").expect(400);
+  });
 });

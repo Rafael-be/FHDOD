@@ -2,7 +2,7 @@
 
 ## Escopo e regra de autorização
 
-Este runbook prepara uma futura aplicação das migrations `0003` a `0006`. Ele não autoriza conexão, SQL, backup, migration, deploy ou alteração
+Este runbook prepara uma futura aplicação da migration `0007`. Ele não autoriza conexão, SQL, backup, migration, deploy ou alteração
 de configuração no Supabase. Use somente conexão administrativa aprovada; nunca
 use a URL runtime `fhdod_api`, o bootstrap, seed ou SQL manual para marcar o
 ledger. Não grave URLs, dumps, tokens ou credenciais no repositório.
@@ -12,7 +12,7 @@ O único SQL fora do journal é o órfão histórico documentado
 
 ## Contrato local e migrador
 
-O journal contém `0000` a `0006`, nessa ordem. `npm run migrate` é o único
+O journal contém `0000` a `0007`, nessa ordem. `npm run migrate` é o único
 mecanismo de aplicação: após o Drizzle executar o journal, [migrate.ts](../src/db/migrate.ts) lê `drizzle.__drizzle_migrations`, ordena por
 `created_at` e exige igualdade exata de quantidade, hash e timestamp. Ele não
 repara divergências. Uma entrada inesperada, ausente, reordenada ou com hash ou
@@ -27,20 +27,23 @@ timestamp distinto bloqueia a operação.
 | `0004` | `dd79954fcea2b059ad855fa3fe18cc56100c9f62c1ad40f4922f9feac62a3aeb` | RLS nas 30 tabelas e 16 policies de runtime. |
 | `0005` | `a88fbac69749a7a705428dd415ad53440692ef820471032a77462252befb2403` | Retropreenchimento de atribuições e DDL com locks. |
 | `0006` | `d4f6245133125beddd6f92dc8ac863d1c0a4b4cbbd0a4648335b3aeab6c7c88a` | Valida tipo de pergunta nos vínculos comuns/NPS e bloqueia reclassificação incompatível. |
+| `0007` | `8c411d9e5257c95930f9eb3d7ec246f318866ae5d61a4b6f3cc34a21fc8d4507` | Impede materializar NPS global por setor, exige overrides ativos `selected_sectors`/`specific`, torna imutáveis vínculos NPS encerrados e bloqueia troca de scope com histórico. |
 
 Os timestamps são os valores `when` de
 `src/db/migrations/meta/_journal.json`; o script de pré-verificação os inclui
 para comparação. O snapshot `0005_snapshot.json` e o baseline representam a
-estrutura declarativa após `0005`; `0006` acrescenta funções e triggers
+estrutura declarativa após `0005`; `0006` e `0007` acrescentam funções e triggers
 PostgreSQL, que não são representadas pelo schema Drizzle.
 
 ## Fase 1 — pré-verificação produtiva, somente leitura
 
 **Não execute sem autorização explícita de leitura e confirmação independente
 do projeto produtivo.** Abra uma sessão administrativa com transação somente
-leitura e execute [verify-phase3-production-readiness.sql](../scripts/db/verify-phase3-production-readiness.sql). Ele usa `BEGIN READ
+leitura e execute [verify-0007-nps-scope-readiness.sql](../scripts/db/verify-0007-nps-scope-readiness.sql). Ele usa `BEGIN READ
 ONLY`, `SET LOCAL statement_timeout`, `SET LOCAL lock_timeout` e apenas
-catálogos ou `SELECT`; não chama funções da aplicação.
+catálogos ou `SELECT`; não chama funções da aplicação. O script anterior
+`verify-phase3-production-readiness.sql` é histórico (pré-`0003`–`0005`) e não
+substitui esta verificação.
 
 Registre com acesso restrito: operador, data/hora, identificador não sensível do
 projeto, resultado do ledger e contagens retornadas. Não registre conteúdo de
@@ -50,7 +53,7 @@ pacientes, funcionários, connection strings ou dumps.
 
 | Resultado | Condição |
 | --- | --- |
-| **APTO** | Ledger contém exatamente `0000`–`0002` esperadas; `0003`–`0006` estão ausentes; 30 tabelas existem com RLS; nenhuma das 16 policies de `0004` já existe; grants/role são compatíveis; `0005` não tem dados inválidos, colisões nem estado parcial, e `0006` não encontra vínculos de perguntas incompatíveis. |
+| **APTO** | Ledger contém exatamente `0000`–`0006`; `0007` está ausente; 30 tabelas existem com RLS; grants/role são compatíveis; não há vínculos NPS incompatíveis com o scope da `0007`. |
 | **BLOQUEADO** | Divergência de ledger, tabela ausente, policy homônima, RLS/grant/owner inesperado, atributo privilegiado em `fhdod_api`, dado inválido, colisão, schema parcial ou backup indisponível. Não remova ou substitua policy existente automaticamente. |
 | **INDETERMINADO** | Consulta não executada, conexão/projeto não confirmados, schema não reconhecido, resultado truncado ou evidência insuficiente. |
 
@@ -132,6 +135,24 @@ não-NPS, ou vínculo NPS que não aponte para NPS. Ela não exclui nem reescrev
 histórico válido. As triggers também impedem reclassificar uma pergunta que já
 possui vínculos históricos incompatíveis.
 
+### Migration 0007 — integridade de scope do NPS
+
+Esta migration incremental ainda está **pendente de aplicação remota**. Antes da
+janela, a pré-verificação deve confirmar que cada vínculo NPS **ativo** é um
+override `selected_sectors` com fonte `specific`. Vínculos já encerrados são
+preservados como histórico, inclusive quando foram criados antes dessa regra. A
+migration aborta se encontrar combinação incompatível ativa; ela não apaga nem
+converte o histórico encerrado.
+
+Após instalada, inserções em `sector_nps_assignments` exigem NPS padrão de
+escopo `selected_sectors` e fonte `specific`, mesmo quando já nascem
+encerradas. Um vínculo histórico incompatível pode permanecer consultável, mas
+não pode ser alterado nem reativado.
+Um NPS que já possui qualquer vínculo histórico não pode ter seu scope alterado.
+Essas proteções são triggers PostgreSQL e também se aplicam a SQL direto. O NPS
+global continua sendo resolvido dinamicamente, sem materializar vínculos para
+setores.
+
 ## Fase 2 — backup e recuperação futura autorizada
 
 Não crie nem restaure backup nesta preparação. Antes da migration, com aprovação
@@ -176,13 +197,14 @@ a aplicação. Nunca versione dumps hospitalares no Git.
 6. Confirmar ledger final, RLS/policies/grants, schema/retropreenchimento e
    cenários Fase 3 antes do deploy separado.
 
-| Backend | Schema até `0002` | Schema após `0006` |
+| Backend | Schema até `0006` | Schema após `0007` |
 | --- | --- | --- |
-| Backend implantado | **NÃO VERIFICADO** | **NÃO VERIFICADO**; `0003` pode alterar expectativa de NPS materializado. |
-| Backend Fase 3 | Incompatível: CSV depende de `employee_code`/`employee_name` e operações dependem das policies de `0004`. | Requer validação local e verificação pós-migration antes do deploy separado. |
+| Backend implantado | Confirmado no ambiente de desenvolvimento. | **PENDENTE**; o NPS global continua dinâmico e não pode ter vínculo setorial novo. |
+| Backend Fase 3 | Compatível com o estado atual. | Requer aplicação controlada e verificação pós-migration antes do deploy separado. |
 
-Não faça deploy da Fase 3 antes de confirmar `0003`–`0006`. A compatibilidade do
-backend antigo não pode ser atribuída sem identificar a versão realmente ativa.
+Não faça deploy que dependa da proteção de scope antes de confirmar a `0007`. A
+compatibilidade do backend antigo não pode ser atribuída sem identificar a versão
+realmente ativa.
 
 ## Retenção de auditoria: operação separada
 
@@ -191,7 +213,7 @@ das migrations e somente mediante aprovação administrativa própria, os script
 versionados de retenção podem provisionar `fhdod_audit_maintenance`, o owner sem
 login, a função `SECURITY DEFINER` e policies RLS restritas a registros vencidos.
 Não conceda `BYPASSRLS`, `DELETE` ao runtime ou policy ampla. Essa operação não
-remove nenhum critério de prontidão de `0003`–`0006`.
+remove nenhum critério de prontidão da `0007`.
 
 ## Recuperação
 

@@ -50,6 +50,13 @@
       "when": 1793903993237,
       "tag": "0006_enforce_question_link_integrity",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793990400000,
+      "tag": "0007_enforce_nps_scope_integrity",
+      "breakpoints": true
     }
   ]
 }

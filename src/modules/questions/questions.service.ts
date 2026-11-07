@@ -152,10 +152,13 @@ export class QuestionsService {
         return dto(row);
       });
     }
-    if (!deleted && await this.repository.hasActiveOrderConflict(question)) {
-      throw new DomainError("QUESTION_ORDER_CONFLICT", "A posição da pergunta já está ocupada.", 409);
-    }
     return this.repository.transaction(async (repository) => {
+      if (!deleted && question.questionKind === "sector" && question.sectorId !== null) {
+        await repository.lockSectorQuestionOrder(question.sectorId);
+        if (await repository.hasActiveOrderConflict(question)) {
+          throw new DomainError("QUESTION_ORDER_CONFLICT", "A posição da pergunta já está ocupada.", 409);
+        }
+      }
       if (!await repository.setDeleted(id, deleted)) throw new DomainError("CONFLICT", "A pergunta já está nesse estado.", 409);
       await repository.audit(actor.userId, deleted ? "question.deactivated" : "question.reactivated", id);
       const row = await repository.findQuestion(id);
