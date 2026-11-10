@@ -13,7 +13,7 @@ const runtimeConfigSchema = z.object({
   REDIS_URL: z.string().url().default("redis://127.0.0.1:6379"),
   CACHE_QUESTIONS_TTL_SECONDS: z.coerce.number().int().min(30).max(120).default(60),
   SECURITY_REDIS_ENABLED: z.enum(["true", "false"]).default("true").transform((value) => value === "true"),
-  TRUST_PROXY: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+  TRUSTED_PROXY_CIDRS: z.string().default("").transform((value) => value.split(",").map((item) => item.trim()).filter(Boolean)),
   RATE_LIMIT_LOGIN_PER_IP: z.coerce.number().int().min(5).max(500).default(30),
   RATE_LIMIT_ADMIN_PER_IP: z.coerce.number().int().min(10).max(2_000).default(300),
   RATE_LIMIT_SUBMISSION_PER_IP: z.coerce.number().int().min(30).max(2_000).default(180),

@@ -14,7 +14,6 @@ export interface RedisClient {
 }
 
 const MAX_RECONNECT_ATTEMPTS = 3;
-const COMMAND_TIMEOUT_MS = 500;
 
 /** A single, best-effort Redis connection for the process. */
 export class NodeRedisClient implements RedisClient {
@@ -48,24 +47,17 @@ export class NodeRedisClient implements RedisClient {
 
   async close(): Promise<void> { if (this.client.isOpen) await this.client.quit(); }
   isReady(): boolean { return this.client.isReady; }
-  private async command<T>(operation: Promise<T>): Promise<T> {
-    let timer: NodeJS.Timeout | undefined;
-    try {
-      return await Promise.race([
-        operation,
-        new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("Redis command timed out")), COMMAND_TIMEOUT_MS); }),
-      ]);
-    } finally { if (timer) clearTimeout(timer); }
-  }
-  async get(key: string): Promise<string | null> { return this.command(this.client.get(key)); }
-  async set(key: string, value: string, ttlSeconds: number): Promise<void> { await this.command(this.client.set(key, value, { EX: ttlSeconds })); }
-  async del(key: string): Promise<void> { await this.command(this.client.del(key)); }
-  async increment(key: string): Promise<number> { return this.command(this.client.incr(key)); }
+  // Do not race non-idempotent Redis commands with a local timeout: a timed-out
+  // command may still reach Redis, making fallback accounting ambiguous.
+  async get(key: string): Promise<string | null> { return this.client.get(key); }
+  async set(key: string, value: string, ttlSeconds: number): Promise<void> { await this.client.set(key, value, { EX: ttlSeconds }); }
+  async del(key: string): Promise<void> { await this.client.del(key); }
+  async increment(key: string): Promise<number> { return this.client.incr(key); }
   async incrementWithExpiry(key: string, ttlSeconds: number): Promise<number> {
-    return this.command(this.client.eval(
+    return this.client.eval(
       "local count=redis.call('INCR', KEYS[1]); if count == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]); end; return count",
       { keys: [key], arguments: [String(ttlSeconds)] },
-    ) as Promise<number>);
+    ) as Promise<number>;
   }
-  async ttl(key: string): Promise<number> { return this.command(this.client.ttl(key)); }
+  async ttl(key: string): Promise<number> { return this.client.ttl(key); }
 }

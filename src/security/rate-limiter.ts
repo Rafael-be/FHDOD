@@ -64,4 +64,13 @@ export class SecurityRateLimiter {
       try { await this.redis.del(key); } catch { /* no security failure */ }
     }
   }
+
+  async setCooldown(scope: string, subject: string, seconds: number): Promise<void> {
+    const key = this.key(scope, subject);
+    const expiresAt = this.now() + seconds * 1_000;
+    this.local.set(key, { count: 1, expiresAt });
+    if (this.enabled && this.redis?.isReady()) {
+      try { await this.redis.set(key, "1", seconds); } catch { /* local cooldown remains */ }
+    }
+  }
 }

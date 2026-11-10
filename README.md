@@ -54,7 +54,8 @@ ativas por setor, depois de a autorização normal ser concluída. Para uso loca
 inicie um contêiner já criado com `docker start fhdod-redis` e verifique-o com
 `redis-cli -u "$REDIS_URL" PING`. Configure
 `CACHE_ENABLED=true`, `REDIS_URL` e `CACHE_QUESTIONS_TTL_SECONDS` (30–120;
-padrão 60). Com `CACHE_ENABLED=false`, não há conexão Redis.
+padrão 60). Com `CACHE_ENABLED=false`, o cache é desabilitado; Redis ainda pode
+ser conectado se `SECURITY_REDIS_ENABLED=true` para rate limiting.
 
 As chaves seguem `fhdod:cache:v1:questions:effective:sector:<id>:v<versão>`.
 Após qualquer alteração confirmada de pergunta, vínculo, NPS ou ordenação, a
@@ -83,9 +84,9 @@ uma proteção mínima, mas não coordena múltiplas instâncias.
   mais permissivas para redes hospitalares compartilhadas.
 
 Todos os valores podem ser ajustados pelas variáveis `RATE_LIMIT_*` e
-`LOGIN_*` em [.env.example](.env.example). `TRUST_PROXY=false` é o padrão: o
-Express ignora cabeçalhos encaminhados até que a infraestrutura tenha um proxy
-confiável explicitamente configurado. No Postman, repita uma rota até receber
+`LOGIN_*` em [.env.example](.env.example). `TRUSTED_PROXY_CIDRS` é vazio por
+padrão: o Express ignora cabeçalhos encaminhados. Informe somente os IPs/CIDRs
+do proxy reverso controlado; nunca use uma confiança irrestrita. No Postman, repita uma rota até receber
 `429` e confira `Retry-After`; para inspeção local, use somente chaves de teste
 com o prefixo `fhdod:security:v1:` e nunca tente derivar ou registrar chaves
 de usuários reais.

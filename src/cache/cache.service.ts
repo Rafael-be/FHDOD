@@ -1,10 +1,10 @@
 import type { RedisClient } from "./redis.client.js";
 
-export type CacheResult<T> = { state: "hit"; value: T } | { state: "miss" | "error" };
+export type CacheResult<T> = { state: "hit"; value: T } | { state: "miss"; version?: number } | { state: "error" };
 
 export interface QuestionsCache {
   getEffective<T>(sectorId: number): Promise<CacheResult<T>>;
-  setEffective<T>(sectorId: number, value: T): Promise<void>;
+  setEffective<T>(sectorId: number, value: T, version?: number): Promise<void>;
   invalidateQuestions(): Promise<void>;
 }
 
@@ -19,25 +19,24 @@ export class RedisCacheService implements QuestionsCache {
     return Number((await this.redis.get(key)) ?? "0");
   }
 
-  private async effectiveKey(sectorId: number): Promise<string | undefined> {
-    const version = await this.version(`${PREFIX}:questions:version`);
-    return version === undefined ? undefined : `${PREFIX}:questions:effective:sector:${sectorId}:v${version}`;
+  private effectiveKey(sectorId: number, version: number): string {
+    return `${PREFIX}:questions:effective:sector:${sectorId}:v${version}`;
   }
 
   async getEffective<T>(sectorId: number): Promise<CacheResult<T>> {
     try {
-      const key = await this.effectiveKey(sectorId);
-      if (!key || !this.redis) return { state: "miss" };
+      const version = await this.version(`${PREFIX}:questions:version`);
+      if (version === undefined || !this.redis) return { state: "miss" };
+      const key = this.effectiveKey(sectorId, version);
       const raw = await this.redis.get(key);
-      return raw === null ? { state: "miss" } : { state: "hit", value: JSON.parse(raw) as T };
+      return raw === null ? { state: "miss", version } : { state: "hit", value: JSON.parse(raw) as T };
     } catch { return { state: "error" }; }
   }
 
-  async setEffective<T>(sectorId: number, value: T): Promise<void> {
+  async setEffective<T>(sectorId: number, value: T, version?: number): Promise<void> {
     try {
-      const key = await this.effectiveKey(sectorId);
-      if (!key || !this.redis) return;
-      await this.redis.set(key, JSON.stringify(value), this.questionsTtlSeconds);
+      if (version === undefined || !this.redis || !this.enabled) return;
+      await this.redis.set(this.effectiveKey(sectorId, version), JSON.stringify(value), this.questionsTtlSeconds);
     } catch { /* fail open */ }
   }
 

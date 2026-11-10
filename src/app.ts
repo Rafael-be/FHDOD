@@ -78,7 +78,8 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
     securityRateLimiter,
   } = dependencies;
   const app = express();
-  app.set("trust proxy", config.TRUST_PROXY);
+  const trustedProxies = config.TRUSTED_PROXY_CIDRS ?? [];
+  app.set("trust proxy", trustedProxies.length > 0 ? trustedProxies : false);
   app.disable("x-powered-by");
   if (config.NODE_ENV !== "test") app.use(httpRequestLogger);
   app.use(helmet());
@@ -90,7 +91,12 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
   else app.get("/health", (_request, response) => response.status(200).json({ data: { status: "ok" } }));
   app.use("/api/auth", authRoutes(authService, config, securityRateLimiter));
   if (submissionService) { app.use("/api", submissionRoutes(submissionService, securityRateLimiter, config.RATE_LIMIT_SUBMISSION_PER_IP)); app.use("/api", submissionAnswerRoutes(submissionService, securityRateLimiter, config.RATE_LIMIT_SUBMISSION_PER_IP)); app.use("/api", submissionRestartRoutes(submissionService, securityRateLimiter, config.RATE_LIMIT_SUBMISSION_PER_IP)); }
-  if (adminService) { if (securityRateLimiter) app.use("/api", rateLimitByIp(securityRateLimiter, "admin", { limit: config.RATE_LIMIT_ADMIN_PER_IP, windowSeconds: 60 }, "ADMIN_RATE_LIMITED", "Muitas solicitações administrativas. Aguarde um momento.")); app.use("/api", authenticate(authService), adminRoutes(adminService, authService)); }
+  if (adminService) {
+    const adminMiddleware = securityRateLimiter
+      ? rateLimitByIp(securityRateLimiter, "admin", { limit: config.RATE_LIMIT_ADMIN_PER_IP, windowSeconds: 60 }, "ADMIN_RATE_LIMITED", "Muitas solicitações administrativas. Aguarde um momento.")
+      : (_request: express.Request, _response: express.Response, next: express.NextFunction) => next();
+    app.use("/api", authenticate(authService), adminMiddleware, adminRoutes(adminService, authService));
+  }
   if (shiftSheetService) app.use("/api", authenticate(authService), shiftSheetRoutes(shiftSheetService, authService));
   if (auditService) app.use("/api", authenticate(authService), auditRoutes(auditService));
   if (contentService) app.use("/api", contentRoutes(contentService, authService));

@@ -44,7 +44,7 @@ export class QuestionsService {
     const cached = await this.cache.getEffective<ReturnType<typeof dto>[]>(sectorId);
     if (cached.state === "hit") return cached.value;
     const rows = (await this.repository.listEffective(sectorId, false)).map(dto);
-    await this.cache.setEffective(sectorId, rows);
+    await this.cache.setEffective(sectorId, rows, cached.state === "miss" ? cached.version : undefined);
     return rows;
   }
 
