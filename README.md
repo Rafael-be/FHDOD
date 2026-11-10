@@ -47,6 +47,22 @@ As demais variáveis obrigatórias são `ALLOWED_ORIGIN`, `JWT_SECRET`,
 `JWT_ISSUER` e `JWT_AUDIENCE`. Veja os exemplos e comentários em
 [.env.example](.env.example).
 
+## Cache Redis
+
+O cache é opcional e usa cache-aside somente para a lista efetiva de perguntas
+ativas por setor, depois de a autorização normal ser concluída. Para uso local,
+inicie um contêiner já criado com `docker start fhdod-redis` e verifique-o com
+`redis-cli -u "$REDIS_URL" PING`. Configure
+`CACHE_ENABLED=true`, `REDIS_URL` e `CACHE_QUESTIONS_TTL_SECONDS` (30–120;
+padrão 60). Com `CACHE_ENABLED=false`, não há conexão Redis.
+
+As chaves seguem `fhdod:cache:v1:questions:effective:sector:<id>:v<versão>`.
+Após qualquer alteração confirmada de pergunta, vínculo, NPS ou ordenação, a
+versão global de perguntas é incrementada; entradas anteriores ficam obsoletas
+sem `SCAN`, `FLUSHALL` ou `FLUSHDB`. Falha, timeout ou indisponibilidade do
+Redis é fail-open: a API consulta PostgreSQL normalmente. O cache não contém
+sessões, tokens, respostas de pacientes, cookies nem respostas HTTP completas.
+
 ## Segurança de sessão
 
 - Access token curto e refresh token opaco são enviados em cookies HTTP-only.
