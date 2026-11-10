@@ -9,6 +9,8 @@ export interface RedisClient {
   set(key: string, value: string, ttlSeconds: number): Promise<void>;
   del(key: string): Promise<void>;
   increment(key: string): Promise<number>;
+  incrementWithExpiry(key: string, ttlSeconds: number): Promise<number>;
+  ttl(key: string): Promise<number>;
 }
 
 const MAX_RECONNECT_ATTEMPTS = 3;
@@ -59,4 +61,11 @@ export class NodeRedisClient implements RedisClient {
   async set(key: string, value: string, ttlSeconds: number): Promise<void> { await this.command(this.client.set(key, value, { EX: ttlSeconds })); }
   async del(key: string): Promise<void> { await this.command(this.client.del(key)); }
   async increment(key: string): Promise<number> { return this.command(this.client.incr(key)); }
+  async incrementWithExpiry(key: string, ttlSeconds: number): Promise<number> {
+    return this.command(this.client.eval(
+      "local count=redis.call('INCR', KEYS[1]); if count == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]); end; return count",
+      { keys: [key], arguments: [String(ttlSeconds)] },
+    ) as Promise<number>);
+  }
+  async ttl(key: string): Promise<number> { return this.command(this.client.ttl(key)); }
 }

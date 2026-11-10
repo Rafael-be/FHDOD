@@ -63,6 +63,33 @@ sem `SCAN`, `FLUSHALL` ou `FLUSHDB`. Falha, timeout ou indisponibilidade do
 Redis é fail-open: a API consulta PostgreSQL normalmente. O cache não contém
 sessões, tokens, respostas de pacientes, cookies nem respostas HTTP completas.
 
+## Limitação distribuída e proteção de login
+
+Quando `SECURITY_REDIS_ENABLED=true`, os limites são compartilhados entre
+réplicas por Redis. As chaves usam HMAC-SHA-256 derivado de `JWT_SECRET`; IPs e
+e-mails não são gravados em texto puro. O incremento e a expiração são
+atômicos. Redis indisponível ativa um fallback local por processo: ele mantém
+uma proteção mínima, mas não coordena múltiplas instâncias.
+
+- `POST /api/auth/login`: 30 requisições/IP a cada 15 minutos e, por padrão,
+  cinco falhas por IP ou identificador na mesma janela. Falhas repetidas para o
+  mesmo identificador recebem atraso progressivo curto; a tentativa seguinte
+  ao limite recebe `429` com `Retry-After`. Login bem-sucedido limpa somente o
+  contador do identificador.
+- `GET /api/auth/csrf` e `POST /api/auth/refresh`: 60 requisições/IP a cada
+  15 minutos.
+- rotas administrativas autenticadas: 300 requisições/IP por minuto.
+- rotas públicas de submissão: 180 requisições/IP por minuto, propositalmente
+  mais permissivas para redes hospitalares compartilhadas.
+
+Todos os valores podem ser ajustados pelas variáveis `RATE_LIMIT_*` e
+`LOGIN_*` em [.env.example](.env.example). `TRUST_PROXY=false` é o padrão: o
+Express ignora cabeçalhos encaminhados até que a infraestrutura tenha um proxy
+confiável explicitamente configurado. No Postman, repita uma rota até receber
+`429` e confira `Retry-After`; para inspeção local, use somente chaves de teste
+com o prefixo `fhdod:security:v1:` e nunca tente derivar ou registrar chaves
+de usuários reais.
+
 ## Segurança de sessão
 
 - Access token curto e refresh token opaco são enviados em cookies HTTP-only.

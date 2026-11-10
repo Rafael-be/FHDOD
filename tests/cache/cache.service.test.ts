@@ -10,6 +10,8 @@ class MemoryRedis implements RedisClient {
   async set(key: string, value: string): Promise<void> { this.values.set(key, value); }
   async del(key: string): Promise<void> { this.values.delete(key); }
   async increment(key: string): Promise<number> { const value = Number(this.values.get(key) ?? "0") + 1; this.values.set(key, String(value)); return value; }
+  async incrementWithExpiry(key: string): Promise<number> { return this.increment(key); }
+  async ttl(): Promise<number> { return 60; }
 }
 
 describe("RedisCacheService", () => {
@@ -25,12 +27,12 @@ describe("RedisCacheService", () => {
   });
 
   it("treats an unavailable Redis client as a cache miss", async () => {
-    const redis: RedisClient = { connect: async () => undefined, close: async () => undefined, isReady: () => false, get: async () => { throw new Error("unavailable"); }, set: async () => undefined, del: async () => undefined, increment: async () => 0 };
+    const redis: RedisClient = { connect: async () => undefined, close: async () => undefined, isReady: () => false, get: async () => { throw new Error("unavailable"); }, set: async () => undefined, del: async () => undefined, increment: async () => 0, incrementWithExpiry: async () => 0, ttl: async () => 0 };
     await expect(new RedisCacheService(redis, true, 60).getEffective(4)).resolves.toEqual({ state: "miss" });
   });
 
   it("reports a Redis operation failure without exposing it to callers", async () => {
-    const redis: RedisClient = { connect: async () => undefined, close: async () => undefined, isReady: () => true, get: async () => { throw new Error("unavailable"); }, set: async () => undefined, del: async () => undefined, increment: async () => 0 };
+    const redis: RedisClient = { connect: async () => undefined, close: async () => undefined, isReady: () => true, get: async () => { throw new Error("unavailable"); }, set: async () => undefined, del: async () => undefined, increment: async () => 0, incrementWithExpiry: async () => 0, ttl: async () => 0 };
     await expect(new RedisCacheService(redis, true, 60).getEffective(4)).resolves.toEqual({ state: "error" });
   });
 });
