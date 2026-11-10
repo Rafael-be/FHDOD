@@ -2,6 +2,7 @@ import { QuestionsService } from "../../src/modules/questions/questions.service.
 import { jest } from "@jest/globals";
 import type { AuthIdentity } from "../../src/modules/auth/auth.service.js";
 import type { QuestionsRepository } from "../../src/modules/questions/questions.repository.js";
+import type { QuestionsCache } from "../../src/cache/cache.service.js";
 
 const superuser: AuthIdentity = { userId: 1, sessionId: "s", role: "superuser", mustChangePassword: false };
 const manager: AuthIdentity = { userId: 2, sessionId: "s", role: "sector_manager", mustChangePassword: false };
@@ -24,6 +25,29 @@ function repository(overrides: Partial<QuestionsRepository> = {}) {
 }
 
 describe("QuestionsService", () => {
+  it("returns an authorized sector's effective questions from cache without querying PostgreSQL", async () => {
+    const listEffective = jest.fn(async () => []);
+    const cache: QuestionsCache = {
+      getEffective: async () => ({ state: "hit", value: [{ id: 1, text: "Em cache" }] }),
+      setEffective: async () => undefined,
+      invalidateQuestions: async () => undefined,
+    };
+    const service = new QuestionsService(repository({ listEffective }), cache);
+    await expect(service.listSector(manager, 7, false)).resolves.toEqual([{ id: 1, text: "Em cache" }]);
+    expect(listEffective).not.toHaveBeenCalled();
+  });
+
+  it("invalidates effective-question cache only after a successful committed mutation", async () => {
+    const invalidateQuestions = jest.fn(async () => undefined);
+    const service = new QuestionsService(repository(), {
+      getEffective: async () => ({ state: "miss" }),
+      setEffective: async () => undefined,
+      invalidateQuestions,
+    });
+    await service.createStandard(superuser, { text: "Pergunta", scope: "all_sectors", sectorIds: [] });
+    expect(invalidateQuestions).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps standard and NPS management restricted to superusers", async () => {
     const service = new QuestionsService(repository());
     await expect(service.createStandard(manager, { text: "x", scope: "all_sectors", sectorIds: [], displayOrder: 1 })).rejects.toMatchObject({ code: "FORBIDDEN" });

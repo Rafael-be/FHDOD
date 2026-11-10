@@ -9,6 +9,9 @@ const runtimeConfigSchema = z.object({
   JWT_ISSUER: z.string().min(1),
   JWT_AUDIENCE: z.string().min(1),
   PERFORMANCE_MEASUREMENTS: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+  CACHE_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+  REDIS_URL: z.string().url().default("redis://127.0.0.1:6379"),
+  CACHE_QUESTIONS_TTL_SECONDS: z.coerce.number().int().min(30).max(120).default(60),
 });
 
 const migrationConfigSchema = z.object({

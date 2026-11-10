@@ -17,6 +17,8 @@ describe("configuration boundaries", () => {
     expect(loadConfig(runtimeEnvironment)).toMatchObject({
       DATABASE_URL: runtimeEnvironment.DATABASE_URL,
       NODE_ENV: "development",
+      CACHE_ENABLED: false,
+      CACHE_QUESTIONS_TTL_SECONDS: 60,
     });
   });
 

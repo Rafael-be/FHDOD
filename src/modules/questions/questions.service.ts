@@ -2,6 +2,7 @@ import { DomainError, forbidden, notFound } from "../../shared/core.js";
 import type { AuthIdentity } from "../auth/auth.service.js";
 import { QUESTION_POLICY } from "./questions.constants.js";
 import type { QuestionRow, QuestionsRepository } from "./questions.repository.js";
+import type { QuestionsCache } from "../../cache/cache.service.js";
 
 function dto(row: QuestionRow) {
   const policy = row.isNps ? QUESTION_POLICY.nps : QUESTION_POLICY.sector;
@@ -23,7 +24,13 @@ function mapQuestionScopeError(error: unknown): DomainError | null {
 }
 
 export class QuestionsService {
-  constructor(private readonly repository: QuestionsRepository) {}
+  constructor(private readonly repository: QuestionsRepository, private readonly cache?: QuestionsCache) {}
+
+  private async mutate<T>(work: () => Promise<T>): Promise<T> {
+    const result = await work(); // resolves only after the PostgreSQL transaction commits
+    try { await this.cache?.invalidateQuestions(); } catch { /* cache invalidation is fail-open */ }
+    return result;
+  }
 
   private async authorize(actor: AuthIdentity, sectorId: number): Promise<void> {
     if (actor.role === "superuser") return;
@@ -32,7 +39,13 @@ export class QuestionsService {
 
   async listSector(actor: AuthIdentity, sectorId: number, includeDeleted: boolean) {
     await this.authorize(actor, sectorId);
-    return (await this.repository.listEffective(sectorId, includeDeleted)).map(dto);
+    // Deleted rows are an administrative view and intentionally never cached.
+    if (includeDeleted || !this.cache) return (await this.repository.listEffective(sectorId, includeDeleted)).map(dto);
+    const cached = await this.cache.getEffective<ReturnType<typeof dto>[]>(sectorId);
+    if (cached.state === "hit") return cached.value;
+    const rows = (await this.repository.listEffective(sectorId, false)).map(dto);
+    await this.cache.setEffective(sectorId, rows);
+    return rows;
   }
 
   async listCatalog(actor: AuthIdentity, input: { type?: "standard" | "nps"; state?: "active" | "inactive"; scope?: "all_sectors" | "selected_sectors"; sectorId?: number; page: number; pageSize: number }) {
@@ -62,19 +75,19 @@ export class QuestionsService {
   async createStandard(actor: AuthIdentity, input: { text: string; scope: "all_sectors" | "selected_sectors"; sectorIds: number[] }) {
     this.requireSuperuser(actor);
     await this.validateScope(input.scope, input.sectorIds);
-    try { return await this.repository.transaction(async (repository) => { const row = await repository.createStandard(input.text, input.scope, input.sectorIds, actor.userId); await repository.audit(actor.userId, "standard_question.created", row.id); return dto(row); }); } catch (error) { throw mapQuestionConflict(error) ?? mapQuestionScopeError(error) ?? error; }
+    try { return await this.mutate(() => this.repository.transaction(async (repository) => { const row = await repository.createStandard(input.text, input.scope, input.sectorIds, actor.userId); await repository.audit(actor.userId, "standard_question.created", row.id); return dto(row); })); } catch (error) { throw mapQuestionConflict(error) ?? mapQuestionScopeError(error) ?? error; }
   }
 
   async createNps(actor: AuthIdentity, input: { text: string; scope: "all_sectors" | "selected_sectors"; sectorIds: number[]; replaceGlobal?: boolean }) {
     this.requireSuperuser(actor);
     await this.validateScope(input.scope, input.sectorIds);
-    try { return await this.repository.transaction(async (repository) => {
+    try { return await this.mutate(() => this.repository.transaction(async (repository) => {
       const replacedId = input.scope === "all_sectors" && input.replaceGlobal
         ? await repository.replaceActiveGlobalNps() : null;
       const row = await repository.createNps(input.text, input.scope, input.sectorIds, actor.userId);
       await repository.audit(actor.userId, replacedId === null ? "nps.created" : "nps.global_replaced", row.id);
       return dto(row);
-    }); } catch (error) { throw mapQuestionConflict(error) ?? mapQuestionScopeError(error) ?? error; }
+    })); } catch (error) { throw mapQuestionConflict(error) ?? mapQuestionScopeError(error) ?? error; }
   }
 
   async assignNps(actor: AuthIdentity, sectorId: number, questionId: number, replace: boolean) {
@@ -84,41 +97,41 @@ export class QuestionsService {
     if (!replace && await this.repository.sectorHasNps(sectorId)) {
       throw new DomainError("NPS_ALREADY_ASSIGNED", "O setor já possui um NPS vigente.", 409);
     }
-    try { return await this.repository.transaction(async (repository) => {
+    try { return await this.mutate(() => this.repository.transaction(async (repository) => {
       await repository.assignNps(sectorId, questionId, actor.userId, replace);
       await repository.audit(actor.userId, replace ? "nps.replaced" : "nps.assigned", questionId);
-    }); } catch (error) { throw mapQuestionConflict(error) ?? error; }
+    })); } catch (error) { throw mapQuestionConflict(error) ?? error; }
   }
 
   async removeNpsOverride(actor: AuthIdentity, sectorId: number) {
     this.requireSuperuser(actor);
     if (!await this.repository.activeSector(sectorId)) throw notFound("Setor não encontrado.");
-    return this.repository.transaction(async (repository) => {
+    return this.mutate(() => this.repository.transaction(async (repository) => {
       if (!await repository.removeNpsOverride(sectorId)) throw notFound("Override de NPS não encontrado.");
       await repository.audit(actor.userId, "nps.override_removed", sectorId);
-    });
+    }));
   }
 
   async reorderSector(actor: AuthIdentity, sectorId: number, ids: number[]) {
     await this.authorize(actor, sectorId);
-    return this.repository.transaction(async (repository) => {
+    return this.mutate(() => this.repository.transaction(async (repository) => {
       try { await repository.reorderSectorQuestions(sectorId, ids); } catch (error) { if (error instanceof Error && error.message.includes("must contain")) throw new DomainError("INVALID_ORDER", "A ordem deve conter todas as perguntas comuns ativas do setor.", 409); throw mapQuestionConflict(error) ?? error; }
       await repository.audit(actor.userId, "question.reordered", sectorId);
-    });
+    }));
   }
 
   async reorderStandard(actor: AuthIdentity, sectorId: number, ids: number[]) {
     this.requireSuperuser(actor);
-    return this.repository.transaction(async (repository) => {
+    return this.mutate(() => this.repository.transaction(async (repository) => {
       try { await repository.reorderStandardQuestions(sectorId, ids); } catch (error) { if (error instanceof Error && error.message.includes("must contain")) throw new DomainError("INVALID_ORDER", "A ordem deve conter todas as perguntas comuns ativas do setor.", 409); throw mapQuestionConflict(error) ?? error; }
       await repository.audit(actor.userId, "standard_question.reordered", sectorId);
-    });
+    }));
   }
 
   async createSector(actor: AuthIdentity, sectorId: number, text: string) {
     await this.authorize(actor, sectorId);
     if (!await this.repository.activeSector(sectorId)) throw notFound("Setor não encontrado.");
-    try { return await this.repository.transaction(async (repository) => { const row = await repository.createSector(sectorId, text, actor.userId); await repository.audit(actor.userId, "question.created", row.id); return dto(row); }); } catch (error) { throw mapQuestionConflict(error) ?? error; }
+    try { return await this.mutate(() => this.repository.transaction(async (repository) => { const row = await repository.createSector(sectorId, text, actor.userId); await repository.audit(actor.userId, "question.created", row.id); return dto(row); })); } catch (error) { throw mapQuestionConflict(error) ?? error; }
   }
 
   async updateText(actor: AuthIdentity, id: number, text: string) {
@@ -127,12 +140,12 @@ export class QuestionsService {
     if (question.questionKind === "sector" && question.sectorId !== null) await this.authorize(actor, question.sectorId);
     else this.requireSuperuser(actor);
     if (question.text === text) return dto(question);
-    return this.repository.transaction(async (repository) => {
+    return this.mutate(() => this.repository.transaction(async (repository) => {
       const row = await repository.updateText(id, text, actor.userId);
       if (!row) throw notFound();
       await repository.audit(actor.userId, "question.version_created", id);
       return dto(row);
-    });
+    }));
   }
 
   async setDeleted(actor: AuthIdentity, id: number, deleted: boolean) {
@@ -144,15 +157,15 @@ export class QuestionsService {
       throw new DomainError("QUESTION_ALREADY_ACTIVE", "A pergunta já está ativa.", 409);
     }
     if (!deleted && question.questionKind !== "sector") {
-      return this.repository.transaction(async (repository) => {
+      return this.mutate(() => this.repository.transaction(async (repository) => {
         try { await repository.reactivateScoped(question); } catch (error) { if (error instanceof Error && error.message.includes("conflict")) throw new DomainError("REACTIVATION_CONFLICT", "Não foi possível reativar a pergunta porque o escopo ou a posição está ocupado.", 409); throw mapQuestionConflict(error) ?? error; }
         await repository.audit(actor.userId, question.isNps ? "nps.reactivated" : "standard_question.reactivated", id);
         const row = await repository.findQuestion(id);
         if (!row) throw notFound();
         return dto(row);
-      });
+      }));
     }
-    return this.repository.transaction(async (repository) => {
+    return this.mutate(() => this.repository.transaction(async (repository) => {
       if (!deleted && question.questionKind === "sector" && question.sectorId !== null) {
         await repository.lockSectorQuestionOrder(question.sectorId);
         if (await repository.hasActiveOrderConflict(question)) {
@@ -164,7 +177,7 @@ export class QuestionsService {
       const row = await repository.findQuestion(id);
       if (!row) throw notFound();
       return dto(row);
-    });
+    }));
   }
 
   async setStandardAssignmentActive(actor: AuthIdentity, questionId: number, sectorId: number, active: boolean) {
@@ -173,12 +186,12 @@ export class QuestionsService {
     const question = await this.repository.findQuestion(questionId);
     if (!question || question.questionKind !== "standard" || question.isNps) throw notFound("Pergunta padrão não encontrada.");
     try {
-      return await this.repository.transaction(async (repository) => {
+      return await this.mutate(() => this.repository.transaction(async (repository) => {
         if (!await repository.setStandardAssignmentActive(questionId, sectorId, active)) {
           throw new DomainError("CONFLICT", active ? "O vínculo da pergunta não existe ou já está ativo." : "O vínculo da pergunta não está ativo.", 409);
         }
         await repository.audit(actor.userId, active ? "standard_question.assignment_reactivated" : "standard_question.assignment_deactivated", questionId);
-      });
+      }));
     } catch (error) {
       throw mapQuestionConflict(error) ?? error;
     }
