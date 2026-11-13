@@ -9,6 +9,18 @@ const runtimeConfigSchema = z.object({
   JWT_ISSUER: z.string().min(1),
   JWT_AUDIENCE: z.string().min(1),
   PERFORMANCE_MEASUREMENTS: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+  CACHE_ENABLED: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
+  REDIS_URL: z.string().url().default("redis://127.0.0.1:6379"),
+  CACHE_QUESTIONS_TTL_SECONDS: z.coerce.number().int().min(30).max(120).default(60),
+  SECURITY_REDIS_ENABLED: z.enum(["true", "false"]).default("true").transform((value) => value === "true"),
+  TRUSTED_PROXY_CIDRS: z.string().default("").transform((value) => value.split(",").map((item) => item.trim()).filter(Boolean)),
+  RATE_LIMIT_LOGIN_PER_IP: z.coerce.number().int().min(5).max(500).default(30),
+  RATE_LIMIT_ADMIN_PER_IP: z.coerce.number().int().min(10).max(2_000).default(300),
+  RATE_LIMIT_SUBMISSION_PER_IP: z.coerce.number().int().min(30).max(2_000).default(180),
+  LOGIN_FAILURE_LIMIT_PER_IP: z.coerce.number().int().min(3).max(50).default(5),
+  LOGIN_FAILURE_LIMIT_PER_IDENTIFIER: z.coerce.number().int().min(3).max(50).default(5),
+  LOGIN_BLOCK_BASE_SECONDS: z.coerce.number().int().min(1).max(300).default(1),
+  LOGIN_BLOCK_MAX_SECONDS: z.coerce.number().int().min(5).max(3_600).default(60),
 });
 
 const migrationConfigSchema = z.object({

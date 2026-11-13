@@ -94,7 +94,9 @@ onde a API ou uma policy restritiva o implementarem explicitamente.
 
 São contabilizadas somente falhas de credenciais válidas no formato esperado (`401 INVALID_CREDENTIALS`). A quinta falha efetiva de um mesmo IP em uma janela deslizante de 15 minutos ainda retorna `401`; a sexta requisição é bloqueada antes da verificação de credenciais com `429 LOGIN_FAILED_RATE_LIMITED`. A janela é renovada a cada nova falha e expira 15 minutos após a última delas. Um login bem-sucedido limpa apenas o atraso progressivo associado ao identificador, nunca a contagem por IP.
 
-O contador atual usa memória do processo. Portanto, é reiniciado quando a API reinicia e não é compartilhado entre instâncias. Em produção com múltiplas réplicas, adote um armazenamento compartilhado para esse estado antes de tratar o bloqueio como proteção global.
+Com `SECURITY_REDIS_ENABLED=true`, o contador usa Redis compartilhado entre
+instâncias. Se Redis falhar, o processo usa fallback local limitado: ele mantém
+proteção mínima, mas é reiniciado e não é coordenado entre réplicas.
 
 As chaves expiradas também são removidas periodicamente durante requisições de
 login, inclusive quando não voltam a ser consultadas. Isso limita o acúmulo no

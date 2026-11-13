@@ -27,6 +27,8 @@ import { submissionAnswerRoutes } from "./modules/submissions/submission.answer.
 import { submissionRestartRoutes } from "./modules/submissions/submission.restart.routes.js";
 import type { QuestionsService } from "./modules/questions/questions.service.js";
 import { questionsRoutes } from "./modules/questions/questions.routes.js";
+import type { SecurityRateLimiter } from "./security/rate-limiter.js";
+import { rateLimitByIp } from "./security/rate-limit.middleware.js";
 
 export interface AppDependencies {
   authService: AuthService;
@@ -37,6 +39,7 @@ export interface AppDependencies {
   shiftSheetService?: ShiftSheetService;
   submissionService?: SubmissionService;
   questionsService?: QuestionsService;
+  securityRateLimiter?: SecurityRateLimiter;
 }
 
 function validateRuntimeDependencies(
@@ -72,8 +75,11 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
     shiftSheetService,
     submissionService,
     questionsService,
+    securityRateLimiter,
   } = dependencies;
   const app = express();
+  const trustedProxies = config.TRUSTED_PROXY_CIDRS ?? [];
+  app.set("trust proxy", trustedProxies.length > 0 ? trustedProxies : false);
   app.disable("x-powered-by");
   if (config.NODE_ENV !== "test") app.use(httpRequestLogger);
   app.use(helmet());
@@ -83,9 +89,14 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
   app.use(performanceRequestLogger(config.PERFORMANCE_MEASUREMENTS));
   if (healthService) app.use(healthRoutes(healthService));
   else app.get("/health", (_request, response) => response.status(200).json({ data: { status: "ok" } }));
-  app.use("/api/auth", authRoutes(authService, config));
-  if (submissionService) { app.use("/api", submissionRoutes(submissionService)); app.use("/api", submissionAnswerRoutes(submissionService)); app.use("/api", submissionRestartRoutes(submissionService)); }
-  if (adminService) app.use("/api", authenticate(authService), adminRoutes(adminService, authService));
+  app.use("/api/auth", authRoutes(authService, config, securityRateLimiter));
+  if (submissionService) { app.use("/api", submissionRoutes(submissionService, securityRateLimiter, config.RATE_LIMIT_SUBMISSION_PER_IP)); app.use("/api", submissionAnswerRoutes(submissionService, securityRateLimiter, config.RATE_LIMIT_SUBMISSION_PER_IP)); app.use("/api", submissionRestartRoutes(submissionService, securityRateLimiter, config.RATE_LIMIT_SUBMISSION_PER_IP)); }
+  if (adminService) {
+    const adminMiddleware = securityRateLimiter
+      ? rateLimitByIp(securityRateLimiter, "admin", { limit: config.RATE_LIMIT_ADMIN_PER_IP, windowSeconds: 60 }, "ADMIN_RATE_LIMITED", "Muitas solicitações administrativas. Aguarde um momento.")
+      : (_request: express.Request, _response: express.Response, next: express.NextFunction) => next();
+    app.use("/api", authenticate(authService), adminMiddleware, adminRoutes(adminService, authService));
+  }
   if (shiftSheetService) app.use("/api", authenticate(authService), shiftSheetRoutes(shiftSheetService, authService));
   if (auditService) app.use("/api", authenticate(authService), auditRoutes(auditService));
   if (contentService) app.use("/api", contentRoutes(contentService, authService));

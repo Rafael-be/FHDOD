@@ -1,13 +1,14 @@
 import { Router } from "express";
 import { z } from "zod";
 import type { SubmissionService } from "./submission.service.js";
-import { submissionPublicLimiter } from "./submission.public-limiter.js";
+import { rateLimitByIp } from "../../security/rate-limit.middleware.js";
+import type { SecurityRateLimiter } from "../../security/rate-limiter.js";
 
 const sectorId = z.coerce.number().int().positive();
 
-export function submissionRoutes(service: SubmissionService): Router {
+export function submissionRoutes(service: SubmissionService, limiter?: SecurityRateLimiter, limit = 180): Router {
   const router = Router();
-  router.use(submissionPublicLimiter);
+  if (limiter) router.use(rateLimitByIp(limiter, "submission-public", { limit, windowSeconds: 60 }, "SUBMISSION_RATE_LIMITED", "Muitas solicitações. Aguarde um momento."));
   router.post("/public/sectors/:sectorId/submissions", async (request, response, next) => {
     try {
       const id = sectorId.parse(request.params.sectorId);

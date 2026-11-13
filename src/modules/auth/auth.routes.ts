@@ -1,51 +1,36 @@
 import { Router, type Request, type Response } from "express";
 import { z } from "zod";
-import { rateLimit } from "express-rate-limit";
 import type { AppConfig } from "../../config/env.js";
 import type { AuthService } from "./auth.service.js";
-import { LoginAttemptLimiter } from "./login-attempt-limiter.js";
 import { authSessionResponse, authUserResponse, loginCredentialsSchema } from "./auth.schemas.js";
-import { logAuthenticationFailure, logRequestRejection } from "../../shared/logger.js";
+import { logAuthenticationFailure } from "../../shared/logger.js";
 import { measurePerformance } from "../../shared/performance.js";
 import { authenticate } from "./auth.middleware.js";
+import { SecurityRateLimiter } from "../../security/rate-limiter.js";
+import { rateLimitByIp } from "../../security/rate-limit.middleware.js";
 
 export { loginCredentialsSchema } from "./auth.schemas.js";
 const csrfHeader = "x-csrf-token";
-const SESSION_REQUEST_WINDOW_MS = 15 * 60_000;
-const MAX_SESSION_REQUESTS_PER_WINDOW = 60;
 const baseCookieOptions = (config: AppConfig) => ({ httpOnly: true, secure: config.NODE_ENV === "production", sameSite: "lax" as const });
 const accessCookieOptions = (config: AppConfig) => ({ ...baseCookieOptions(config), path: "/api" });
 const refreshCookieOptions = (config: AppConfig) => ({ ...baseCookieOptions(config), path: "/api/auth" });
 const legacyAccessCookieOptions = (config: AppConfig) => ({ ...baseCookieOptions(config), path: "/api/auth" });
 function originAllowed(request: Request, config: AppConfig): boolean { return !request.headers.origin || request.headers.origin === config.ALLOWED_ORIGIN; }
 
-function sessionRequestLimit() {
-  return rateLimit({
-    windowMs: SESSION_REQUEST_WINDOW_MS,
-    limit: MAX_SESSION_REQUESTS_PER_WINDOW,
-    standardHeaders: "draft-8",
-    legacyHeaders: false,
-    handler: (request, response) => {
-      logRequestRejection("SESSION_RATE_LIMITED", 429, request);
-      response.status(429).json({
-        error: {
-          code: "SESSION_RATE_LIMITED",
-          message: "Muitas solicitações de sessão. Aguarde alguns minutos.",
-        },
-      });
-    },
-  });
-}
-
-export function authRoutes(service: AuthService, config: AppConfig): Router {
+export function authRoutes(service: AuthService, config: AppConfig, limiter?: SecurityRateLimiter): Router {
   const router = Router();
-  const loginRequests = rateLimit({ windowMs: 15 * 60_000, limit: 30, standardHeaders: "draft-8", legacyHeaders: false, message: { error: { code: "LOGIN_RATE_LIMITED", message: "Muitas tentativas. Aguarde alguns minutos." } } });
-  const refreshRequests = sessionRequestLimit();
-  const csrfRequests = sessionRequestLimit();
-  const failedAttempts = new LoginAttemptLimiter();
+  const limits = limiter ?? new SecurityRateLimiter(undefined, false, config.JWT_SECRET);
+  const loginLimit = config.RATE_LIMIT_LOGIN_PER_IP ?? 30;
+  const ipFailureLimit = config.LOGIN_FAILURE_LIMIT_PER_IP ?? 5;
+  const identifierFailureLimit = config.LOGIN_FAILURE_LIMIT_PER_IDENTIFIER ?? 5;
+  const cooldownBaseSeconds = config.LOGIN_BLOCK_BASE_SECONDS ?? 1;
+  const maxBlockSeconds = config.LOGIN_BLOCK_MAX_SECONDS ?? 60;
+  const loginRequests = rateLimitByIp(limits, "login-request", { limit: loginLimit, windowSeconds: 900 }, "LOGIN_RATE_LIMITED", "Muitas tentativas. Aguarde alguns minutos.");
+  const refreshRequests = rateLimitByIp(limits, "session-request", { limit: 60, windowSeconds: 900 }, "SESSION_RATE_LIMITED", "Muitas solicitações de sessão. Aguarde alguns minutos.");
+  const csrfRequests = rateLimitByIp(limits, "csrf-request", { limit: 60, windowSeconds: 900 }, "SESSION_RATE_LIMITED", "Muitas solicitações de sessão. Aguarde alguns minutos.");
   const clearSessionCookies = (response: Response) => response.clearCookie("access_token", accessCookieOptions(config)).clearCookie("access_token", legacyAccessCookieOptions(config)).clearCookie("refresh_token", refreshCookieOptions(config));
   const setTokens = (response: Response, result: Awaited<ReturnType<AuthService["login"]>>) => { response.cookie("access_token", result.accessToken, { ...accessCookieOptions(config), maxAge: 600_000 }); response.cookie("refresh_token", result.refreshToken, { ...refreshCookieOptions(config), maxAge: result.expiresAt.getTime() - Date.now() }); response.set("Cache-Control", "no-store"); };
-  router.post("/login", loginRequests, async (request, response, next) => { let key = "invalid"; try { if (!originAllowed(request, config)) return response.status(403).json({ error: { code: "ORIGIN_FORBIDDEN", message: "Origem não permitida." } }); const input = await measurePerformance(config.PERFORMANCE_MEASUREMENTS, "auth.login", "input_validation", async () => loginCredentialsSchema.parse(request.body)); key = input.email.trim().toLowerCase(); await measurePerformance(config.PERFORMANCE_MEASUREMENTS, "auth.login", "failed_attempt_limit", () => failedAttempts.check(request.ip ?? "unknown", key)); const result = await service.login(input.email, input.password); failedAttempts.success(key); setTokens(response, result); response.status(200).json(authSessionResponse(result.user, result.csrfToken)); } catch (error) { if ((error as { code?: string }).code === "INVALID_CREDENTIALS") failedAttempts.failure(request.ip ?? "unknown", key); next(error); } });
+  router.post("/login", loginRequests, async (request, response, next) => { let key = "invalid"; const ip = request.ip || "unknown"; try { if (!originAllowed(request, config)) return response.status(403).json({ error: { code: "ORIGIN_FORBIDDEN", message: "Origem não permitida." } }); const input = await measurePerformance(config.PERFORMANCE_MEASUREMENTS, "auth.login", "input_validation", async () => loginCredentialsSchema.parse(request.body)); key = input.email.trim().toLowerCase(); const [cooldown, ipFailures, identifierFailures] = await Promise.all([limits.current("login-cooldown", key), limits.current("login-failure-ip", ip), limits.current("login-failure-identifier", key)]); if (cooldown) { response.set("Retry-After", String(cooldown.retryAfterSeconds)); return response.status(429).json({ error: { code: "LOGIN_FAILED_RATE_LIMITED", message: "Muitas tentativas. Aguarde alguns minutos." } }); } const blocked = (ipFailures?.count ?? 0) >= ipFailureLimit || (identifierFailures?.count ?? 0) >= identifierFailureLimit; if (blocked) { const retry = Math.max(ipFailures?.retryAfterSeconds ?? 0, identifierFailures?.retryAfterSeconds ?? 0, 1); response.set("Retry-After", String(retry)); return response.status(429).json({ error: { code: "LOGIN_FAILED_RATE_LIMITED", message: "Muitas tentativas. Aguarde alguns minutos." } }); } const result = await service.login(input.email, input.password); await limits.reset("login-failure-identifier", key); setTokens(response, result); response.status(200).json(authSessionResponse(result.user, result.csrfToken)); } catch (error) { if ((error as { code?: string }).code === "INVALID_CREDENTIALS") { const [, identifier] = await Promise.all([limits.consume("login-failure-ip", ip, { limit: ipFailureLimit, windowSeconds: 900 }), limits.consume("login-failure-identifier", key, { limit: identifierFailureLimit, windowSeconds: 900 })]); if (identifier.remaining < identifierFailureLimit - 1) await limits.setCooldown("login-cooldown", key, Math.min((identifierFailureLimit - identifier.remaining) * cooldownBaseSeconds, maxBlockSeconds)); } next(error); } });
   router.post("/refresh", refreshRequests, async (request, response, next) => { try { if (!originAllowed(request, config)) return response.status(403).json({ error: { code: "ORIGIN_FORBIDDEN", message: "Origem não permitida." } }); const result = await service.refresh(String(request.cookies.refresh_token ?? "")); setTokens(response, result); response.json(authSessionResponse(result.user, result.csrfToken)); } catch (error) { next(error); } });
   router.get("/me", authenticate(service, { touchSession: false }), async (request, response, next) => { try { if (!request.identity) return response.status(401).json({ error: { code: "UNAUTHENTICATED", message: "Autenticação necessária." } }); response.set("Cache-Control", "no-store").json(authUserResponse(await service.currentUser(request.identity))); } catch (error) { next(error); } });
   router.get("/csrf", csrfRequests, async (request, response, next) => { try { if (!originAllowed(request, config)) return response.status(403).json({ error: { code: "ORIGIN_FORBIDDEN", message: "Origem não permitida." } }); response.set("Cache-Control", "no-store").json({ data: { csrfToken: await service.recoverCsrf(String(request.cookies.refresh_token ?? "")) } }); } catch (error) { next(error); } });
