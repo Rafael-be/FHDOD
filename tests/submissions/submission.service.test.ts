@@ -5,6 +5,22 @@ import type { Clock } from "../../src/shared/core.js";
 const clock: Clock = { now: () => new Date("2026-01-01T12:00:00Z") };
 
 describe("SubmissionService", () => {
+  it("passes an out-of-hours session and the exact NPS answer to persistence", async () => {
+    const saved: Array<{ sessionId: string; input: { sessionQuestionId: number; status: "answered" | "skipped"; score: number | null }; now: Date }> = [];
+    const repository: SubmissionRepository = {
+      transaction: async (work) => work(repository),
+      createSessionSnapshot: async (input) => ({ session: { id: input.sessionId, sectorId: input.sectorId, shiftSheetVersionId: 42, shiftRangeId: null }, questions: [{ sessionQuestionId: 91, questionId: 19, questionVersionId: 29, text: "NPS", questionKind: "standard", isNps: true, position: 1 }] }),
+      saveAnswer: async (sessionId, input, now) => { saved.push({ sessionId, input, now }); return { sessionId, status: "complete", answered: true }; },
+    };
+    const service = new SubmissionService(repository, clock);
+    const started = await service.start(7, 4, "23:30");
+    expect(started.session).toMatchObject({ sectorId: 7, shiftSheetVersionId: 42, shiftRangeId: null });
+    expect(started.questions).toEqual([{ sessionQuestionId: 91, questionId: 19, questionVersionId: 29, text: "NPS", questionKind: "standard", isNps: true, position: 1 }]);
+    await expect(service.answer(started.capability.sessionId, "wrong", { sessionQuestionId: 91, status: "answered", score: 9 })).rejects.toMatchObject({ code: "SUBMISSION_CAPABILITY_INVALID" });
+    expect(saved).toHaveLength(0);
+    await expect(service.answer(started.capability.sessionId, started.capability.token, { sessionQuestionId: 91, status: "answered", score: 9 })).resolves.toMatchObject({ status: "complete" });
+    expect(saved).toEqual([{ sessionId: started.capability.sessionId, input: { sessionQuestionId: 91, status: "answered", score: 9 }, now: clock.now() }]);
+  });
   it("creates a capability only after the repository snapshot succeeds", async () => {
     const repository: SubmissionRepository = {
       transaction: async (work) => work(repository),
