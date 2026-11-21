@@ -1,79 +1,59 @@
-import { ShiftSheetService } from "../../src/modules/shifts/shift-sheet.service.js";
-import type { ShiftSheetRepository } from "../../src/modules/shifts/shift-sheet.service.js";
+import { ShiftSheetService, type ShiftSheetRepository } from "../../src/modules/shifts/shift-sheet.service.js";
+import { parseShiftSheet } from "../../src/modules/shifts/shift-sheet.parser.js";
+import { jest } from "@jest/globals";
 
-const header = "codigo_setor;nome_setor;nome_turno;hora_inicio;hora_fim;codigo_funcionario;nome_funcionario;dia_semana_iso";
-const row = (name = "Enfermagem") => `enfermagem;${name};Madrugada;00:00;08:00;FIC-1;Ana;1\nenfermagem;${name};Dia;08:00;16:00;FIC-1;Ana;1\nenfermagem;${name};Noite;16:00;00:00;FIC-1;Ana;1`;
-const input = (name?: string) => new TextEncoder().encode(`\ufeff${header}\n${row(name)}`);
-
+const header = "codigo_setor;nome_setor;nome_turno;hora_inicio;hora_fim;dia_semana_iso";
+const bytes = (text: string) => new TextEncoder().encode(`\ufeff${text}`);
+const week = (name = "Enfermagem") => [header, `enfermagem;${name};SEM_TURNO;08:00;17:00;1`, ...Array.from({ length: 6 }, (_, i) => `enfermagem;${name};FECHADO;00:00;00:00;${i + 2}`)].join("\n");
 function repository(): ShiftSheetRepository {
-  return {
-    sectors: async () => [{ code: "enfermagem", name: "Enfermagem", active: true }],
-    transaction: async (work) => work(repository()),
-    replaceCurrentSheet: async () => ({ versionId: 4 }),
-  };
+  return { sectors: async () => [{ code: "enfermagem", name: "Enfermagem", active: true }], transaction: async (work) => work(repository()), replaceCurrentSheet: async () => ({ versionId: 4 }) };
 }
 
 describe("ShiftSheetService", () => {
-  it("returns catalog mismatches as warnings and imports valid rows", async () => {
-    const service = new ShiftSheetService(repository(), () => new Date("2026-01-01T00:00:00Z"));
-    await expect(service.validate(input("Nome antigo"))).resolves.toEqual(expect.objectContaining({ warnings: expect.arrayContaining([expect.objectContaining({ reason: "nome do setor diverge do cadastro" })]) }));
-    await expect(service.import(input())).resolves.toMatchObject({ versionId: 4, warnings: [] });
+  it("imports exact rows and reports name mismatch only as warning", async () => {
+    let saved: Parameters<ShiftSheetRepository["replaceCurrentSheet"]>[0] | undefined;
+    const repo = repository();
+    repo.transaction = async (work) => work({ ...repo, replaceCurrentSheet: async (rows) => { saved = rows; return { versionId: 8 }; } });
+    const service = new ShiftSheetService(repo, () => new Date("2026-01-01T00:00:00Z"));
+    const result = await service.import(bytes(week("Nome antigo")));
+    expect(result.versionId).toBe(8);
+    expect(result.warnings).toHaveLength(7);
+    expect(result.warnings[0]).toMatchObject({ sectorCode: "enfermagem", reason: "nome do setor diverge do cadastro" });
+    expect(saved).toHaveLength(7);
+    expect(saved?.[0]).toMatchObject({ codigo_setor: "enfermagem", nome_turno: "SEM_TURNO", startsAt: 480, endsAt: 1020, dayOfWeek: 1 });
+    expect(saved?.[6]).toMatchObject({ nome_turno: "FECHADO", dayOfWeek: 7, closed: true });
   });
-
-  it("rejects unknown sectors without changing the repository", async () => {
-    let replaced = false;
-    let attempt: string | undefined;
-    const repo = { ...repository(), sectors: async () => [], replaceCurrentSheet: async () => { replaced = true; return { versionId: 1 }; }, recordUploadAttempt: async (_userId: number, result: "accepted" | "rejected") => { attempt = result; } };
-    await expect(new ShiftSheetService(repo).import(input(), 10)).rejects.toMatchObject({ code: "INVALID_SHIFT_SHEET" });
-    expect(replaced).toBe(false);
-    expect(attempt).toBe("rejected");
+  it("rejects missing days and unknown sectors without creating a version", async () => {
+    const replaceCurrentSheet = jest.fn(async () => ({ versionId: 5 }));
+    const recordUploadAttempt = jest.fn(async () => {});
+    const repo = { ...repository(), replaceCurrentSheet, recordUploadAttempt };
+    const service = new ShiftSheetService(repo);
+    const incomplete = bytes(`${header}\nenfermagem;Enfermagem;SEM_TURNO;08:00;17:00;1`);
+    await expect(service.import(incomplete, 10)).rejects.toMatchObject({ code: "INVALID_SHIFT_SHEET", details: expect.arrayContaining([expect.objectContaining({ sectorCode: "enfermagem", field: "dia_semana_iso", message: expect.stringContaining("dia 2") })]) });
+    expect(replaceCurrentSheet).not.toHaveBeenCalled();
+    expect(recordUploadAttempt).toHaveBeenCalledWith(10, "rejected", null, expect.any(Array));
+    const badRepo = { ...repo, sectors: async () => [] };
+    await expect(new ShiftSheetService(badRepo).import(bytes(week()))).rejects.toMatchObject({ code: "INVALID_SHIFT_SHEET", details: expect.arrayContaining([expect.objectContaining({ message: "código de setor desconhecido ou inativo" })]) });
+    expect(replaceCurrentSheet).not.toHaveBeenCalled();
   });
-
-  it("imports CSV employee snapshots without consulting the employee catalog", async () => {
-    let persisted: Parameters<ShiftSheetRepository["replaceCurrentSheet"]>[0] | undefined;
-    const repo: ShiftSheetRepository = {
-      ...repository(),
-      transaction: async (work) => work(repo),
-      replaceCurrentSheet: async (rows) => { persisted = rows; return { versionId: 8 }; },
-    };
-    const csv = `\ufeff${header}\nenfermagem;Enfermagem;Madrugada;00:00;08:00;LOCAL-1;  Ana Cláudia  ;1\nenfermagem;Enfermagem;Madrugada;00:00;08:00;LOCAL-2;Ana Cláudia;1\nenfermagem;Enfermagem;Dia;08:00;16:00;LOCAL-1;  Ana Cláudia  ;1\nenfermagem;Enfermagem;Dia;08:00;16:00;LOCAL-2;Ana Cláudia;1\nenfermagem;Enfermagem;Noite;16:00;00:00;LOCAL-1;  Ana Cláudia  ;1\nenfermagem;Enfermagem;Noite;16:00;00:00;LOCAL-2;Ana Cláudia;1`;
-    await expect(new ShiftSheetService(repo).import(new TextEncoder().encode(csv))).resolves.toMatchObject({ versionId: 8 });
-    expect(persisted).toEqual(expect.arrayContaining([
-      expect.objectContaining({ codigo_funcionario: "LOCAL-1", nome_funcionario: "Ana Cláudia" }),
-      expect.objectContaining({ codigo_funcionario: "LOCAL-2", nome_funcionario: "Ana Cláudia" }),
-    ]));
-  });
-
-  it("keeps the same displayed name independent across sectors", async () => {
-    const repo: ShiftSheetRepository = {
-      ...repository(),
-      sectors: async () => [
-        { code: "enfermagem", name: "Enfermagem", active: true },
-        { code: "uti", name: "UTI", active: true },
-      ],
-    };
-    const lines = [["enfermagem", "Enfermagem"], ["uti", "UTI"]].flatMap(([prefix, name]) => [
-      `${prefix};${name};Madrugada;00:00;08:00;LOCAL-${prefix};Ana;1`,
-      `${prefix};${name};Dia;08:00;16:00;LOCAL-${prefix};Ana;1`,
-      `${prefix};${name};Noite;16:00;00:00;LOCAL-${prefix};Ana;1`,
-    ]);
-    await expect(new ShiftSheetService(repo).validate(new TextEncoder().encode(`\ufeff${header}\n${lines.join("\n")}`))).resolves.toMatchObject({ issues: [], warnings: [] });
-  });
-
-  it("rejects oversized files before catalog access", async () => {
-    let catalogRead = false;
-    const repo = { ...repository(), sectors: async () => { catalogRead = true; return []; } };
-    const result = await new ShiftSheetService(repo).validate(new Uint8Array(5 * 1024 * 1024 + 1));
-    expect(result.issues[0]?.reason).toContain("excede");
-    expect(catalogRead).toBe(false);
-  });
-
-  it("generates an Excel-compatible CSV with BOM and escaped values", async () => {
-    const repo = { ...repository(), currentSheetRows: async () => [{ codigo_setor: "uti", nome_setor: "UTI; Adulto", nome_turno: "Dia", hora_inicio: "08:00", hora_fim: "16:00", codigo_funcionario: "F-1", nome_funcionario: 'Ana "A"', dia_semana_iso: 1 }] };
+  it("exports escaped rows with BOM that parse back to the same values", async () => {
+    const repo = { ...repository(), sectors: async () => [{ code: "uti", name: "UTI; Adulto", active: true }], currentSheetRows: async () => [
+      { codigo_setor: "uti", nome_setor: "UTI; Adulto", nome_turno: 'Dia "A"', hora_inicio: "08:00", hora_fim: "17:00", dia_semana_iso: 1 },
+      ...Array.from({ length: 6 }, (_, i) => ({ codigo_setor: "uti", nome_setor: "UTI; Adulto", nome_turno: "FECHADO", hora_inicio: "00:00", hora_fim: "00:00", dia_semana_iso: i + 2 })),
+    ] };
     const csv = await new ShiftSheetService(repo).download();
-    const text = new TextDecoder().decode(csv);
     expect([...csv.slice(0, 3)]).toEqual([0xef, 0xbb, 0xbf]);
-    expect(text).toContain('"UTI; Adulto"');
-    expect(text).toContain('"Ana ""A"""');
+    const parsed = parseShiftSheet(csv);
+    expect(parsed.issues).toEqual([]);
+    expect(parsed.rows).toHaveLength(7);
+    expect(parsed.rows[0]).toMatchObject({ codigo_setor: "uti", nome_setor: "UTI; Adulto", nome_turno: 'Dia "A"', startsAt: 480, endsAt: 1020 });
+  });
+  it("provides a complete model and reports absent current version", async () => {
+    const service = new ShiftSheetService({ ...repository(), currentSheetRows: async () => [] });
+    await expect(service.download()).rejects.toMatchObject({ code: "SHIFT_SHEET_NOT_FOUND", status: 404 });
+    const model = parseShiftSheet(await service.template());
+    expect(model.issues).toEqual([]);
+    expect(model.rows.map((row) => row.dayOfWeek)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(model.rows.every((row) => row.closed)).toBe(true);
   });
 });

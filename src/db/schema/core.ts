@@ -22,6 +22,7 @@ export const shiftSheetVersions = pgTable("shift_sheet_versions", {
   uploadedAt: timestamp("uploaded_at", { withTimezone: true }).notNull(),
   validFrom: timestamp("valid_from", { withTimezone: true }).notNull(),
   isCurrent: boolean("is_current").notNull().default(false),
+  csvFormat: integer("csv_format").notNull().default(1),
 });
 export const sectorShiftRanges = pgTable("sector_shift_ranges", {
   id: integer().primaryKey().generatedByDefaultAsIdentity(),
@@ -30,7 +31,9 @@ export const sectorShiftRanges = pgTable("sector_shift_ranges", {
   shiftName: text("shift_name").notNull(),
   startsAt: time("starts_at").notNull(),
   endsAt: time("ends_at").notNull(),
+  dayOfWeek: integer("day_of_week"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
 });
+export const sectorShiftDays = pgTable("sector_shift_days", { shiftSheetVersionId: integer("shift_sheet_version_id").notNull(), sectorId: integer("sector_id").notNull(), dayOfWeek: integer("day_of_week").notNull(), isClosed: boolean("is_closed").notNull() });
 export const employees = pgTable("employees", { id: integer().primaryKey().generatedByDefaultAsIdentity(), employeeCode: text("employee_code").notNull(), fullName: text("full_name").notNull(), createdAt: timestamp("created_at", { withTimezone: true }).notNull(), updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(), deletedAt: timestamp("deleted_at", { withTimezone: true }) });
 export const employeeShiftAssignments = pgTable("employee_shift_assignments", { id: integer().primaryKey().generatedByDefaultAsIdentity(), shiftSheetVersionId: integer("shift_sheet_version_id").notNull(), sectorId: integer("sector_id").notNull(), shiftRangeId: integer("shift_range_id").notNull(), employeeId: integer("employee_id"), employeeCode: text("employee_code").notNull(), employeeName: text("employee_name").notNull(), workDate: text("work_date"), dayOfWeek: integer("day_of_week") });
