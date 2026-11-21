@@ -309,6 +309,7 @@ export const shiftSheetVersions = pgTable("shift_sheet_versions", {
 	uploadedAt: timestamp("uploaded_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	validFrom: timestamp("valid_from", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	isCurrent: boolean("is_current").default(false).notNull(),
+	csvFormat: smallint("csv_format").default(1).notNull(),
 }, (table) => [
 	uniqueIndex("shift_sheet_one_current_version_uq").using("btree", table.isCurrent.asc().nullsLast().op("bool_ops")).where(sql`(is_current = true)`),
 	index("shift_sheet_versions_valid_from_idx").using("btree", table.validFrom.desc().nullsFirst().op("timestamptz_ops")),
@@ -322,6 +323,7 @@ export const shiftSheetVersions = pgTable("shift_sheet_versions", {
 	pgPolicy("fhdod_api_shift_sheet_versions_insert", { as: "permissive", for: "insert", to: ["fhdod_api"], withCheck: sql`true` }),
 	pgPolicy("fhdod_api_shift_sheet_versions_select", { as: "permissive", for: "select", to: ["fhdod_api"], using: sql`true` }),
 	check("shift_sheet_version_number_check", sql`version_number >= 1`),
+	check("shift_sheet_csv_format_check", sql`csv_format IN (1, 2)`),
 ]).enableRLS();
 
 export const employees = pgTable("employees", {
@@ -340,8 +342,8 @@ export const employees = pgTable("employees", {
 export const submissionSessions = pgTable("submission_sessions", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
 	sectorId: integer("sector_id").notNull(),
-	shiftSheetVersionId: integer("shift_sheet_version_id").notNull(),
-	shiftRangeId: integer("shift_range_id").notNull(),
+	shiftSheetVersionId: integer("shift_sheet_version_id"),
+	shiftRangeId: integer("shift_range_id"),
 	startedAt: timestamp("started_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	lastActivityAt: timestamp("last_activity_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	endedAt: timestamp("ended_at", { withTimezone: true, mode: 'string' }),
@@ -480,6 +482,7 @@ export const sectorShiftRanges = pgTable("sector_shift_ranges", {
 	shiftName: text("shift_name").notNull(),
 	startsAt: time("starts_at").notNull(),
 	endsAt: time("ends_at").notNull(),
+	dayOfWeek: smallint("day_of_week"),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 }, (table) => [
 	index("sector_shift_ranges_lookup_idx").using("btree", table.shiftSheetVersionId.asc().nullsLast().op("int4_ops"), table.sectorId.asc().nullsLast().op("int4_ops"), table.startsAt.asc().nullsLast().op("time_ops"), table.endsAt.asc().nullsLast().op("time_ops")),
@@ -495,10 +498,26 @@ export const sectorShiftRanges = pgTable("sector_shift_ranges", {
 			name: "sector_shift_ranges_shift_sheet_version_id_fkey"
 		}).onDelete("restrict"),
 	unique("sector_shift_range_composite_uq").on(table.id, table.shiftSheetVersionId, table.sectorId),
-	unique("sector_shift_range_duplicate_uq").on(table.shiftSheetVersionId, table.sectorId, table.shiftName, table.startsAt, table.endsAt),
+		uniqueIndex("sector_shift_range_legacy_duplicate_uq").on(table.shiftSheetVersionId, table.sectorId, table.shiftName, table.startsAt, table.endsAt).where(sql`${table.dayOfWeek} IS NULL`),
+		uniqueIndex("sector_shift_range_weekday_duplicate_uq").on(table.shiftSheetVersionId, table.sectorId, table.dayOfWeek, table.shiftName, table.startsAt, table.endsAt).where(sql`${table.dayOfWeek} IS NOT NULL`),
 	pgPolicy("fhdod_api_sector_shift_ranges_insert", { as: "permissive", for: "insert", to: ["fhdod_api"], withCheck: sql`true` }),
 	pgPolicy("fhdod_api_sector_shift_ranges_select", { as: "permissive", for: "select", to: ["fhdod_api"], using: sql`true` }),
 	check("sector_shift_range_nonzero_check", sql`starts_at <> ends_at`),
+	check("sector_shift_range_weekday_check", sql`day_of_week BETWEEN 1 AND 7 OR day_of_week IS NULL`),
+]).enableRLS();
+
+export const sectorShiftDays = pgTable("sector_shift_days", {
+	shiftSheetVersionId: integer("shift_sheet_version_id").notNull(),
+	sectorId: integer("sector_id").notNull(),
+	dayOfWeek: smallint("day_of_week").notNull(),
+	isClosed: boolean("is_closed").notNull(),
+}, (table) => [
+	primaryKey({ columns: [table.shiftSheetVersionId, table.sectorId, table.dayOfWeek], name: "sector_shift_days_pkey" }),
+	foreignKey({ columns: [table.shiftSheetVersionId], foreignColumns: [shiftSheetVersions.id], name: "sector_shift_days_shift_sheet_version_id_fkey" }).onDelete("restrict"),
+	foreignKey({ columns: [table.sectorId], foreignColumns: [sectors.id], name: "sector_shift_days_sector_id_fkey" }).onDelete("restrict"),
+	pgPolicy("fhdod_api_sector_shift_days_select", { as: "permissive", for: "select", to: ["fhdod_api"], using: sql`true` }),
+	pgPolicy("fhdod_api_sector_shift_days_insert", { as: "permissive", for: "insert", to: ["fhdod_api"], withCheck: sql`true` }),
+	check("sector_shift_days_day_of_week_check", sql`day_of_week BETWEEN 1 AND 7`),
 ]).enableRLS();
 
 export const employeeShiftAssignments = pgTable("employee_shift_assignments", {

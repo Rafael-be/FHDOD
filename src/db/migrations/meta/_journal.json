@@ -57,6 +57,13 @@
       "when": 1793990400000,
       "tag": "0007_enforce_nps_scope_integrity",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1795291200000,
+      "tag": "0008_shift_sheets_without_employees",
+      "breakpoints": true
     }
   ]
 }

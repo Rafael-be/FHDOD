@@ -26,7 +26,9 @@ integration("runtime RLS policies", () => {
           where schemaname = 'public' and policyname like 'fhdod_api_%'
           order by tablename, cmd
         `;
-        expect(policies).toHaveLength(53);
+        // Migration 0008 adds the two policies required to persist and read
+        // per-sector day declarations in the new shift-sheet format.
+        expect(policies).toHaveLength(55);
         expect(policies.every((policy) => policy.roles.includes("fhdod_api"))).toBe(true);
         expect(policies.some((policy) => policy.cmd === "ALL" || policy.cmd === "DELETE")).toBe(false);
         expect(policies).toEqual(expect.arrayContaining([
@@ -39,6 +41,8 @@ integration("runtime RLS policies", () => {
           expect.objectContaining({ tablename: "audit_logs", cmd: "INSERT" }),
           expect.objectContaining({ tablename: "content_page_versions", cmd: "INSERT" }),
           expect.objectContaining({ tablename: "sector_shift_ranges", cmd: "SELECT" }),
+          expect.objectContaining({ tablename: "sector_shift_days", cmd: "SELECT" }),
+          expect.objectContaining({ tablename: "sector_shift_days", cmd: "INSERT" }),
           expect.objectContaining({ tablename: "questions", cmd: "SELECT" }),
           expect.objectContaining({ tablename: "questions", cmd: "INSERT" }),
           expect.objectContaining({ tablename: "questions", cmd: "UPDATE" }),

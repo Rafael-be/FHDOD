@@ -53,10 +53,10 @@ describeIntegration("shift selection", () => {
         await expect(snapshot(a.id, 1, '19:00')).resolves.toMatchObject({ session: { shiftRangeId: night.id } });
         await expect(snapshot(a.id, 2, '00:00')).resolves.toMatchObject({ session: { shiftRangeId: night.id } });
         await expect(snapshot(a.id, 2, '06:59')).resolves.toMatchObject({ session: { shiftRangeId: night.id } });
-        await expect(snapshot(a.id, 2, '07:00')).rejects.toMatchObject({ code: 'SHIFT_NOT_FOUND' });
+        await expect(snapshot(a.id, 2, '07:00')).resolves.toMatchObject({ session: { shiftRangeId: null } });
         await expect(snapshot(a.id, 1, '08:00')).resolves.toMatchObject({ session: { shiftRangeId: day.id } });
         await expect(snapshot(b.id, 1, '08:00')).resolves.toMatchObject({ session: { shiftRangeId: other.id } });
-        await expect(snapshot(b.id, 2, '08:00')).rejects.toMatchObject({ code: 'SHIFT_NOT_FOUND' });
+        await expect(snapshot(b.id, 2, '08:00')).resolves.toMatchObject({ session: { shiftRangeId: null } });
         await expect(snapshot(a.id, 1, '03:00')).resolves.toMatchObject({ session: { shiftRangeId: night.id } });
       });
     } finally {
@@ -102,14 +102,14 @@ describeIntegration("shift selection", () => {
           return new SubmissionService(new PostgresSubmissionRepository(tx as unknown as postgres.Sql), clock).startNow(sector[0]!.id);
         };
 
-        await expect(startAt("2026-01-06T03:30:00.000Z")).rejects.toMatchObject({ code: "SHIFT_NOT_FOUND" });
-        await expect(startAt("2026-01-06T06:00:00.000Z")).rejects.toMatchObject({ code: "SHIFT_NOT_FOUND" });
-        await expect(startAt("2026-01-06T21:59:00.000Z")).rejects.toMatchObject({ code: "SHIFT_NOT_FOUND" });
+        await expect(startAt("2026-01-06T03:30:00.000Z")).resolves.toMatchObject({ session: { shiftRangeId: null } });
+        await expect(startAt("2026-01-06T06:00:00.000Z")).resolves.toMatchObject({ session: { shiftRangeId: null } });
+        await expect(startAt("2026-01-06T21:59:00.000Z")).resolves.toMatchObject({ session: { shiftRangeId: null } });
         await expect(startAt("2026-01-06T22:00:00.000Z")).resolves.toMatchObject({ session: { shiftRangeId: range[0]!.id } });
         await expect(startAt("2026-01-07T02:59:00.000Z")).resolves.toMatchObject({ session: { shiftRangeId: range[0]!.id } });
         await expect(startAt("2026-01-07T03:00:00.000Z")).resolves.toMatchObject({ session: { shiftRangeId: range[0]!.id } });
         await expect(startAt("2026-01-07T09:59:00.000Z")).resolves.toMatchObject({ session: { shiftRangeId: range[0]!.id } });
-        await expect(startAt("2026-01-07T10:00:00.000Z")).rejects.toMatchObject({ code: "SHIFT_NOT_FOUND" });
+        await expect(startAt("2026-01-07T10:00:00.000Z")).resolves.toMatchObject({ session: { shiftRangeId: null } });
       });
     } finally {
       await sql.end({ timeout: 5 });
