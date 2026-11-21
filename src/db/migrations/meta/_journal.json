@@ -64,6 +64,13 @@
       "when": 1795291200000,
       "tag": "0008_shift_sheets_without_employees",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795377600000,
+      "tag": "0009_ombudsman_tickets",
+      "breakpoints": true
     }
   ]
 }

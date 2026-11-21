@@ -4,7 +4,7 @@ import { sql } from "drizzle-orm"
 export const answerStatus = pgEnum("answer_status", ['answered', 'skipped'])
 export const dashboardSummaryType = pgEnum("dashboard_summary_type", ['answers', 'sessions', 'ombudsman'])
 export const npsAssignmentSource = pgEnum("nps_assignment_source", ['global', 'specific'])
-export const ombudsmanTicketStatus = pgEnum("ombudsman_ticket_status", ['open', 'in_contact_attempt', 'resolved', 'unresolved', 'read'])
+export const ombudsmanTicketStatus = pgEnum("ombudsman_ticket_status", ['open', 'in_contact_attempt', 'resolved', 'unresolved', 'read', 'contact_attempt', 'contact_failed'])
 export const ombudsmanTicketType = pgEnum("ombudsman_ticket_type", ['complaint', 'compliment', 'suggestion_other'])
 export const questionAssignmentSource = pgEnum("question_assignment_source", ['global', 'selected'])
 export const questionKind = pgEnum("question_kind", ['sector', 'standard'])
@@ -442,8 +442,8 @@ export const contentPageVersions = pgTable("content_page_versions", {
 export const ombudsmanTickets = pgTable("ombudsman_tickets", {
 	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "ombudsman_tickets_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
 	sectorId: integer("sector_id").notNull(),
-	shiftSheetVersionId: integer("shift_sheet_version_id").notNull(),
-	shiftRangeId: integer("shift_range_id").notNull(),
+	shiftSheetVersionId: integer("shift_sheet_version_id"),
+	shiftRangeId: integer("shift_range_id"),
 	occurredAt: timestamp("occurred_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	ticketType: ombudsmanTicketType("ticket_type").notNull(),
 	status: ombudsmanTicketStatus().default('open').notNull(),
