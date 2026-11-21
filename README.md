@@ -47,6 +47,50 @@ As demais variáveis obrigatórias são `ALLOWED_ORIGIN`, `JWT_SECRET`,
 `JWT_ISSUER` e `JWT_AUDIENCE`. Veja os exemplos e comentários em
 [.env.example](.env.example).
 
+## Cache Redis
+
+O cache é opcional e usa cache-aside somente para a lista efetiva de perguntas
+ativas por setor, depois de a autorização normal ser concluída. Para uso local,
+inicie um contêiner já criado com `docker start fhdod-redis` e verifique-o com
+`redis-cli -u "$REDIS_URL" PING`. Configure
+`CACHE_ENABLED=true`, `REDIS_URL` e `CACHE_QUESTIONS_TTL_SECONDS` (30–120;
+padrão 60). Com `CACHE_ENABLED=false`, o cache é desabilitado; Redis ainda pode
+ser conectado se `SECURITY_REDIS_ENABLED=true` para rate limiting.
+
+As chaves seguem `fhdod:cache:v1:questions:effective:sector:<id>:v<versão>`.
+Após qualquer alteração confirmada de pergunta, vínculo, NPS ou ordenação, a
+versão global de perguntas é incrementada; entradas anteriores ficam obsoletas
+sem `SCAN`, `FLUSHALL` ou `FLUSHDB`. Falha, timeout ou indisponibilidade do
+Redis é fail-open: a API consulta PostgreSQL normalmente. O cache não contém
+sessões, tokens, respostas de pacientes, cookies nem respostas HTTP completas.
+
+## Limitação distribuída e proteção de login
+
+Quando `SECURITY_REDIS_ENABLED=true`, os limites são compartilhados entre
+réplicas por Redis. As chaves usam HMAC-SHA-256 derivado de `JWT_SECRET`; IPs e
+e-mails não são gravados em texto puro. O incremento e a expiração são
+atômicos. Redis indisponível ativa um fallback local por processo: ele mantém
+uma proteção mínima, mas não coordena múltiplas instâncias.
+
+- `POST /api/auth/login`: 30 requisições/IP a cada 15 minutos e, por padrão,
+  cinco falhas por IP ou identificador na mesma janela. Falhas repetidas para o
+  mesmo identificador recebem atraso progressivo curto; a tentativa seguinte
+  ao limite recebe `429` com `Retry-After`. Login bem-sucedido limpa somente o
+  contador do identificador.
+- `GET /api/auth/csrf` e `POST /api/auth/refresh`: 60 requisições/IP a cada
+  15 minutos.
+- rotas administrativas autenticadas: 300 requisições/IP por minuto.
+- rotas públicas de submissão: 180 requisições/IP por minuto, propositalmente
+  mais permissivas para redes hospitalares compartilhadas.
+
+Todos os valores podem ser ajustados pelas variáveis `RATE_LIMIT_*` e
+`LOGIN_*` em [.env.example](.env.example). `TRUSTED_PROXY_CIDRS` é vazio por
+padrão: o Express ignora cabeçalhos encaminhados. Informe somente os IPs/CIDRs
+do proxy reverso controlado; nunca use uma confiança irrestrita. No Postman, repita uma rota até receber
+`429` e confira `Retry-After`; para inspeção local, use somente chaves de teste
+com o prefixo `fhdod:security:v1:` e nunca tente derivar ou registrar chaves
+de usuários reais.
+
 ## Segurança de sessão
 
 - Access token curto e refresh token opaco são enviados em cookies HTTP-only.

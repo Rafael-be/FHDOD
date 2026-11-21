@@ -20,6 +20,9 @@ import { PostgresSubmissionRepository } from "./modules/submissions/submission.r
 import { SubmissionService } from "./modules/submissions/submission.service.js";
 import { QuestionsRepository } from "./modules/questions/questions.repository.js";
 import { QuestionsService } from "./modules/questions/questions.service.js";
+import { RedisCacheService } from "./cache/cache.service.js";
+import { NodeRedisClient } from "./cache/redis.client.js";
+import { SecurityRateLimiter } from "./security/rate-limiter.js";
 import {
   logServerShutdownTimedOut,
   logServerStarted,
@@ -46,6 +49,12 @@ function closeServer(server: Server): Promise<void> {
 async function startServer(): Promise<void> {
   const config = loadConfig();
   const database = createDatabase(config);
+  const redis = config.CACHE_ENABLED || config.SECURITY_REDIS_ENABLED ? new NodeRedisClient(config) : undefined;
+  const cache = new RedisCacheService(redis, config.CACHE_ENABLED, config.CACHE_QUESTIONS_TTL_SECONDS);
+  const securityRateLimiter = new SecurityRateLimiter(redis, config.SECURITY_REDIS_ENABLED, config.JWT_SECRET);
+  if (redis) void redis.connect().catch(() => {
+    process.stderr.write(`${JSON.stringify({ level: "warn", event: "cache.redis_unavailable" })}\n`);
+  });
   const clock = new SystemClock();
   const healthService = new HealthService(new HealthRepository(database.client));
 
@@ -76,7 +85,8 @@ async function startServer(): Promise<void> {
     contentService: new ContentService(new ContentRepository(database.client)),
     shiftSheetService: new ShiftSheetService(new PostgresShiftSheetRepository(database.client), clock.now.bind(clock)),
     submissionService: new SubmissionService(new PostgresSubmissionRepository(database.client), clock),
-    questionsService: new QuestionsService(new QuestionsRepository(database.client)),
+    questionsService: new QuestionsService(new QuestionsRepository(database.client), cache),
+    securityRateLimiter,
   });
   const server = app.listen(config.PORT, () => logServerStarted(config.PORT));
 
@@ -99,6 +109,7 @@ async function startServer(): Promise<void> {
 
     try {
       await closeServer(server);
+      await redis?.close();
       await database.close();
       logServerStopped();
     } catch (error) {

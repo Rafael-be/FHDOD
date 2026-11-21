@@ -1,13 +1,14 @@
 import { Router } from "express";
 import type { SubmissionService } from "./submission.service.js";
-import { submissionPublicLimiter } from "./submission.public-limiter.js";
+import { rateLimitByIp } from "../../security/rate-limit.middleware.js";
+import type { SecurityRateLimiter } from "../../security/rate-limiter.js";
 import { z } from "zod";
 
 const sessionId = z.string().uuid();
 
-export function submissionRestartRoutes(service: SubmissionService): Router {
+export function submissionRestartRoutes(service: SubmissionService, limiter?: SecurityRateLimiter, limit = 180): Router {
   const router = Router();
-  router.use(submissionPublicLimiter);
+  if (limiter) router.use(rateLimitByIp(limiter, "submission-public", { limit, windowSeconds: 60 }, "SUBMISSION_RATE_LIMITED", "Muitas solicitações. Aguarde um momento."));
   router.post("/public/submissions/:sessionId/restart", async (request, response, next) => {
     try {
       const token = request.get("x-session-capability");
