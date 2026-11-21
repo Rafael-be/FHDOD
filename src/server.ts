@@ -23,6 +23,8 @@ import { QuestionsService } from "./modules/questions/questions.service.js";
 import { RedisCacheService } from "./cache/cache.service.js";
 import { NodeRedisClient } from "./cache/redis.client.js";
 import { SecurityRateLimiter } from "./security/rate-limiter.js";
+import { OmbudsmanRepository } from "./modules/ombudsman/ombudsman.repository.js";
+import { OmbudsmanService } from "./modules/ombudsman/ombudsman.service.js";
 import {
   logServerShutdownTimedOut,
   logServerStarted,
@@ -87,6 +89,7 @@ async function startServer(): Promise<void> {
     submissionService: new SubmissionService(new PostgresSubmissionRepository(database.client), clock),
     questionsService: new QuestionsService(new QuestionsRepository(database.client), cache),
     securityRateLimiter,
+    ombudsmanService: new OmbudsmanService(new OmbudsmanRepository(database.client), clock),
   });
   const server = app.listen(config.PORT, () => logServerStarted(config.PORT));
 

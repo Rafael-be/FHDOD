@@ -29,6 +29,8 @@ import type { QuestionsService } from "./modules/questions/questions.service.js"
 import { questionsRoutes } from "./modules/questions/questions.routes.js";
 import type { SecurityRateLimiter } from "./security/rate-limiter.js";
 import { rateLimitByIp } from "./security/rate-limit.middleware.js";
+import type { OmbudsmanService } from "./modules/ombudsman/ombudsman.service.js";
+import { ombudsmanRoutes } from "./modules/ombudsman/ombudsman.routes.js";
 
 export interface AppDependencies {
   authService: AuthService;
@@ -40,6 +42,7 @@ export interface AppDependencies {
   submissionService?: SubmissionService;
   questionsService?: QuestionsService;
   securityRateLimiter?: SecurityRateLimiter;
+  ombudsmanService?: OmbudsmanService;
 }
 
 function validateRuntimeDependencies(
@@ -76,6 +79,7 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
     submissionService,
     questionsService,
     securityRateLimiter,
+    ombudsmanService,
   } = dependencies;
   const app = express();
   const trustedProxies = config.TRUSTED_PROXY_CIDRS ?? [];
@@ -101,6 +105,7 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
   if (auditService) app.use("/api", authenticate(authService), auditRoutes(auditService));
   if (contentService) app.use("/api", contentRoutes(contentService, authService));
   if (questionsService) app.use("/api", authenticate(authService), questionsRoutes(questionsService, authService));
+  if (ombudsmanService) app.use("/api", ombudsmanRoutes(ombudsmanService, authService, securityRateLimiter, config.RATE_LIMIT_SUBMISSION_PER_IP));
   app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openapiDocument, { explorer: false }));
   app.use(notFoundHandler);
   app.use(errorHandler);
