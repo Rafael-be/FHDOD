@@ -1,6 +1,5 @@
 import "dotenv/config";
 import postgres from "postgres";
-import { randomUUID } from "node:crypto";
 import { parseShiftSheet } from "../../src/modules/shifts/shift-sheet.parser.js";
 import { PostgresShiftSheetRepository } from "../../src/modules/shifts/shift-sheet.repository.js";
 import { ShiftSheetService } from "../../src/modules/shifts/shift-sheet.service.js";
@@ -14,12 +13,11 @@ describeIntegration("importação CSV real da planilha de horários", () => {
   it("persiste uma nova versão com o formato sem funcionários", async () => {
     await assertDisposableTestDatabase(adminUrl!, runtimeUrl!);
     const sql = postgres(adminUrl!, { max: 1 });
-    const suffix = randomUUID().slice(0, 8);
     try {
       const sectors = await sql<{ code: string; name: string }[]>`
         select code, name from sectors where deleted_at is null order by code
       `;
-      const target = sectors.find((sector) => sector.code === "${suffix}") ?? sectors[0];
+      const target = sectors[0];
       if (!target) throw new Error("O banco local não possui setor ativo para o teste.");
       const rows = sectors.flatMap((sector) => Array.from({ length: 7 }, (_, index) => {
         const day = index + 1;
