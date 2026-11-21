@@ -3,6 +3,19 @@ import type { SubmissionAnswerInput, SubmissionQuestion, SubmissionStart } from 
 import { DomainError } from "../../shared/core.js";
 import { listEffectiveQuestions } from "../questions/effective-question-resolver.js";
 
+type DatabaseTimestamp = Date | string | number;
+
+/** postgres-js may return timestamptz values as strings depending on its type transformer. */
+export function timestampToMillis(value: DatabaseTimestamp): number {
+  const millis = value instanceof Date ? value.getTime() : new Date(value).getTime();
+  if (!Number.isFinite(millis)) throw new Error("Timestamp inválido retornado pelo PostgreSQL.");
+  return millis;
+}
+
+export function timestampToIso(value: DatabaseTimestamp): string {
+  return new Date(timestampToMillis(value)).toISOString();
+}
+
 export interface SubmissionRepository {
   transaction<T>(work: (repository: SubmissionRepository) => Promise<T>): Promise<T>;
   createSessionSnapshot(input: SubmissionStart): Promise<{ session: { id: string; sectorId: number; shiftSheetVersionId: number | null; shiftRangeId: number | null }; questions: SubmissionQuestion[] }>;
@@ -73,7 +86,7 @@ export class PostgresSubmissionRepository implements SubmissionRepository {
   }
 
   async saveAnswer(sessionId: string, input: SubmissionAnswerInput, now: Date) {
-    const target = await this.sql<{ sectorId: number; shiftRangeId: number | null; startedAt: Date; lastActivityAt: Date; endedAt: Date | null; questionId: number; questionKind: "sector" | "standard"; isNps: boolean; questionVersionId: number }[]>`
+    const target = await this.sql<{ sectorId: number; shiftRangeId: number | null; startedAt: DatabaseTimestamp; lastActivityAt: DatabaseTimestamp; endedAt: DatabaseTimestamp | null; questionId: number; questionKind: "sector" | "standard"; isNps: boolean; questionVersionId: number }[]>`
       select s.sector_id as "sectorId", s.shift_range_id as "shiftRangeId", s.started_at as "startedAt", s.last_activity_at as "lastActivityAt", s.ended_at as "endedAt",
              q.question_id as "questionId", q.question_kind as "questionKind", q.is_nps as "isNps", q.question_version_id as "questionVersionId"
       from submission_sessions s join submission_session_questions q on q.session_id = s.id
@@ -83,7 +96,7 @@ export class PostgresSubmissionRepository implements SubmissionRepository {
     const item = target[0];
     if (!item) throw new DomainError("SUBMISSION_QUESTION_NOT_FOUND", "Pergunta não pertence à sessão.", 404);
     if (item.endedAt) throw new DomainError("SUBMISSION_CLOSED", "Sessão já encerrada.", 409);
-    if (now.getTime() - item.lastActivityAt.getTime() > 2 * 60_000) {
+    if (now.getTime() - timestampToMillis(item.lastActivityAt) > 2 * 60_000) {
       await this.sql`update submission_sessions set ended_at = ${now.toISOString()} where id = ${sessionId} and ended_at is null`;
       throw new DomainError("SUBMISSION_EXPIRED", "Sessão expirada por inatividade.", 410);
     }
@@ -99,7 +112,7 @@ export class PostgresSubmissionRepository implements SubmissionRepository {
     await this.sql`update submission_sessions set last_activity_at = ${now.toISOString()} where id = ${sessionId}`;
     if (item.shiftRangeId !== null) await this.sql`
       insert into dashboard_dirty_groups (summary_type, hour_bucket, sector_id, shift_range_id, question_id, question_version_id, queued_at)
-      values ('answers', date_trunc('hour', ${item.startedAt.toISOString()}::timestamptz), ${item.sectorId}, ${item.shiftRangeId}, ${item.questionId}, ${item.questionVersionId}, ${now.toISOString()})
+      values ('answers', date_trunc('hour', ${timestampToIso(item.startedAt)}::timestamptz), ${item.sectorId}, ${item.shiftRangeId}, ${item.questionId}, ${item.questionVersionId}, ${now.toISOString()})
       on conflict do nothing
     `;
     const counts = await this.sql<{ required: number; requiredAnswered: number; npsTotal: number; npsAnswered: number }[]>`
