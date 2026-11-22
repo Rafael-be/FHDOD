@@ -4,7 +4,7 @@ import type { SubmissionService } from "./submission.service.js";
 import { rateLimitByIp } from "../../security/rate-limit.middleware.js";
 import type { SecurityRateLimiter } from "../../security/rate-limiter.js";
 
-const input = z.object({ sessionQuestionId: z.coerce.number().int().positive(), status: z.enum(["answered", "skipped"]), score: z.number().int().nullable() });
+const input = z.object({ questionId: z.number().int().positive(), questionVersionId: z.number().int().positive(), status: z.enum(["answered", "skipped"]), score: z.number().int().nullable() });
 const sessionId = z.string().uuid();
 
 export function submissionAnswerRoutes(service: SubmissionService, limiter?: SecurityRateLimiter, limit = 180): Router {

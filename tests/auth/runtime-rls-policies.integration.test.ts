@@ -26,8 +26,8 @@ integration("runtime RLS policies", () => {
           where schemaname = 'public' and policyname like 'fhdod_api_%'
           order by tablename, cmd
         `;
-        // 0008 adds two day policies; 0009 adds ticket SELECT, INSERT and UPDATE.
-        expect(policies).toHaveLength(58);
+        // 0010 adds seven SELECT/INSERT/UPDATE policies for published forms and answers.
+        expect(policies).toHaveLength(65);
         expect(policies.every((policy) => policy.roles.includes("fhdod_api"))).toBe(true);
         expect(policies.some((policy) => policy.cmd === "ALL" || policy.cmd === "DELETE")).toBe(false);
         expect(policies).toEqual(expect.arrayContaining([
@@ -53,6 +53,13 @@ integration("runtime RLS policies", () => {
           expect.objectContaining({ tablename: "sector_nps_assignments", cmd: "UPDATE" }),
           expect.objectContaining({ tablename: "submission_sessions", cmd: "INSERT" }),
           expect.objectContaining({ tablename: "submission_answers", cmd: "UPDATE" }),
+          expect.objectContaining({ tablename: "submission_form_versions", cmd: "SELECT" }),
+          expect.objectContaining({ tablename: "submission_form_versions", cmd: "INSERT" }),
+          expect.objectContaining({ tablename: "submission_form_questions", cmd: "SELECT" }),
+          expect.objectContaining({ tablename: "submission_form_questions", cmd: "INSERT" }),
+          expect.objectContaining({ tablename: "submission_form_answers", cmd: "SELECT" }),
+          expect.objectContaining({ tablename: "submission_form_answers", cmd: "INSERT" }),
+          expect.objectContaining({ tablename: "submission_form_answers", cmd: "UPDATE" }),
         ]));
 
         throw new Error(rollbackMarker);

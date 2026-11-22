@@ -44,6 +44,10 @@ describeIntegration("shift selection", () => {
         const question = await tx<{ id: number }[]>`insert into questions (question_kind, scope, sector_id, is_nps, display_order, created_by_user_id, created_at, updated_at) values ('standard', 'selected_sectors', null, true, 2147483647, ${user[0]!.id}, now(), now()) returning id`;
         await tx`insert into question_versions (question_id, version_number, text, is_current, created_by_user_id, created_at) values (${question[0]!.id}, 1, 'NPS', true, ${user[0]!.id}, now())`;
         await tx`insert into sector_nps_assignments (sector_id, question_id, assignment_source, assigned_at, assigned_by_user_id) values (${a.id}, ${question[0]!.id}, 'specific', now(), ${user[0]!.id}), (${b.id}, ${question[0]!.id}, 'specific', now(), ${user[0]!.id})`;
+        for (const sectorId of [a.id, b.id]) {
+          const [common] = await tx<{ id: number }[]>`insert into questions (question_kind, scope, sector_id, is_nps, display_order, created_by_user_id) values ('sector', 'sector_only', ${sectorId}, false, 1, ${user[0]!.id}) returning id`;
+          await tx`insert into question_versions (question_id, version_number, text, is_current, created_by_user_id) values (${common!.id}, 1, 'Atendimento', true, ${user[0]!.id})`;
+        }
         const repository = new PostgresSubmissionRepository(tx as unknown as postgres.Sql);
         const snapshot = (sectorId: number, dayOfWeek: number, localTime: string) => repository.createSessionSnapshot({ sessionId: randomUUID(), sectorId, dayOfWeek, previousDayOfWeek: dayOfWeek === 1 ? 7 : dayOfWeek - 1, localTime, now: new Date('2026-01-05T12:00:00.000Z') });
 
@@ -96,6 +100,8 @@ describeIntegration("shift selection", () => {
         const question = await tx<{ id: number }[]>`insert into questions (question_kind, scope, sector_id, is_nps, display_order, created_by_user_id, created_at, updated_at) values ('standard', 'selected_sectors', null, true, 2147483647, ${user[0]!.id}, now(), now()) returning id`;
         await tx`insert into question_versions (question_id, version_number, text, is_current, created_by_user_id, created_at) values (${question[0]!.id}, 1, 'NPS', true, ${user[0]!.id}, now())`;
         await tx`insert into sector_nps_assignments (sector_id, question_id, assignment_source, assigned_at, assigned_by_user_id) values (${sector[0]!.id}, ${question[0]!.id}, 'specific', now(), ${user[0]!.id})`;
+        const [common] = await tx<{ id: number }[]>`insert into questions (question_kind, scope, sector_id, is_nps, display_order, created_by_user_id) values ('sector', 'sector_only', ${sector[0]!.id}, false, 1, ${user[0]!.id}) returning id`;
+        await tx`insert into question_versions (question_id, version_number, text, is_current, created_by_user_id) values (${common!.id}, 1, 'Atendimento', true, ${user[0]!.id})`;
 
         const startAt = (instant: string) => {
           const clock: Clock = { now: () => new Date(instant) };

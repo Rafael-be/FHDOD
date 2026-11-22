@@ -30,7 +30,7 @@ describe("Drizzle migration inventory", () => {
       await expect(readFile(resolve(migrationsDirectory, `${entry.tag}.sql`), "utf8")).resolves.toBeTruthy();
     }
 
-    expect(journal.entries.at(-1)).toMatchObject({ idx: 9, tag: "0009_ombudsman_tickets" });
+    expect(journal.entries.at(-1)).toMatchObject({ idx: 13, tag: "0013_persist_submission_capabilities" });
   });
 
   it("preserves hashes already recorded or pending in the approved sequence", async () => {

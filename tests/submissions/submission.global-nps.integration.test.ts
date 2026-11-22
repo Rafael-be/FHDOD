@@ -93,21 +93,20 @@ describeIntegration("anonymous submissions dynamic global NPS integration", () =
           const session = await service.start(sectorId, 4, "09:00");
           globalSessions.push(session);
           expect(session.questions).toHaveLength(3);
-          expect(
-            session.questions.every((question) => question.sessionQuestionId > 0)
-          ).toBe(true);
+          expect(session.session.formVersionId).toBeGreaterThan(0);
           expect(session.questions.map((question) => question.questionId)).toEqual([sectorQuestions[index], standard!.id, global!.id]);
           expect(session.questions.at(-1)).toMatchObject({ questionId: global!.id, isNps: true, position: 3 });
           expect(session.questions.filter((question) => question.isNps)).toHaveLength(1);
         }
 
         const originalSnapshot = await tx<{ questionId: number; questionVersionId: number; text: string }[]>`
-          select sq.question_id as "questionId", sq.question_version_id as "questionVersionId", qv.text
-          from submission_session_questions sq
-          join question_versions qv on qv.id = sq.question_version_id
-          where sq.session_id = ${globalSessions[0]!.capability.sessionId} and sq.question_id = ${global!.id}`;
+          select fq.question_id as "questionId", fq.question_version_id as "questionVersionId", fq.text
+          from submission_form_questions fq
+          where fq.form_version_id = ${globalSessions[0]!.session.formVersionId} and fq.question_id = ${global!.id}`;
         expect(originalSnapshot).toHaveLength(1);
         expect(originalSnapshot[0]!.text).toBe("Global NPS v1");
+        const unchanged = await service.start(sectors[0]!, 4, "09:00");
+        expect(unchanged.session.formVersionId).toBe(globalSessions[0]!.session.formVersionId);
 
         await tx`update question_versions set is_current = false where question_id = ${global!.id} and is_current = true`;
         const [globalV2] = await tx<{ id: number }[]>`
@@ -115,12 +114,17 @@ describeIntegration("anonymous submissions dynamic global NPS integration", () =
           values (${global!.id}, 2, 'Global NPS v2', true, ${user!.id}, now()) returning id`;
         const changedSession = await service.start(sectors[0]!, 4, "09:00");
         expect(changedSession.questions.at(-1)).toMatchObject({ questionId: global!.id, questionVersionId: globalV2!.id, text: "Global NPS v2" });
+        expect(changedSession.session.formVersionId).not.toBe(globalSessions[0]!.session.formVersionId);
         const preservedSnapshot = await tx<{ questionVersionId: number; text: string }[]>`
-          select sq.question_version_id as "questionVersionId", qv.text
-          from submission_session_questions sq
-          join question_versions qv on qv.id = sq.question_version_id
-          where sq.session_id = ${globalSessions[0]!.capability.sessionId} and sq.question_id = ${global!.id}`;
+          select fq.question_version_id as "questionVersionId", fq.text
+          from submission_form_questions fq
+          where fq.form_version_id = ${globalSessions[0]!.session.formVersionId} and fq.question_id = ${global!.id}`;
         expect(preservedSnapshot).toEqual([{ questionVersionId: originalSnapshot[0]!.questionVersionId, text: "Global NPS v1" }]);
+        await expect(service.answer(globalSessions[0]!.capability.sessionId, globalSessions[0]!.capability.token, {
+          questionId: global!.id, questionVersionId: originalSnapshot[0]!.questionVersionId, status: "answered", score: 10,
+        })).resolves.toMatchObject({ status: "incomplete" });
+        expect(await tx<{ questionVersionId: number }[]>`select question_version_id as "questionVersionId" from submission_form_answers where session_id=${globalSessions[0]!.capability.sessionId} and question_id=${global!.id}`)
+          .toEqual([{ questionVersionId: originalSnapshot[0]!.questionVersionId }]);
 
         await tx`
           insert into sector_nps_assignments (sector_id, question_id, assignment_source, assigned_at, assigned_by_user_id)
@@ -132,12 +136,12 @@ describeIntegration("anonymous submissions dynamic global NPS integration", () =
         expect(restored.questions.at(-1)).toMatchObject({ questionId: global!.id, isNps: true, position: 3 });
 
         await tx`update questions set deleted_at = now() where id = ${global!.id}`;
-        await expect(service.start(sectors[0]!, 4, "09:00")).rejects.toMatchObject({ code: "NPS_CONFIGURATION_CONFLICT", status: 409 });
+        await expect(service.start(sectors[0]!, 4, "09:00")).rejects.toMatchObject({ code: "FORM_INCOMPLETE", status: 409 });
         await tx`
           insert into sector_nps_assignments (sector_id, question_id, assignment_source, assigned_at, assigned_by_user_id)
           values (${sectors[3]}, ${specific!.id}, 'specific', now(), ${user!.id})`;
         await tx`update questions set deleted_at = now() where id = ${specific!.id}`;
-        await expect(service.start(sectors[3]!, 4, "09:00")).rejects.toMatchObject({ code: "NPS_CONFIGURATION_CONFLICT", status: 409 });
+        await expect(service.start(sectors[3]!, 4, "09:00")).rejects.toMatchObject({ code: "FORM_INCOMPLETE", status: 409 });
 
         throw new Error("ROLLBACK_TEST");
       })).rejects.toThrow("ROLLBACK_TEST");

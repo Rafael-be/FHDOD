@@ -14,14 +14,12 @@ describeIntegration("anonymous submissions integration", () => {
   it("completes with skipped or unanswered sector questions while requiring standard and NPS answers", async () => {
     const sql = postgres(testUrl!, { max: 1 });
     try {
-      await sql.begin(async (tx) => {
+      await expect(sql.begin(async (tx) => {
         const user = await tx<{ id: number }[]>`insert into users (role_id, full_name, email, password_hash, created_at, updated_at) values (1, 'Teste', ${`submission-${Date.now()}@test.invalid`}, 'hash', now(), now()) returning id`;
         const sector = await tx<{ id: number }[]>`insert into sectors (code, name, created_at, updated_at) values (${`submission-${Date.now()}`}, 'Setor submissão', now(), now()) returning id`;
-        const employee = await tx<{ id: number }[]>`insert into employees (employee_code, full_name) values (${`SUB-${Date.now()}`}, 'Atendente') returning id`;
         await tx`update shift_sheet_versions set is_current = false where is_current = true`;
         const version = await tx<{ id: number }[]>`insert into shift_sheet_versions (version_number, uploaded_by_user_id, uploaded_at, valid_from, is_current) select coalesce(max(version_number), 0) + 1, ${user[0]!.id}, now(), now(), true from shift_sheet_versions returning id`;
-        const range = await tx<{ id: number }[]>`insert into sector_shift_ranges (shift_sheet_version_id, sector_id, shift_name, starts_at, ends_at) values (${version[0]!.id}, ${sector[0]!.id}, 'Dia', '08:00', '16:00') returning id`;
-        await tx`insert into employee_shift_assignments (shift_sheet_version_id, sector_id, shift_range_id, employee_id, employee_code, employee_name, day_of_week) values (${version[0]!.id}, ${sector[0]!.id}, ${range[0]!.id}, ${employee[0]!.id}, ${`SUB-${Date.now()}`}, 'Atendente', 4)`;
+        await tx`insert into sector_shift_ranges (shift_sheet_version_id, sector_id, shift_name, starts_at, ends_at, day_of_week) values (${version[0]!.id}, ${sector[0]!.id}, 'Dia', '08:00', '16:00', 4)`;
         const sectorQuestion = await tx<{ id: number }[]>`insert into questions (question_kind, scope, sector_id, is_nps, display_order, created_by_user_id, created_at, updated_at) values ('sector', 'sector_only', ${sector[0]!.id}, false, 1, ${user[0]!.id}, now(), now()) returning id`;
         const standardQuestion = await tx<{ id: number }[]>`insert into questions (question_kind, scope, sector_id, is_nps, display_order, created_by_user_id, created_at, updated_at) values ('standard', 'all_sectors', null, false, 1, ${user[0]!.id}, now(), now()) returning id`;
         const npsQuestion = await tx<{ id: number }[]>`insert into questions (question_kind, scope, sector_id, is_nps, display_order, created_by_user_id, created_at, updated_at) values ('standard', 'selected_sectors', null, true, 1, ${user[0]!.id}, now(), now()) returning id`;
@@ -34,24 +32,27 @@ describeIntegration("anonymous submissions integration", () => {
         const sectorItem = started.questions.find((question) => question.questionKind === "sector")!;
         const standardItem = started.questions.find((question) => question.questionKind === "standard" && !question.isNps)!;
         const npsItem = started.questions.find((question) => question.isNps)!;
-        await expect(service.answer(started.capability.sessionId, started.capability.token, { sessionQuestionId: sectorItem.sessionQuestionId!, status: "answered", score: 6 })).rejects.toMatchObject({ code: "INVALID_ANSWER_SCORE" });
-        await expect(service.answer(started.capability.sessionId, started.capability.token, { sessionQuestionId: sectorItem.sessionQuestionId!, status: "skipped", score: null })).resolves.toMatchObject({ status: "incomplete" });
-        await expect(service.answer(started.capability.sessionId, started.capability.token, { sessionQuestionId: npsItem.sessionQuestionId!, status: "answered", score: 10 })).resolves.toMatchObject({ status: "incomplete" });
-        await expect(service.answer(started.capability.sessionId, started.capability.token, { sessionQuestionId: standardItem.sessionQuestionId!, status: "answered", score: 5 })).resolves.toMatchObject({ status: "complete" });
-        const answer = await tx<{ status: string; score: number }[]>`select status, score from submission_answers where session_question_id=${sectorItem.sessionQuestionId}`;
+        await expect(service.answer(started.capability.sessionId, started.capability.token, { questionId: sectorItem.questionId, questionVersionId: sectorItem.questionVersionId, status: "answered", score: 6 })).rejects.toMatchObject({ code: "INVALID_ANSWER_SCORE" });
+        await expect(service.answer(started.capability.sessionId, started.capability.token, { questionId: sectorItem.questionId, questionVersionId: sectorItem.questionVersionId, status: "skipped", score: null })).resolves.toMatchObject({ status: "incomplete" });
+        await expect(service.answer(started.capability.sessionId, started.capability.token, { questionId: npsItem.questionId, questionVersionId: npsItem.questionVersionId, status: "answered", score: 10 })).resolves.toMatchObject({ status: "incomplete" });
+        await expect(service.answer(started.capability.sessionId, started.capability.token, { questionId: standardItem.questionId, questionVersionId: standardItem.questionVersionId, status: "answered", score: 5 })).resolves.toMatchObject({ status: "complete" });
+        const answer = await tx<{ status: string; score: number | null }[]>`select status, score from submission_form_answers where session_id=${started.capability.sessionId} and question_id=${sectorItem.questionId}`;
         expect(answer).toEqual([{ status: "skipped", score: null }]);
 
         const withoutOptionalAnswer = await service.start(sector[0]!.id, 4, "09:00");
         const required = withoutOptionalAnswer.questions.filter((question) => question.questionKind === "standard");
-        await expect(service.answer(withoutOptionalAnswer.capability.sessionId, withoutOptionalAnswer.capability.token, { sessionQuestionId: required.find((question) => !question.isNps)!.sessionQuestionId, status: "answered", score: 5 })).resolves.toMatchObject({ status: "incomplete" });
-        await expect(service.answer(withoutOptionalAnswer.capability.sessionId, withoutOptionalAnswer.capability.token, { sessionQuestionId: required.find((question) => question.isNps)!.sessionQuestionId, status: "answered", score: 10 })).resolves.toMatchObject({ status: "complete" });
+        const common = required.find((question) => !question.isNps)!;
+        const nps = required.find((question) => question.isNps)!;
+        await expect(service.answer(withoutOptionalAnswer.capability.sessionId, withoutOptionalAnswer.capability.token, { questionId: common.questionId, questionVersionId: common.questionVersionId, status: "answered", score: 5 })).resolves.toMatchObject({ status: "incomplete" });
+        await expect(service.answer(withoutOptionalAnswer.capability.sessionId, withoutOptionalAnswer.capability.token, { questionId: nps.questionId, questionVersionId: nps.questionVersionId, status: "answered", score: 10 })).resolves.toMatchObject({ status: "complete" });
         const optionalAnswers = await tx<{ count: number }[]>`
           select count(*)::int as count
-          from submission_answers a join submission_session_questions q on q.id = a.session_question_id
-          where q.session_id = ${withoutOptionalAnswer.capability.sessionId} and q.question_kind = 'sector'
+          from submission_form_answers a join submission_form_questions q on q.form_version_id=a.form_version_id and q.question_id=a.question_id
+          where a.session_id = ${withoutOptionalAnswer.capability.sessionId} and q.question_kind = 'sector'
         `;
         expect(optionalAnswers[0]!.count).toBe(0);
-      });
+        throw new Error("ROLLBACK_SUBMISSION_FIXTURE");
+      })).rejects.toThrow("ROLLBACK_SUBMISSION_FIXTURE");
     } finally { await sql.end({ timeout: 5 }); }
   });
 });

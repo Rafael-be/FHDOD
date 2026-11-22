@@ -13,19 +13,27 @@ describe("submission database timestamps", () => {
   });
 
   it("validates an invalid score after reading string timestamps from postgres-js", async () => {
-    const sql = (async () => [{
+    let reads = 0;
+    const session = {
       sectorId: 7,
       shiftRangeId: null,
       startedAt: "2026-01-01T12:00:00.000Z",
       lastActivityAt: "2026-01-01T12:00:00.000Z",
+      expiresAt: "2026-01-01T12:03:00.000Z",
       endedAt: null,
-      questionId: 10,
-      questionKind: "standard" as const,
-      isNps: false,
-      questionVersionId: 3,
-    }]) as unknown as import("postgres").Sql;
+      formVersionId: 801,
+      refreshCount: 0,
+    };
+    const sql = (async () => ++reads === 1 ? [session] : [{ questionId: 10, questionVersionId: 3, questionKind: "standard", isNps: false, text: "Atendimento", position: 1 }]) as unknown as import("postgres").Sql;
     const repository = new PostgresSubmissionRepository(sql);
-    await expect(repository.saveAnswer("session", { sessionQuestionId: 1, status: "answered", score: 6 }, new Date("2026-01-01T12:01:00.000Z")))
+    await expect(repository.saveAnswer("session", { questionId: 10, questionVersionId: 3, status: "answered", score: 6 }, new Date("2026-01-01T12:01:00.000Z")))
       .rejects.toMatchObject({ code: "INVALID_ANSWER_SCORE", status: 400 });
+  });
+
+  it("expires after the three-minute initial deadline", async () => {
+    const sql = (async () => [{ sectorId: 7, shiftRangeId: null, startedAt: "2026-01-01T12:00:00Z", expiresAt: "2026-01-01T12:03:00Z", endedAt: null, formVersionId: 1, refreshCount: 0 }]) as unknown as import("postgres").Sql;
+    const repository = new PostgresSubmissionRepository(sql);
+    const answer = { questionId: 10, questionVersionId: 3, status: "answered" as const, score: 6 };
+    await expect(repository.saveAnswer("session", answer, new Date("2026-01-01T12:03:01Z"))).rejects.toMatchObject({ code: "SUBMISSION_EXPIRED", status: 410 });
   });
 });

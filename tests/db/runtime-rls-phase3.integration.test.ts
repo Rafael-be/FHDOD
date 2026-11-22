@@ -32,6 +32,8 @@ describeIntegration("Phase 3 runtime RLS contract", () => {
     let sectorId = 0;
     let userId = 0;
     let questionId = 0;
+    let commonQuestionId = 0;
+    let formVersionId = 0;
     let versionId = 0;
     let fixtureCurrentVersionId = 0;
     let originalCurrentVersionIds: number[] = [];
@@ -57,6 +59,9 @@ describeIntegration("Phase 3 runtime RLS contract", () => {
       questionId = question[0]!.id;
       await admin`insert into question_versions (question_id, version_number, text, is_current, created_by_user_id, created_at) values (${questionId}, 1, 'NPS RLS', true, ${userId}, now())`;
       await admin`insert into sector_nps_assignments (sector_id, question_id, assignment_source, assigned_at, assigned_by_user_id) values (${sectorId}, ${questionId}, 'specific', now(), ${userId})`;
+      const common = await admin<{ id: number }[]>`insert into questions (question_kind, scope, sector_id, is_nps, display_order, created_by_user_id, created_at, updated_at) values ('sector', 'sector_only', ${sectorId}, false, 1, ${userId}, now(), now()) returning id`;
+      commonQuestionId = common[0]!.id;
+      await admin`insert into question_versions (question_id, version_number, text, is_current, created_by_user_id, created_at) values (${commonQuestionId}, 1, 'Atendimento RLS', true, ${userId}, now())`;
 
       const shifts = new PostgresShiftSheetRepository(runtime);
       const activeSectors = await shifts.sectors();
@@ -92,20 +97,26 @@ describeIntegration("Phase 3 runtime RLS contract", () => {
         localTime: "09:00",
         now,
       }));
-      expect(snapshot.questions).toHaveLength(1);
+      expect(snapshot.questions).toHaveLength(2);
+      formVersionId = snapshot.session.formVersionId;
+      const npsQuestion = snapshot.questions.find((item) => item.isNps)!;
       await submissions.transaction((repository) => repository.saveAnswer(sessionId, {
-        sessionQuestionId: snapshot.questions[0]!.sessionQuestionId,
+        questionId: npsQuestion.questionId,
+        questionVersionId: npsQuestion.questionVersionId,
         status: "answered",
         score: 10,
       }, now));
 
-      await expect(runtime`delete from submission_answers where false`).rejects.toMatchObject({ code: "42501" });
+      await expect(runtime`delete from submission_form_answers where false`).rejects.toMatchObject({ code: "42501" });
     } finally {
       if (sessionId) {
         await admin`delete from dashboard_dirty_groups where sector_id = ${sectorId}`;
-        await admin`delete from submission_answers where session_question_id in (select id from submission_session_questions where session_id = ${sessionId})`;
-        await admin`delete from submission_session_questions where session_id = ${sessionId}`;
+        await admin`delete from submission_form_answers where session_id = ${sessionId}`;
         await admin`delete from submission_sessions where id = ${sessionId}`;
+      }
+      if (formVersionId) {
+        await admin`delete from submission_form_questions where form_version_id = ${formVersionId}`;
+        await admin`delete from submission_form_versions where id = ${formVersionId}`;
       }
       if (versionId) {
         await admin`delete from shift_upload_attempts where resulting_version_id = ${versionId}`;
@@ -120,6 +131,10 @@ describeIntegration("Phase 3 runtime RLS contract", () => {
         await admin`delete from sector_nps_assignments where question_id = ${questionId}`;
         await admin`delete from question_versions where question_id = ${questionId}`;
         await admin`delete from questions where id = ${questionId}`;
+      }
+      if (commonQuestionId) {
+        await admin`delete from question_versions where question_id = ${commonQuestionId}`;
+        await admin`delete from questions where id = ${commonQuestionId}`;
       }
       if (sectorId) await admin`delete from sectors where id = ${sectorId}`;
       if (userId) await admin`delete from users where id = ${userId}`;
