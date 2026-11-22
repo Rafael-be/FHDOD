@@ -71,6 +71,34 @@
       "when": 1795377600000,
       "tag": "0009_ombudsman_tickets",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795377601000,
+      "tag": "0010_published_submission_forms",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1795377602000,
+      "tag": "0011_allow_form_republication",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1795377603000,
+      "tag": "0012_restrict_form_mutation",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1795377604000,
+      "tag": "0013_persist_submission_capabilities",
+      "breakpoints": true
     }
   ]
 }

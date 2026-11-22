@@ -1,0 +1,1 @@
+ALTER TABLE submission_form_versions DROP CONSTRAINT submission_form_versions_sector_id_fingerprint_key;
