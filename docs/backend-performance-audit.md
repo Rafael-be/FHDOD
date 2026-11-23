@@ -58,3 +58,5 @@ Cada rota recebeu 1 aquecimento e 15 amostras sequenciais com login real, mesmo 
 ## Estado Git e encerramento
 
 Correções registradas na branch `fix/backend-submission-performance`, derivada de `8904e76` (analytics). `origin/develop` continua em `6f21cc7`, ancestral da branch, sem commits concorrentes no destino na referência consultada. Não foi feito merge/rebase nem alteração da main. A integração depende das mudanças anteriores de publicação/analytics; não omitir essas dependências na revisão. Dados PostgreSQL, configurações locais e evidências brutas permaneceram fora do Git.
+
+Push da branch de correção foi tentado e recusado por falta de autenticação Git HTTPS. Os commits permanecem locais, sem force push ou merge. Comando para publicar após autenticar: `git push -u origin fix/backend-submission-performance`.
