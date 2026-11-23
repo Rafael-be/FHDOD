@@ -16,7 +16,9 @@ const runtime = connection('DATABASE_URL');
 const migrations = connection('DATABASE_URL_MIGRATIONS');
 if (runtime.host !== migrations.host || runtime.pathname !== migrations.pathname || runtime.username !== 'fhdod_api')
   throw new Error('As conexões locais devem usar o mesmo banco e runtime fhdod_api.');
-console.log(JSON.stringify({event:'development.local_database',host:runtime.hostname,port:runtime.port||'5432',database:runtime.pathname.slice(1),role:runtime.username}));
-const child = spawn(process.execPath, ['--import','tsx','src/server.ts'], {stdio:'inherit',env:process.env});
+const command=process.argv[2]??'server';
+if(!['server','migrate'].includes(command)) throw new Error('Comando local inválido.');
+console.log(JSON.stringify({command,event:'development.local_database',host:runtime.hostname,port:runtime.port||'5432',database:runtime.pathname.slice(1),role:runtime.username}));
+const child = spawn(process.execPath, ['--import','tsx',command==='migrate'?'src/db/migrate.ts':'src/server.ts'], {stdio:'inherit',env:process.env});
 for (const signal of ['SIGINT','SIGTERM']) process.on(signal,()=> child.kill(signal));
 child.on('exit',code=>{process.exitCode=code??1;});

@@ -9,9 +9,11 @@ it.each([
 ])('refuses unsafe development destinations before starting HTTP',configuration=>{
   const cwd=mkdtempSync(join(tmpdir(),'fhdod-dev-guard-'));
   try{writeFileSync(join(cwd,'.env.development.local'),configuration);
-    const result=spawnSync(process.execPath,[resolve('scripts/dev-local.mjs')],{cwd,encoding:'utf8'});
+    for (const command of ['server','migrate']) {
+    const result=spawnSync(process.execPath,[resolve('scripts/dev-local.mjs'),command],{cwd,encoding:'utf8'});
     expect(result.status).not.toBe(0);
     expect(result.stdout).not.toContain('development.local_database');
     expect(result.stderr).not.toContain('private-test-value');
+    }
   }finally{rmSync(cwd,{recursive:true,force:true});}
 });
