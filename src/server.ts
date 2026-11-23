@@ -94,7 +94,7 @@ async function startServer(): Promise<void> {
     contentService: new ContentService(new ContentRepository(database.client)),
     shiftSheetService: new ShiftSheetService(new PostgresShiftSheetRepository(database.client), clock.now.bind(clock)),
     submissionService: new SubmissionService(new PostgresSubmissionRepository(database.client, config.PERFORMANCE_MEASUREMENTS), clock, undefined, config.PERFORMANCE_MEASUREMENTS),
-    formDraftService: new FormDraftService(database.client),
+    formDraftService: new FormDraftService(database.client, cache),
     questionsService: new QuestionsService(new QuestionsRepository(database.client), cache),
     securityRateLimiter,
     ombudsmanService: new OmbudsmanService(new OmbudsmanRepository(database.client), clock),

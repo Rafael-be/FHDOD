@@ -57,7 +57,14 @@ integration("manual form publication on disposable PostgreSQL", () => {
   it("publishes only by explicit action and keeps old sessions and question versions", async () => {
     await assertDisposableTestDatabase(url!, runtimeUrl!);
     const sql = postgres(url!, { max: 2, prepare: false });
-    const service = new FormDraftService(sql);
+    const invalidatedVersions: number[]=[];
+    const service = new FormDraftService(sql,{invalidateQuestions:async()=>{
+      const observer=postgres(url!,{max:1});
+      try{const [current]=await observer<{id:number}[]>`select form_version_id as id from sector_current_forms where sector_id=${fixture.sectorId}`;
+        invalidatedVersions.push(current!.id);
+        if(invalidatedVersions.length>1) throw new Error('Redis unavailable after commit');
+      }finally{await observer.end({timeout:5});}
+    }});
     let fixtureRangeId: number | null = null;
     let fixtureSheetId: number | null = null;
     try {
@@ -86,6 +93,7 @@ integration("manual form publication on disposable PostgreSQL", () => {
       expect(await service.history(manager(), fixture.sectorId)).toHaveLength(beforeVersions.length);
       const result = await service.publish(manager(), fixture.sectorId, 1);
       expect(result).toMatchObject({ published: true });
+      expect(invalidatedVersions).toEqual([result.formVersionId]);
       expect(result.formVersionId).not.toBe(initial.publishedVersionId);
       const restarted = new FormDraftService(sql);
       expect((await restarted.get(manager(), fixture.sectorId)).publishedVersionId).toBe(result.formVersionId);
@@ -104,6 +112,7 @@ integration("manual form publication on disposable PostgreSQL", () => {
       expect((await service.get(manager(), fixture.sectorId)).publishedVersionId).toBe(result.formVersionId);
       const restored = await service.publish(manager(), fixture.sectorId, 1);
       expect(restored.formVersionId).not.toBe(initial.publishedVersionId);
+      expect(invalidatedVersions).toEqual([result.formVersionId,restored.formVersionId]);
       expect(restored.formVersionId).not.toBe(result.formVersionId);
       expect((await service.history(manager(), fixture.sectorId))[0]).toMatchObject({ id: restored.formVersionId, current: true });
       const fresh = await patient.startNow(fixture.sectorId);

@@ -1,3 +1,4 @@
+import type { QuestionsCache } from "../../cache/cache.service.js";
 import type postgres from "postgres";
 import { createHash } from "node:crypto";
 import { DomainError } from "../../shared/core.js";
@@ -26,9 +27,9 @@ function normalized(items: DraftItem[]): DraftItem[] {
 }
 function same(a: DraftItem[], b: DraftItem[]): boolean { return JSON.stringify(normalized(a)) === JSON.stringify(normalized(b)); }
 
-/** Only draft tables are writable through this service. Published forms remain untouched. */
+/** Candidate edits stay separate; publication appends snapshots without rewriting history. */
 export class FormDraftService {
-  constructor(private readonly sql: postgres.Sql) {}
+  constructor(private readonly sql: postgres.Sql, private readonly cache?: Pick<QuestionsCache, "invalidateQuestions">) {}
 
   private transaction<T>(work: (sql: postgres.Sql) => Promise<T>): Promise<T> {
     if (typeof this.sql.begin !== "function") return work(this.sql);
@@ -252,6 +253,7 @@ export class FormDraftService {
       return { published: true, formVersionId: created!.id, versionNumber: created!.versionNumber, items: resolved };
     });
     try { if (result.formVersionId !== null) publishedFormCache.put(result.formVersionId, result.items); } catch { /* commit remains valid */ }
+    if(result.published) { try { await this.cache?.invalidateQuestions(); } catch { /* committed database remains authoritative */ } }
     const response = { ...result };
     delete (response as { items?: PublishedQuestion[] }).items;
     return response;
