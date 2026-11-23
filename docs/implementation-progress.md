@@ -38,3 +38,7 @@ Branch `feature/backend-completion-analytics` parte de `1e8b005`, com dependênc
 - Teste HTTP compara argumentos de scope/texto/setores e testa negação sem CSRF e para gestor. Teste PostgreSQL real compara todos os ponteiros e snapshots antes/depois do cadastro.
 - Suíte ampliada com retenção habilitada: 228 aprovados, 2 falhas, nenhum ignorado. As duas falhas foram resolvidas (OpenAPI legado e grants incompletos do fixture histórico); os dois arquivos afetados passaram 11/11 na reexecução. Os quatro testes de retenção executaram sem falhas. Não foi repetida a suíte completa após essa correção direcionada.
 - Collection final tem 74 requisições; inclui cadastro padrão/NPS e resposta NPS separada. Scripts e schema foram validados; execução integral interativa continua pendente.
+
+## Git e encerramento dos processos
+
+Commits: `c7d2a6a` (analytics), `1d60b85` (seed/Postman) e `0db229a` (catálogo e regressões). Push da branch `feature/backend-completion-analytics` recusado por falta de autenticação HTTPS (`could not read Username`). Nenhum merge executado. Servidor de demonstração e clusters 55437/55440 foram encerrados; o manual Postman contém os comandos para retomar o cluster demonstrativo. Não foi alterado `.env` nem frontend, nem acessado Supabase nesta missão.

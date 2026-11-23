@@ -24,3 +24,17 @@ Importe `FHDOD.postman_collection.json` (v2.1) e `FHDOD.local.postman_environmen
 A coleção foi validada contra o schema oficial v2.1 com AJV existente; environment foi validado estruturalmente. Essa validação não comprova execução de todos os fluxos no Postman. Algumas requisições administrativas usam exemplos OpenAPI: substitua placeholders e preencha payloads com os dados fictícios locais. Veja `docs/form-publication.md` para a composição completa do PUT.
 
 As duas requisições de criação em `/api/catalog/*` usam superusuário e CSRF e não publicam automaticamente. Crie a identidade, leia o catálogo e inclua a pergunta no rascunho antes de publicar. Criar NPS específico onde já existe override retorna conflito; não trate isso como substituição automática.
+
+## Retomar a instância demonstrativa desta sessão
+
+Os processos temporários foram encerrados para liberar memória. Enquanto os arquivos de `/tmp` existirem, o cluster já preparado pode ser retomado a partir da raiz do backend:
+
+```bash
+demo_dir=$(cat /tmp/fhdod-demo-dir)
+pg_ctl -D "$demo_dir/pg" -o "-h 127.0.0.1 -p 55440 -k $demo_dir" -l "$demo_dir/server.log" start
+DATABASE_URL=postgres://fhdod_api@127.0.0.1:55440/fhdod_test \
+DATABASE_URL_MIGRATIONS=postgres://rafael@127.0.0.1:55440/fhdod_test \
+PORT=3000 CACHE_ENABLED=false SECURITY_REDIS_ENABLED=false npm run dev
+```
+
+A conexão sem senha acima é exclusiva do cluster descartável com autenticação local criado nesta sessão; não é uma configuração para serviços compartilhados. `/tmp` pode ser limpo pelo sistema. Se isso ocorrer, recrie o banco conforme o bootstrap documentado e execute migrations e seed novamente. Os IDs da demonstração desta execução são setor 3 e outro setor 4; confirme-os antes de testar se recriar a fixture.
