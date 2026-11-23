@@ -23,6 +23,7 @@ export const openapiDocument = {
     CatalogueQuestion: { type: "object", properties: { id: { type: "integer" }, questionKind: { type: "string", enum: ["standard"] }, isNps: { type: "boolean" }, scope: { type: "string", enum: ["all_sectors", "selected_sectors"] }, deletedAt: { type: "string", format: "date-time", nullable: true }, versionNumber: { type: "integer" }, text: { type: "string" }, associations: { type: "array", items: { type: "object" } } } },
   } },
   paths: {
+    "/api/analytics/dashboard": { get: { summary: "Indicadores agregados de sessões, avaliações, NPS e Ouvidoria", security: [{ cookieAuth: [] }], parameters: [{in:"query",name:"from",required:true,schema:{type:"string",format:"date-time"}},{in:"query",name:"to",required:true,schema:{type:"string",format:"date-time"}},{in:"query",name:"sectorId",schema:{type:"integer"}},{in:"query",name:"shiftRangeId",schema:{type:"integer"}}], responses: {"200":{description:"Agregados, sem identificadores de pacientes; período [from,to), máximo 366 dias"},"400":{description:"Período inválido"},"401":{description:"Sem sessão"},"403":{description:"Setor fora do escopo"}} } },
     "/api/public/ombudsman/tickets": { post: { summary: "Registra manifestação pública", description: "Exige aceite da política LGPD vigente. Setor ativo; turno e versão de horários podem ser nulos fora do expediente. Não depende da sessão de pesquisa.", requestBody: { required: true, content: { "application/json": { schema: { type: "object", required: ["sectorId", "ticketType", "body", "policyAccepted"], properties: { sectorId: { type: "integer" }, ticketType: { type: "string", enum: ["complaint", "compliment", "suggestion_other"] }, body: { type: "string", maxLength: 300 }, phone: { type: "string", nullable: true, description: "Opcional; telefone brasileiro com DDD, aceita formatação comum e persiste somente dígitos." }, policyAccepted: { type: "boolean", enum: [true] }, acceptedPolicyVersionId: { type: "integer", description: "Opcional; se informado, deve ser a versão vigente da política LGPD." } } } } } }, responses: { "201": { description: "Somente id e status open; nenhum dado pessoal" }, "400": { description: "Dados ou consentimento inválidos" }, "404": { description: "Setor inexistente ou inativo" }, "429": { description: "Limite de solicitações" } } } },
     "/api/ombudsman/tickets": { get: { summary: "Lista manifestações", description: "Somente superusuário. Filtros: sectorId, ticketType, status, from, to, page, pageSize. Ordena por data decrescente e id decrescente.", security: [{ cookieAuth: [] }], responses: { "200": { description: "Página com items, page, pageSize e total" }, "401": { description: "Sessão necessária" }, "403": { description: "Sem permissão" } } } },
     "/api/ombudsman/tickets/{id}": { get: { summary: "Consulta manifestação", security: [{ cookieAuth: [] }], responses: { "200": { description: "Detalhes e classificação histórica" }, "404": { description: "Manifestação não encontrada" } } } },
@@ -85,3 +86,16 @@ export const openapiDocument = {
     "/api/sectors/{sectorId}/standard-questions/{questionId}/reactivate": { post: { summary: "Reativa o vínculo de uma pergunta padrão no setor", description: "Recupera a posição anterior quando livre; caso contrário, anexa ao final.", security: [{ cookieAuth: [] }], responses: { "204": { description: "Vínculo reativado" }, "403": { description: "CSRF ou permissão inválida" }, "404": { description: "Setor ou pergunta não encontrado" }, "409": { description: "Vínculo inexistente ou já ativo" } } } },
   },
 };
+
+// Legacy catalogue mutations are deliberately blocked by the manual publication boundary.
+for (const [path, operations] of Object.entries(openapiDocument.paths)) {
+  if (!(/^\/api\/(questions|standard-questions|nps-questions)(\/|$)/.test(path) ||
+    /^\/api\/sectors\/[^/]+\/(questions|standard-questions|nps)(\/|$)/.test(path))) continue;
+  for (const [method, value] of Object.entries(operations)) {
+    if (!["post", "put", "patch", "delete"].includes(method)) continue;
+    const operation = value as unknown as Record<string, unknown>;
+    operation.summary = "Escrita legada bloqueada; use rascunho e publicação";
+    operation.responses = { "409": { description: "FORM_DRAFT_REQUIRED: edite o rascunho e publique explicitamente" },
+      "401": { description: "Sessão necessária" }, "403": { description: "Permissão insuficiente" } };
+  }
+}

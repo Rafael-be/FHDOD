@@ -20,3 +20,7 @@ O backend local foi validado por HTTP. Esta etapa não alterou o frontend.
 
 - Rotas administrativas usam sessão real, cookie e CSRF nas mutações. Gestão de horários exige superusuário; rascunho e catálogo por setor aceitam gestor apenas no setor vinculado.
 - Tratar separadamente `401` (login necessário), `403` (sem escopo ou CSRF inválido), `404` (recurso ausente) e `409` (conflito ou fluxo legado bloqueado). Não tentar nova publicação automaticamente após conflito.
+
+## Analytics
+
+Consumir `GET /api/analytics/dashboard` com `from`/`to` ISO com offset e filtros opcionais `sectorId`/`shiftRangeId`. Veja `docs/analytics.md`: o backend retorna sessões, NPS, médias por versão de pergunta, distribuições, séries por data e manifestações. Gráficos devem diferenciar ausência de dados (null) de nota/NPS zero. A taxa de resposta sobre atendimentos e a atribuição individual de equipe não estão disponíveis. Gestor não pode escolher setor fora do vínculo.

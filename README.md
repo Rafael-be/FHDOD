@@ -131,3 +131,9 @@ O setup global então exige `LOCAL_DATABASE_URL` e `DATABASE_URL` no mesmo
 endpoint loopback, banco descartável `fhdod_test`, runtime `fhdod_api` e o
 marcador documentado em [docs/bootstrap.md](docs/bootstrap.md). Sem opt-in,
 somente testes que não dependem de PostgreSQL são executados.
+
+## Demonstração, indicadores e Postman
+
+O comando separado `npm run seed:demo` exige conexão administrativa loopback explícita em `LOCAL_DEMO_DATABASE_URL`, banco `fhdod_test` com marcador descartável e senhas em `DEMO_ADMIN_PASSWORD`/`DEMO_MANAGER_PASSWORD`. Não utiliza o `.env` para escolher destino e não sobrescreve contas existentes fora da fixture. Veja [o manual local do Postman](postman/README.md).
+
+O novo endpoint de agregados é `GET /api/analytics/dashboard`. Fórmulas, filtros, autorização e limites estão em [analytics](docs/analytics.md). A migration 0017 acrescenta somente leitura do histórico legado para a role runtime; deve seguir as migrations anteriores pelo comando oficial.
