@@ -33,7 +33,7 @@ describe("Drizzle migration inventory", () => {
 
     expect(journal.entries[13]).toMatchObject({ idx: 13, tag: "0013_persist_submission_capabilities" });
     expect(journal.entries.map((entry) => entry.tag).slice(14)).toEqual([
-      "0014_submission_form_drafts", "0015_sector_current_forms", "0016_validate_current_form",
+      "0014_submission_form_drafts", "0015_sector_current_forms", "0016_validate_current_form", "0017_analytics_legacy_reads",
     ]);
   });
 

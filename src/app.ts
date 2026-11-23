@@ -1,3 +1,5 @@
+import type { AnalyticsService } from "./modules/analytics/analytics.service.js";
+import { analyticsRoutes } from "./modules/analytics/analytics.routes.js";
 import express from "express";
 import helmet from "helmet";
 import cors from "cors";
@@ -35,6 +37,7 @@ import type { OmbudsmanService } from "./modules/ombudsman/ombudsman.service.js"
 import { ombudsmanRoutes } from "./modules/ombudsman/ombudsman.routes.js";
 
 export interface AppDependencies {
+  analyticsService?: AnalyticsService;
   authService: AuthService;
   adminService?: AdminService;
   auditService?: AuditService;
@@ -111,6 +114,7 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
   if (auditService) app.use("/api", authenticate(authService), auditRoutes(auditService));
   if (questionsService) app.use("/api", authenticate(authService), questionsRoutes(questionsService, authService));
   if (formDraftService) app.use("/api", authenticate(authService), formDraftRoutes(formDraftService, authService));
+  if (dependencies.analyticsService) app.use("/api", authenticate(authService), analyticsRoutes(dependencies.analyticsService));
   app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openapiDocument, { explorer: false }));
   app.use(notFoundHandler);
   app.use(errorHandler);

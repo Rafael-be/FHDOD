@@ -1,3 +1,5 @@
+import { AnalyticsService } from "./modules/analytics/analytics.service.js";
+import { AnalyticsRepository } from "./modules/analytics/analytics.repository.js";
 import "dotenv/config";
 import type { Server } from "node:http";
 import { loadConfig } from "./config/env.js";
@@ -87,6 +89,7 @@ async function startServer(): Promise<void> {
     ),
     auditService: new AuditService(new AuditRepository(database.client)),
     healthService,
+    analyticsService: new AnalyticsService(new AnalyticsRepository(database.client)),
     contentService: new ContentService(new ContentRepository(database.client)),
     shiftSheetService: new ShiftSheetService(new PostgresShiftSheetRepository(database.client), clock.now.bind(clock)),
     submissionService: new SubmissionService(new PostgresSubmissionRepository(database.client, config.PERFORMANCE_MEASUREMENTS), clock, undefined, config.PERFORMANCE_MEASUREMENTS),
