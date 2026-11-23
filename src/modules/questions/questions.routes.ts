@@ -24,6 +24,14 @@ export function questionsRoutes(service: QuestionsService, auth: AuthService) {
   router.get("/questions", async (req, res, next) => { try { res.json({ data: await service.listCatalog(req.identity!, catalogueQuery.parse(req.query)) }); } catch (error) { next(error); } });
   router.get("/questions/:id", async (req, res, next) => { try { res.json({ data: await service.catalogQuestion(req.identity!, id.parse(req.params.id)) }); } catch (error) { next(error); } });
   router.get("/sectors/:sectorId/questions", async (req, res, next) => { try { res.json({ data: await service.listSector(req.identity!, sectorId.parse(req.params.sectorId), req.query.deleted === "true") }); } catch (error) { next(error); } });
+  // Legacy mutations edit the live catalogue and bypass explicit form publication.
+  router.use((req, res, next) => {
+    const legacyMutation = req.method !== "GET" &&
+      (/^\/(?:questions|standard-questions|nps-questions)(?:\/|$)/.test(req.path) ||
+        /^\/sectors\/\d+\/(?:questions|standard-questions|nps)(?:\/|$)/.test(req.path));
+    if (!legacyMutation) return next();
+    res.status(409).json({ error: { code: "FORM_DRAFT_REQUIRED", message: "Edite o rascunho e publique o formulário explicitamente." } });
+  });
   router.post("/sectors/:sectorId/questions", csrf, async (req, res, next) => { try { const body = z.object({ text }).parse(req.body); res.status(201).json({ data: await service.createSector(req.identity!, sectorId.parse(req.params.sectorId), body.text) }); } catch (error) { next(error); } });
   router.post("/standard-questions", csrf, async (req, res, next) => { try { const body = scopedQuestion.parse(req.body); res.status(201).json({ data: await service.createStandard(req.identity!, body) }); } catch (error) { next(error); } });
   router.post("/nps-questions", csrf, async (req, res, next) => { try { const body = scopedQuestion.extend({ replaceGlobal: z.boolean().default(false) }).parse(req.body); res.status(201).json({ data: await service.createNps(req.identity!, body) }); } catch (error) { next(error); } });

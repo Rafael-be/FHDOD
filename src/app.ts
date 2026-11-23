@@ -25,6 +25,8 @@ import type { SubmissionService } from "./modules/submissions/submission.service
 import { submissionRoutes } from "./modules/submissions/submission.routes.js";
 import { submissionAnswerRoutes } from "./modules/submissions/submission.answer.routes.js";
 import { submissionRestartRoutes } from "./modules/submissions/submission.restart.routes.js";
+import type { FormDraftService } from "./modules/submissions/form-draft.service.js";
+import { formDraftRoutes } from "./modules/submissions/form-draft.routes.js";
 import type { QuestionsService } from "./modules/questions/questions.service.js";
 import { questionsRoutes } from "./modules/questions/questions.routes.js";
 import type { SecurityRateLimiter } from "./security/rate-limiter.js";
@@ -40,6 +42,7 @@ export interface AppDependencies {
   contentService?: ContentService;
   shiftSheetService?: ShiftSheetService;
   submissionService?: SubmissionService;
+  formDraftService?: FormDraftService;
   questionsService?: QuestionsService;
   securityRateLimiter?: SecurityRateLimiter;
   ombudsmanService?: OmbudsmanService;
@@ -77,6 +80,7 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
     contentService,
     shiftSheetService,
     submissionService,
+    formDraftService,
     questionsService,
     securityRateLimiter,
     ombudsmanService,
@@ -95,6 +99,8 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
   else app.get("/health", (_request, response) => response.status(200).json({ data: { status: "ok" } }));
   app.use("/api/auth", authRoutes(authService, config, securityRateLimiter));
   if (submissionService) { app.use("/api", submissionRoutes(submissionService, securityRateLimiter, config.RATE_LIMIT_SUBMISSION_PER_IP)); app.use("/api", submissionAnswerRoutes(submissionService, securityRateLimiter, config.RATE_LIMIT_SUBMISSION_PER_IP)); app.use("/api", submissionRestartRoutes(submissionService, securityRateLimiter, config.RATE_LIMIT_SUBMISSION_PER_IP)); }
+  if (contentService) app.use("/api", contentRoutes(contentService, authService));
+  if (ombudsmanService) app.use("/api", ombudsmanRoutes(ombudsmanService, authService, securityRateLimiter, config.RATE_LIMIT_SUBMISSION_PER_IP));
   if (adminService) {
     const adminMiddleware = securityRateLimiter
       ? rateLimitByIp(securityRateLimiter, "admin", { limit: config.RATE_LIMIT_ADMIN_PER_IP, windowSeconds: 60 }, "ADMIN_RATE_LIMITED", "Muitas solicitações administrativas. Aguarde um momento.")
@@ -103,9 +109,8 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
   }
   if (shiftSheetService) app.use("/api", authenticate(authService), shiftSheetRoutes(shiftSheetService, authService));
   if (auditService) app.use("/api", authenticate(authService), auditRoutes(auditService));
-  if (contentService) app.use("/api", contentRoutes(contentService, authService));
   if (questionsService) app.use("/api", authenticate(authService), questionsRoutes(questionsService, authService));
-  if (ombudsmanService) app.use("/api", ombudsmanRoutes(ombudsmanService, authService, securityRateLimiter, config.RATE_LIMIT_SUBMISSION_PER_IP));
+  if (formDraftService) app.use("/api", authenticate(authService), formDraftRoutes(formDraftService, authService));
   app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openapiDocument, { explorer: false }));
   app.use(notFoundHandler);
   app.use(errorHandler);

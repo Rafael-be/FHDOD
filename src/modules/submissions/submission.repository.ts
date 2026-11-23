@@ -1,8 +1,9 @@
 import { createHash } from "node:crypto";
 import type postgres from "postgres";
 import { DomainError } from "../../shared/core.js";
-import { listEffectiveQuestions } from "../questions/effective-question-resolver.js";
 import { publishedFormCache } from "./form-cache.js";
+import { measurePerformance } from "../../shared/performance.js";
+import { logPerformanceMeasurement } from "../../shared/logger.js";
 import { SUBMISSION_EXTENSION_MS, SUBMISSION_INITIAL_MS } from "./submission-time.js";
 import type { SubmissionAnswerInput, SubmissionQuestion, SubmissionStart } from "./submission.service.js";
 
@@ -32,14 +33,35 @@ interface LockedSession {
 }
 
 export class PostgresSubmissionRepository implements SubmissionRepository {
-  constructor(private readonly sql: postgres.Sql) {}
+  constructor(private readonly sql: postgres.Sql, private readonly trace = false) {}
+  private measured<T>(stage: string, work: () => Promise<T>): Promise<T> {
+    return measurePerformance(this.trace, "submission.create", stage, work);
+  }
   async capabilityHash(sessionId: string): Promise<Buffer | null> {
     const rows = await this.sql<{ hash: Buffer }[]>`select capability_hash as hash from submission_sessions where id=${sessionId}`;
     return rows[0]?.hash ?? null;
   }
   async transaction<T>(work: (repository: SubmissionRepository) => Promise<T>): Promise<T> {
     if (typeof (this.sql as unknown as { begin?: unknown }).begin !== "function") return work(this);
-    return this.sql.begin(async (tx) => work(new PostgresSubmissionRepository(tx as unknown as postgres.Sql))) as Promise<T>;
+    const started = performance.now();
+    let entered = started;
+    let completed = started;
+    let committed = false;
+    try {
+      const result = await this.sql.begin(async (tx) => {
+        entered = performance.now();
+        try { return await work(new PostgresSubmissionRepository(tx as unknown as postgres.Sql, this.trace)); }
+        finally { completed = performance.now(); }
+      }) as T;
+      committed = true;
+      return result;
+    } finally {
+      if (this.trace) {
+        // Includes pool wait and BEGIN; the final segment includes COMMIT or ROLLBACK.
+        logPerformanceMeasurement("submission.transaction", "acquire_begin", entered - started);
+        logPerformanceMeasurement("submission.transaction", committed ? "commit" : "rollback", performance.now() - completed);
+      }
+    }
   }
   private async lockSession(sessionId: string): Promise<LockedSession> {
     const rows = await this.sql<LockedSession[]>`
@@ -55,7 +77,7 @@ export class PostgresSubmissionRepository implements SubmissionRepository {
     if (timestampToMillis(session.expiresAt!) < now.getTime()) throw new DomainError("SUBMISSION_EXPIRED", "Sessão expirada.", 410);
   }
   async createSessionSnapshot(input: SubmissionStart) {
-    const shifts = await this.sql<{ versionId: number; rangeId: number }[]>`
+    const shifts = await this.measured("shift_query", () => this.sql<{ versionId: number; rangeId: number }[]>`
       select distinct v.id as "versionId", r.id as "rangeId"
       from shift_sheet_versions v
       join sector_shift_ranges r on r.shift_sheet_version_id = v.id and r.sector_id = ${input.sectorId}
@@ -66,45 +88,31 @@ export class PostgresSubmissionRepository implements SubmissionRepository {
           and ${input.localTime}::time >= r.starts_at and ${input.localTime}::time < r.ends_at)
         or (r.ends_at < r.starts_at and (
           (coalesce(r.day_of_week, a.day_of_week) = ${input.dayOfWeek} and ${input.localTime}::time >= r.starts_at)
-          or (coalesce(r.day_of_week, a.day_of_week) = ${input.previousDayOfWeek} and ${input.localTime}::time < r.ends_at))))`;
+          or (coalesce(r.day_of_week, a.day_of_week) = ${input.previousDayOfWeek} and ${input.localTime}::time < r.ends_at))))`);
     if (shifts.length > 1) throw new DomainError("SHIFT_AMBIGUOUS", "Há mais de um turno vigente para o horário.", 409);
-    const fallback = shifts[0] ? undefined : (await this.sql<{ versionId: number | null; rangeId: null }[]>`
+    const fallback = shifts[0] ? undefined : (await this.measured("shift_fallback", () => this.sql<{ versionId: number | null; rangeId: null }[]>`
       select v.id as "versionId", null::integer as "rangeId" from sectors s
       left join shift_sheet_versions v on v.is_current = true
-      where s.id = ${input.sectorId} and s.deleted_at is null limit 1`)[0];
+      where s.id = ${input.sectorId} and s.deleted_at is null limit 1`))[0];
     if (!shifts[0] && !fallback) throw new DomainError("SECTOR_NOT_FOUND", "Setor inexistente ou inativo.", 404);
     const shift = shifts[0] ?? fallback!;
-    await this.sql`select pg_advisory_xact_lock(912010, ${input.sectorId})`;
-    const effective = await listEffectiveQuestions(this.sql, input.sectorId, false);
-    const questions: SubmissionQuestion[] = effective.map((q, index) => ({
-      questionId: q.id, questionVersionId: q.versionId, text: q.text,
-      questionKind: q.questionKind, isNps: q.isNps, position: index + 1,
-    }));
-    if (questions.filter((q) => q.isNps).length !== 1 || questions.length < 2)
-      throw new DomainError("FORM_INCOMPLETE", "O setor precisa de perguntas comuns e exatamente um NPS.", 409);
-    const fingerprint = createHash("sha256").update(JSON.stringify(questions)).digest("hex");
-    const current = (await this.sql<{ id: number; versionNumber: number; fingerprint: string }[]>`
-      select id, version_number as "versionNumber", fingerprint from submission_form_versions
-      where sector_id = ${input.sectorId} order by version_number desc limit 1`)[0];
-    let formVersionId = current?.id;
-    if (!current || current.fingerprint !== fingerprint) {
-      const created = await this.sql<{ id: number }[]>`
-        insert into submission_form_versions(sector_id, version_number, fingerprint, published_at)
-        values (${input.sectorId}, ${(current?.versionNumber ?? 0) + 1}, ${fingerprint}, ${input.now.toISOString()})
-        returning id`;
-      formVersionId = created[0]!.id;
-      for (const q of questions) await this.sql`
-        insert into submission_form_questions(form_version_id, question_id, question_version_id, position, question_kind, is_nps, text)
-        values (${formVersionId}, ${q.questionId}, ${q.questionVersionId}, ${q.position}, ${q.questionKind}, ${q.isNps}, ${q.text})`;
-    }
+    await this.measured("sector_lock_wait", () => this.sql`select pg_advisory_xact_lock(912010, ${input.sectorId})`);
+    const current = (await this.measured("published_form_lookup", () => this.sql<{ id: number }[]>`
+      select c.form_version_id as id from sector_current_forms c
+      join submission_form_versions v on v.id=c.form_version_id and v.sector_id=c.sector_id
+      where c.sector_id=${input.sectorId}`))[0];
+    if (!current) throw new DomainError("FORM_NOT_PUBLISHED", "Setor sem formulário publicado vigente.", 409);
+    const formVersionId = current.id;
+    const questions = await publishedFormCache.get(this.sql, formVersionId);
+    if (questions.filter((q) => q.isNps).length !== 1 || !questions.some((q) => q.questionKind === "standard" && !q.isNps))
+      throw new DomainError("FORM_INCOMPLETE", "Formulário publicado incompleto.", 409);
     const expiresAt = new Date(input.now.getTime() + SUBMISSION_INITIAL_MS).toISOString();
-    const rows = await this.sql<{ id: string }[]>`
+    const rows = await this.measured("session_insert", () => this.sql<{ id: string }[]>`
       insert into submission_sessions(id, sector_id, form_version_id, shift_sheet_version_id, shift_range_id,
         started_at, last_activity_at, expires_at, status, capability_hash)
-      values (${input.sessionId}, ${input.sectorId}, ${formVersionId!}, ${shift.versionId}, ${shift.rangeId},
-        ${input.now.toISOString()}, ${input.now.toISOString()}, ${expiresAt}, 'incomplete', ${input.capabilityHash ?? createHash("sha256").update(input.sessionId).digest()}) returning id`;
-    publishedFormCache.put(formVersionId!, questions);
-    return { session: { id: rows[0]!.id, sectorId: input.sectorId, formVersionId: formVersionId!, expiresAt,
+      values (${input.sessionId}, ${input.sectorId}, ${formVersionId}, ${shift.versionId}, ${shift.rangeId},
+        ${input.now.toISOString()}, ${input.now.toISOString()}, ${expiresAt}, 'incomplete', ${input.capabilityHash ?? createHash("sha256").update(input.sessionId).digest()}) returning id`);
+    return { session: { id: rows[0]!.id, sectorId: input.sectorId, formVersionId, expiresAt,
       shiftSheetVersionId: shift.versionId, shiftRangeId: shift.rangeId }, questions };
   }
   async saveAnswer(sessionId: string, input: SubmissionAnswerInput, now: Date) {

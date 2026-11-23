@@ -18,6 +18,8 @@ import { PostgresShiftSheetRepository } from "./modules/shifts/shift-sheet.repos
 import { ShiftSheetService } from "./modules/shifts/shift-sheet.service.js";
 import { PostgresSubmissionRepository } from "./modules/submissions/submission.repository.js";
 import { SubmissionService } from "./modules/submissions/submission.service.js";
+import { publishedFormCache } from "./modules/submissions/form-cache.js";
+import { FormDraftService } from "./modules/submissions/form-draft.service.js";
 import { QuestionsRepository } from "./modules/questions/questions.repository.js";
 import { QuestionsService } from "./modules/questions/questions.service.js";
 import { RedisCacheService } from "./cache/cache.service.js";
@@ -50,6 +52,7 @@ function closeServer(server: Server): Promise<void> {
 
 async function startServer(): Promise<void> {
   const config = loadConfig();
+  publishedFormCache.setTracing(config.PERFORMANCE_MEASUREMENTS);
   const database = createDatabase(config);
   const redis = config.CACHE_ENABLED || config.SECURITY_REDIS_ENABLED ? new NodeRedisClient(config) : undefined;
   const cache = new RedisCacheService(redis, config.CACHE_ENABLED, config.CACHE_QUESTIONS_TTL_SECONDS);
@@ -86,7 +89,8 @@ async function startServer(): Promise<void> {
     healthService,
     contentService: new ContentService(new ContentRepository(database.client)),
     shiftSheetService: new ShiftSheetService(new PostgresShiftSheetRepository(database.client), clock.now.bind(clock)),
-    submissionService: new SubmissionService(new PostgresSubmissionRepository(database.client), clock),
+    submissionService: new SubmissionService(new PostgresSubmissionRepository(database.client, config.PERFORMANCE_MEASUREMENTS), clock, undefined, config.PERFORMANCE_MEASUREMENTS),
+    formDraftService: new FormDraftService(database.client),
     questionsService: new QuestionsService(new QuestionsRepository(database.client), cache),
     securityRateLimiter,
     ombudsmanService: new OmbudsmanService(new OmbudsmanRepository(database.client), clock),

@@ -44,7 +44,7 @@ function requireSuperuser(actor: AuthIdentity): void {
   }
 }
 
-function sectorStatus(readiness: SectorReadiness) {
+export function sectorStatus(readiness: SectorReadiness) {
   const missingRequirements = [
     !readiness.hasShiftRanges ? "shift_ranges" : null,
     !readiness.hasNps ? "nps" : null,

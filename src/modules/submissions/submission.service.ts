@@ -3,6 +3,9 @@ import type { Clock } from "../../shared/core.js";
 import type { SubmissionRepository } from "./submission.repository.js";
 import { DomainError } from "../../shared/core.js";
 import { HOSPITAL_TIME_ZONE, hospitalShiftTime } from "./submission-time.js";
+import { publishedFormCache } from "./form-cache.js";
+import { measurePerformance } from "../../shared/performance.js";
+import { logPerformanceMeasurement } from "../../shared/logger.js";
 
 export interface SubmissionStart { sessionId: string; sectorId: number; dayOfWeek: number; previousDayOfWeek: number; localTime: string; now: Date; capabilityHash?: Buffer; }
 export interface SubmissionQuestion { questionId: number; questionVersionId: number; text: string; questionKind: "sector" | "standard"; isNps: boolean; position: number; }
@@ -13,18 +16,31 @@ export class SubmissionService {
   // Compatibility only for repository test doubles that predate persistent capabilities.
   // PostgresSubmissionRepository always supplies capabilityHash and never reads this map.
   private readonly testCapabilities = new Map<string, string>();
-  constructor(private readonly repository: SubmissionRepository, private readonly clock: Clock, private readonly hospitalTimeZone = HOSPITAL_TIME_ZONE) {}
+  constructor(private readonly repository: SubmissionRepository, private readonly clock: Clock, private readonly hospitalTimeZone = HOSPITAL_TIME_ZONE, private readonly trace = false) {}
 
   async start(sectorId: number, dayOfWeek: number, localTime: string, now = this.clock.now()) {
+    const started = performance.now();
+    const generated = performance.now();
     const sessionId = randomUUID();
     const token = randomBytes(32).toString("base64url");
+    if (this.trace) logPerformanceMeasurement("submission.create", "capability_generate", performance.now() - generated);
+    const hashed = performance.now();
     const capabilityHash = createHash("sha256").update(token).digest();
-    const result = await this.repository.transaction(async (repository) => {
-      if (repository.reconcileExpired) await repository.reconcileExpired(now);
+    if (this.trace) logPerformanceMeasurement("submission.create", "capability_hash", performance.now() - hashed);
+    const result = await measurePerformance(this.trace, "submission.create", "transaction_total", () => this.repository.transaction(async (repository) => {
+      if (repository.reconcileExpired) await measurePerformance(this.trace, "submission.create", "expired_reconcile", () => repository.reconcileExpired!(now));
       return repository.createSessionSnapshot({ sessionId, sectorId, dayOfWeek, previousDayOfWeek: dayOfWeek === 1 ? 7 : dayOfWeek - 1, localTime, now, capabilityHash });
-    });
+    }));
+    // The transaction has committed. Cache failures must not turn a persisted session into an HTTP error.
+    try { publishedFormCache.put(result.session.formVersionId, result.questions); } catch { /* database remains the source of truth */ }
     if (!this.repository.capabilityHash) this.testCapabilities.set(sessionId, token);
-    return { capability: { sessionId, token }, ...result };
+    const built = performance.now();
+    const response = { capability: { sessionId, token }, ...result };
+    if (this.trace) {
+      logPerformanceMeasurement("submission.create", "response_build", performance.now() - built);
+      logPerformanceMeasurement("submission.create", "total", performance.now() - started);
+    }
+    return response;
   }
 
   async startNow(sectorId: number) {
