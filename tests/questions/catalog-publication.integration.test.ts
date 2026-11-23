@@ -19,6 +19,9 @@ integration('catalogue and immutable publications',()=>{
       const nps=await repo.createNps('NPS fixture','selected_sectors',[sector!.id],user!.id);
       expect(standard).toMatchObject({text:'Nouvelle question',isNps:false});
       expect(nps).toMatchObject({text:'NPS fixture',isNps:true});
+      const listed=await repo.listCatalog({sectorId:sector!.id,limit:25,offset:0});
+      expect(listed.find(item=>item.id===standard.id)?.questionVersionId).toEqual(expect.any(Number));
+      expect(listed.find(item=>item.id===nps.id)?.questionVersionId).toEqual(expect.any(Number));
       expect(await db`select * from sector_current_forms order by sector_id`).toEqual(before);
       expect(await db`select * from submission_form_questions order by form_version_id,position`).toEqual(snapshots);
       throw rollback;
