@@ -1,0 +1,21 @@
+import express from "express";
+import request from "supertest";
+import { jest } from "@jest/globals";
+import { questionsRoutes } from "../../src/modules/questions/questions.routes.js";
+import type { QuestionsService } from "../../src/modules/questions/questions.service.js";
+import type { AuthService } from "../../src/modules/auth/auth.service.js";
+import { errorHandler } from "../../src/shared/core.js";
+it("restricts catalogue creation to superuser with CSRF and passes validated scope",async()=>{
+  const create = jest.fn<(actor: unknown, input: unknown) => Promise<{id:number}>>(async()=>({id:22}));
+  const service={createStandard:create,createNps:create} as unknown as QuestionsService;
+  const auth={recoverCsrfForIdentity:async()=> 'valid'} as unknown as AuthService;
+  const app=(role:'superuser'|'sector_manager')=>{const a=express();a.use(express.json());a.use((req,_res,next)=>{req.identity={userId:1,sessionId:'test',role,mustChangePassword:false};next();});a.use(questionsRoutes(service,auth));a.use(errorHandler);return a;};
+  const body={text:'Pergunta do catálogo',scope:'selected_sectors',sectorIds:[2]};
+  await request(app('sector_manager')).post('/catalog/standard-questions').set('x-csrf-token','valid').send(body).expect(403);
+  await request(app('superuser')).post('/catalog/standard-questions').send(body).expect(403);
+  expect(create).not.toHaveBeenCalled();
+  await request(app('superuser')).post('/catalog/standard-questions').set('x-csrf-token','valid').send(body).expect(201).expect(({body})=>expect(body.data.id).toBe(22));
+  expect(create.mock.calls[0]?.[1]).toEqual(body);
+  await request(app('superuser')).post('/catalog/nps-questions').set('x-csrf-token','valid').send({...body,scope:'all_sectors',sectorIds:[]}).expect(201);
+  expect(create.mock.calls[1]?.[1]).toEqual({...body,scope:'all_sectors',sectorIds:[],replaceGlobal:false});
+});

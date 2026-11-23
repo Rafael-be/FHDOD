@@ -1334,6 +1334,70 @@
               }
             }
           ]
+        },
+        {
+          "name": "Cadastrar standard no catálogo (superusuário)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/catalog/standard-questions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Pergunta cat\\u00e1logo local\",\n  \"scope\": \"selected_sectors\",\n  \"sectorIds\": [\n    {{sectorId}}\n  ]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Criado ou conflito de NPS esperado',()=>pm.expect([201,409]).to.include(pm.response.code)); if(pm.response.code===201){const q=pm.response.json().data;pm.environment.set('questionId',q.id);pm.environment.set('questionVersionId',q.versionId);}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cadastrar nps no catálogo (superusuário)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/catalog/nps-questions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Pergunta cat\\u00e1logo local\",\n  \"scope\": \"selected_sectors\",\n  \"sectorIds\": [\n    {{sectorId}}\n  ],\n  \"replaceGlobal\": false\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Criado ou conflito de NPS esperado',()=>pm.expect([201,409]).to.include(pm.response.code)); if(pm.response.code===201){const q=pm.response.json().data;pm.environment.set('questionId',q.id);pm.environment.set('questionVersionId',q.versionId);}"
+                ]
+              }
+            }
+          ]
         }
       ]
     },

@@ -26,3 +26,7 @@ As rotas antigas de escrita em `/api/questions`, `/api/standard-questions`, `/ap
 ## Implantação futura
 
 Não execute `0014` a `0016` no Supabase sem backup e verificação específica. Aplique migrations em ordem pelo mecanismo oficial, confira o ledger, a lista de setores sem ponteiro e os vínculos das sessões, então implante o backend coordenadamente. A reversão segura consiste em voltar ao código anterior somente após analisar publicações feitas com o novo código; remover as tabelas ou reescrever versões históricas não é um rollback aceitável.
+
+## Cadastro administrativo de itens do catálogo
+
+Superusuário pode cadastrar identidades com `POST /api/catalog/standard-questions` e `POST /api/catalog/nps-questions`, com cookie e CSRF. Corpos usam os contratos `StandardQuestionRequest`/`NpsQuestionRequest`: `text`, `scope` (`all_sectors` ou `selected_sectors`), `sectorIds` e, para NPS, `replaceGlobal` opcional. Cadastro mantém os snapshots e ponteiros publicados. Consulte o catálogo, selecione IDs/versões na composição do rascunho e publique explicitamente. Substituir um NPS global altera a configuração disponível, exigindo revisão dos rascunhos candidatos; as sessões existentes continuam na versão histórica.

@@ -24,6 +24,14 @@ export function questionsRoutes(service: QuestionsService, auth: AuthService) {
   router.get("/questions", async (req, res, next) => { try { res.json({ data: await service.listCatalog(req.identity!, catalogueQuery.parse(req.query)) }); } catch (error) { next(error); } });
   router.get("/questions/:id", async (req, res, next) => { try { res.json({ data: await service.catalogQuestion(req.identity!, id.parse(req.params.id)) }); } catch (error) { next(error); } });
   router.get("/sectors/:sectorId/questions", async (req, res, next) => { try { res.json({ data: await service.listSector(req.identity!, sectorId.parse(req.params.sectorId), req.query.deleted === "true") }); } catch (error) { next(error); } });
+  router.post("/catalog/standard-questions", requireRole("superuser"), csrf, async (req,res,next) => {
+    try { res.status(201).json({ data: await service.createStandard(req.identity!,scopedQuestion.parse(req.body)) }); }
+    catch(error) { next(error); }
+  });
+  router.post("/catalog/nps-questions", requireRole("superuser"), csrf, async (req,res,next) => {
+    try { res.status(201).json({ data: await service.createNps(req.identity!,scopedQuestion.extend({replaceGlobal:z.boolean().default(false)}).parse(req.body)) }); }
+    catch(error) { next(error); }
+  });
   // Legacy mutations edit the live catalogue and bypass explicit form publication.
   router.use((req, res, next) => {
     const legacyMutation = req.method !== "GET" &&

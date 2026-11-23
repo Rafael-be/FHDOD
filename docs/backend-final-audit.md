@@ -8,7 +8,7 @@ Esta execução acrescentou analytics e preparou os artefatos de demonstração.
 - Suíte integrada no fixture histórico descartável: 58 suítes, 224 testes aprovados, zero falhas; 1 suíte e 4 testes de retenção ignorados por configuração de role específica. Esses quatro não são considerados aprovados.
 - Nova migration 0017 aplicada pelo migrador oficial tanto após 0016 no fixture histórico quanto desde bootstrap no banco novo. Ledger tem 18 entradas. Migrations anteriores não foram editadas.
 - Login real de administrador e gestor, HTTP de analytics: 200, NPS 25 com 4 respondentes (2 promotores/1 neutro/1 detrator), 4 sessões completas e 2 manifestações. Gestor consultando outro setor: 403; Swagger: 200.
-- Collection Postman: 72 requisições, todos os métodos/paths dos routers presentes; schema oficial v2.1 validado com AJV existente. Environment parseável e campos estruturais conferidos. A collection completa ainda não foi executada em Postman/Newman.
+- Collection Postman: 74 requisições, todos os métodos/paths dos routers presentes; schema oficial v2.1 validado com AJV existente. Environment parseável e campos estruturais conferidos. A collection completa ainda não foi executada em Postman/Newman.
 - Nenhum acesso ao Supabase nesta missão. `.env` e frontend não foram alterados. Senhas do seed entraram apenas por variáveis de processo.
 
 ## Defeitos e ajustes
@@ -21,7 +21,7 @@ Esta execução acrescentou analytics e preparou os artefatos de demonstração.
 ## Limites e pendências reais
 
 - A fonte antiga `Arquivos/modelagem_bd.md` prevê resumos horários e agendamento. Esta implementação agrega diretamente em SQL, conforme a missão atual, sem assumir que o job antigo existe. Decidir operação/performance de resumos com volume real continua pendente.
-- Criação de perguntas globais/NPS por um fluxo administrativo de rascunho ainda precisa de desenho/implementação: o rascunho atual cria perguntas locais e permite editar conteúdo global/NPS existente com autorização; rotas antigas permanecem bloqueadas. O seed inicializa NPS e pergunta padrão, mas isso não substitui o editor administrativo.
+- Cadastro de perguntas padrão/NPS foi acrescentado em `/api/catalog/standard-questions` e `/api/catalog/nps-questions`, somente para superusuário com CSRF. Esses serviços alteram a configuração do catálogo; snapshots publicados permanecem intactos, comprovado em PostgreSQL local. A inclusão no próximo formulário exige seleção no rascunho e publicação. Um NPS específico já existente pode gerar 409; substituição de override continua exigindo desenho explícito de composição, sem reativar rotas antigas.
 - A auditoria dos documentos originais foi focal: foram localizados PDF acadêmico e documentos de regras/modelagem, mas não foi concluída uma rastreabilidade linha a linha de todos os documentos do workspace. A matriz essencial está em implementation-progress.md; não deve ser tratada como inventário exaustivo.
 - Nenhuma atribuição individual de equipe ou taxa de atendimento foi inventada. Resposta explicita indisponibilidade desses indicadores. Política organizacional para supressão de amostras pequenas ainda não foi definida.
 - Redis real e execução completa dos fluxos Postman permanecem sem validação nesta execução. O frontend exige adaptação para rascunho/publicação e novo dashboard.
@@ -30,3 +30,9 @@ Esta execução acrescentou analytics e preparou os artefatos de demonstração.
 A entrega atual é uma unidade funcional de analytics, seed e coleção estruturada, com testes e pendências explícitas. Não usar este relatório para afirmar que todas as missões estão concluídas ou autorizar implantação remota.
 
 Após ampliar a regressão de histórico, 7/7 testes direcionados passaram também no banco de instalação limpa. O seed e o migrador foram reexecutados sem duplicar dados. A validação sintática dos scripts Postman encontrou e corrigiu um escape inválido no guard de localhost; o guard foi executado com destinos local e externo.
+
+## Marco final ampliado
+
+Com a role de manutenção provisionada pelos scripts oficiais somente no fixture local, os quatro testes de retenção executaram. A suíte ampliada teve 228 aprovados e 2 falhas (sem ignorados). Corrigidas a expectativa OpenAPI de 409 e os grants de bootstrap ausentes no fixture restaurado, os dois arquivos afetados passaram 11/11 na reexecução direcionada. Não somar resultados de execuções diferentes como se fossem uma execução única de 230 testes aprovada. Typecheck, lint e build passaram após as rotas novas.
+
+O novo cadastro padrão/NPS não publica formulários, conforme teste real que compara ponteiros e snapshots antes/depois. As proteções de gestor e CSRF também foram verificadas por HTTP. Permanecem limites de levantamento exaustivo dos documentos originais e execução completa da coleção Postman; esta auditoria não declara todos os critérios da missão integral atendidos.

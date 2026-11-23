@@ -22,3 +22,5 @@ Importe `FHDOD.postman_collection.json` (v2.1) e `FHDOD.local.postman_environmen
 - Execute negativos com o perfil indicado no nome: CSRF ausente, capability incorreta, gestor fora do escopo. Limpe cookies antes de testar refresh inválido. Rotas antigas de escrita retornam 409 por contrato.
 
 A coleção foi validada contra o schema oficial v2.1 com AJV existente; environment foi validado estruturalmente. Essa validação não comprova execução de todos os fluxos no Postman. Algumas requisições administrativas usam exemplos OpenAPI: substitua placeholders e preencha payloads com os dados fictícios locais. Veja `docs/form-publication.md` para a composição completa do PUT.
+
+As duas requisições de criação em `/api/catalog/*` usam superusuário e CSRF e não publicam automaticamente. Crie a identidade, leia o catálogo e inclua a pergunta no rascunho antes de publicar. Criar NPS específico onde já existe override retorna conflito; não trate isso como substituição automática.

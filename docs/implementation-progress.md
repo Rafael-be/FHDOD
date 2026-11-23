@@ -30,4 +30,11 @@ Branch `feature/backend-completion-analytics` parte de `1e8b005`, com dependênc
 - Suíte geral integrada desta missão: 58 suítes/224 testes aprovados, zero falhas, quatro testes de retenção ignorados. Regressão adicional de histórico e instalação limpa: 7/7 aprovados.
 - Seed e migrador idempotentes: 2 usuários, 2 setores, 4 sessões, 8 respostas, 14 dias e 2 manifestações no demo, sem duplicação ao reexecutar.
 - HTTP real confirmou NPS 25, gestor com acesso filtrado e 403 fora do escopo; `/api-docs/` retornou 200.
-- Documentos `docs/backend-final-audit.md` e `postman/README.md` registram fórmulas, início local e limites. Permanecem por concluir a evolução administrativa de perguntas globais/NPS e execução integral da collection com preparação de estados. Não declarar a missão integral concluída.
+- Documentos `docs/backend-final-audit.md` e `postman/README.md` registram fórmulas, início local e limites. Cadastro administrativo padrão/NPS acrescentado em rotas de catálogo sem publicar snapshots. Permanece por concluir a execução integral da collection com preparação de estados. Não declarar a missão integral concluída.
+
+## Última continuação
+
+- Rotas `POST /api/catalog/standard-questions` e `POST /api/catalog/nps-questions`: reutilizam serviços transacionais existentes, exigem superusuário e CSRF; publicação continua explícita.
+- Teste HTTP compara argumentos de scope/texto/setores e testa negação sem CSRF e para gestor. Teste PostgreSQL real compara todos os ponteiros e snapshots antes/depois do cadastro.
+- Suíte ampliada com retenção habilitada: 228 aprovados, 2 falhas, nenhum ignorado. As duas falhas foram resolvidas (OpenAPI legado e grants incompletos do fixture histórico); os dois arquivos afetados passaram 11/11 na reexecução. Os quatro testes de retenção executaram sem falhas. Não foi repetida a suíte completa após essa correção direcionada.
+- Collection final tem 74 requisições; inclui cadastro padrão/NPS e resposta NPS separada. Scripts e schema foram validados; execução integral interativa continua pendente.
