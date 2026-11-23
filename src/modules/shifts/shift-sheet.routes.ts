@@ -5,7 +5,7 @@ import type { ShiftSheetService } from "./shift-sheet.service.js";
 
 export function shiftSheetRoutes(service: ShiftSheetService, auth: AuthService): Router {
   const router = Router();
-  router.use(requireRole("superuser"));
+  router.use("/shift-sheets", requireRole("superuser"));
   router.get("/shift-sheets/template", async (_request, response, next) => {
     try {
       const csv = await service.template();

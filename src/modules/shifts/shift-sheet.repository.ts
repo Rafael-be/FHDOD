@@ -22,18 +22,29 @@ export class PostgresShiftSheetRepository implements ShiftSheetRepository {
     const sectors = await this.sql<{ id: number; code: string }[]>`select id, code from sectors where deleted_at is null`;
     const sectorIds = new Map(sectors.map((sector) => [sector.code, sector.id]));
     const days = new Set<string>();
+    const daySectorIds: number[] = [], dayNumbers: number[] = [], dayClosed: boolean[] = [];
+    const rangeSectorIds: number[] = [], rangeNames: string[] = [], rangeStarts: string[] = [], rangeEnds: string[] = [], rangeDays: number[] = [];
     for (const row of rows) {
       const sectorId = sectorIds.get(row.codigo_setor);
       if (!sectorId) throw new Error(`Setor não encontrado durante persistência: ${row.codigo_setor}`);
       const key = `${sectorId}:${row.dayOfWeek}`;
       if (!days.has(key)) {
-        await this.sql`insert into sector_shift_days (shift_sheet_version_id, sector_id, day_of_week, is_closed) values (${versionId}, ${sectorId}, ${row.dayOfWeek}, ${row.closed})`;
+        daySectorIds.push(sectorId); dayNumbers.push(row.dayOfWeek); dayClosed.push(row.closed);
         days.add(key);
       }
-      if (!row.closed) await this.sql`
-        insert into sector_shift_ranges (shift_sheet_version_id, sector_id, shift_name, starts_at, ends_at, day_of_week)
-        values (${versionId}, ${sectorId}, ${row.nome_turno}, ${row.hora_inicio}, ${row.hora_fim}, ${row.dayOfWeek})`;
+      if (!row.closed) {
+        rangeSectorIds.push(sectorId); rangeNames.push(row.nome_turno);
+        rangeStarts.push(row.hora_inicio); rangeEnds.push(row.hora_fim); rangeDays.push(row.dayOfWeek);
+      }
     }
+    await this.sql`insert into sector_shift_days(shift_sheet_version_id,sector_id,day_of_week,is_closed)
+      select ${versionId}, d.sector_id,d.day_of_week,d.is_closed
+      from unnest(${daySectorIds}::integer[],${dayNumbers}::integer[],${this.sql.array(dayClosed, 16)}::boolean[])
+        as d(sector_id,day_of_week,is_closed)`;
+    if (rangeSectorIds.length) await this.sql`insert into sector_shift_ranges(shift_sheet_version_id,sector_id,shift_name,starts_at,ends_at,day_of_week)
+      select ${versionId},r.sector_id,r.shift_name,r.starts_at,r.ends_at,r.day_of_week
+      from unnest(${rangeSectorIds}::integer[],${rangeNames}::text[],${rangeStarts}::time[],${rangeEnds}::time[],${rangeDays}::integer[])
+        as r(sector_id,shift_name,starts_at,ends_at,day_of_week)`;
     await this.sql`update shift_sheet_versions set is_current = false where is_current = true`;
     await this.sql`update shift_sheet_versions set is_current = true where id = ${versionId}`;
     return { versionId };

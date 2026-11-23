@@ -8,7 +8,7 @@ const sectorId = z.coerce.number().int().positive();
 
 export function submissionRoutes(service: SubmissionService, limiter?: SecurityRateLimiter, limit = 180): Router {
   const router = Router();
-  if (limiter) router.use(rateLimitByIp(limiter, "submission-public", { limit, windowSeconds: 60 }, "SUBMISSION_RATE_LIMITED", "Muitas solicitações. Aguarde um momento."));
+  if (limiter) router.use("/public/sectors/:sectorId/submissions", rateLimitByIp(limiter, "submission-public", { limit, windowSeconds: 60 }, "SUBMISSION_RATE_LIMITED", "Muitas solicitações. Aguarde um momento."));
   router.post("/public/sectors/:sectorId/submissions", async (request, response, next) => {
     try {
       const id = sectorId.parse(request.params.sectorId);

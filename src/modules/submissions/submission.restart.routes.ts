@@ -8,7 +8,7 @@ const sessionId = z.string().uuid();
 
 export function submissionRestartRoutes(service: SubmissionService, limiter?: SecurityRateLimiter, limit = 180): Router {
   const router = Router();
-  if (limiter) router.use(rateLimitByIp(limiter, "submission-public", { limit, windowSeconds: 60 }, "SUBMISSION_RATE_LIMITED", "Muitas solicitações. Aguarde um momento."));
+  if (limiter) router.use("/public/submissions/:sessionId", rateLimitByIp(limiter, "submission-public", { limit, windowSeconds: 60 }, "SUBMISSION_RATE_LIMITED", "Muitas solicitações. Aguarde um momento."));
   router.post("/public/submissions/:sessionId/restart", async (request, response, next) => {
     try {
       const token = request.get("x-session-capability");

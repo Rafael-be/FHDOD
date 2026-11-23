@@ -49,10 +49,15 @@ export class QuestionsService {
   }
 
   async listCatalog(actor: AuthIdentity, input: { type?: "standard" | "nps"; state?: "active" | "inactive"; scope?: "all_sectors" | "selected_sectors"; sectorId?: number; page: number; pageSize: number }) {
-    this.requireSuperuser(actor);
+    if (actor.role === "sector_manager") {
+      if (input.sectorId === undefined) throw forbidden("Informe um setor vinculado para consultar perguntas.");
+      await this.authorize(actor, input.sectorId);
+    } else this.requireSuperuser(actor);
     if (input.sectorId !== undefined && !await this.repository.activeSector(input.sectorId)) throw notFound("Setor não encontrado.");
     const rows = await this.repository.listCatalog({ ...input, limit: input.pageSize, offset: (input.page - 1) * input.pageSize });
-    return { items: rows.map(dto), page: input.page, pageSize: input.pageSize, total: rows[0]?.total ?? 0 };
+    return { items: rows.map((row) => dto(actor.role === "sector_manager"
+      ? { ...row, associations: row.associations.filter((association) => association.sectorId === input.sectorId) }
+      : row)), page: input.page, pageSize: input.pageSize, total: rows[0]?.total ?? 0 };
   }
 
   async catalogQuestion(actor: AuthIdentity, id: number) {
