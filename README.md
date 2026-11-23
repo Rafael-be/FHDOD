@@ -137,3 +137,24 @@ somente testes que não dependem de PostgreSQL são executados.
 O comando separado `npm run seed:demo` exige conexão administrativa loopback explícita em `LOCAL_DEMO_DATABASE_URL`, banco `fhdod_test` com marcador descartável e senhas em `DEMO_ADMIN_PASSWORD`/`DEMO_MANAGER_PASSWORD`. Não utiliza o `.env` para escolher destino e não sobrescreve contas existentes fora da fixture. Veja [o manual local do Postman](postman/README.md).
 
 O novo endpoint de agregados é `GET /api/analytics/dashboard`. Fórmulas, filtros, autorização e limites estão em [analytics](docs/analytics.md). A migration 0017 acrescenta somente leitura do histórico legado para a role runtime; deve seguir as migrations anteriores pelo comando oficial.
+
+## Desenvolvimento local seguro e prontidão do schema
+
+`npm run dev` usa o arquivo ignorado `.env.development.local`, que precisa definir explicitamente DATABASE_URL (role fhdod_api) e DATABASE_URL_MIGRATIONS no mesmo PostgreSQL loopback, banco fhdod_test. As demais configurações locais podem sobrescrever os valores de `.env`; o arquivo original não é alterado. `npm run dev:configured` é a opção explícita para usar a configuração existente. Os comandos HTTP não executam migrations automaticamente.
+
+Exemplo de conexões para a instância isolada desta auditoria (sem senha, exclusivamente no cluster de teste local):
+
+```dotenv
+DATABASE_URL=postgres://fhdod_api@127.0.0.1:55440/fhdod_test
+DATABASE_URL_MIGRATIONS=postgres://rafael@127.0.0.1:55440/fhdod_test
+PORT=3000
+ALLOWED_ORIGIN=http://localhost:5173
+CACHE_ENABLED=false
+SECURITY_REDIS_ENABLED=false
+```
+
+Para iniciar o cluster já criado: `pg_ctl -D "$PWD/.local/postgres" -o "-h 127.0.0.1 -p 55440 -k $PWD/.local" -l "$PWD/.local/postgres.log" start`. Confirme o destino antes de `DATABASE_URL_MIGRATIONS=<conexão administrativa local> npm run migrate`. O runtime recusa schema incompleto com `DATABASE_SCHEMA_NOT_READY` antes do listen; não crie tabelas manualmente para contornar esse erro. A checagem verifica estruturas e permissões, não substitui a validação administrativa dos hashes no ledger.
+
+`PERFORMANCE_MEASUREMENTS=true` acrescenta contagem SQL por requisição, tempos de autenticação e métricas do cache no encerramento, sem texto de SQL ou parâmetros. Desative após o diagnóstico. Consulte [a auditoria de performance](docs/backend-performance-audit.md) para medições e limites.
+
+Para migrar com os mesmos guardas de destino, use `npm run migrate:local`: ele carrega `.env.development.local` e chama o migrador oficial. O comando original `npm run migrate` continua respeitando DATABASE_URL_MIGRATIONS do ambiente; não o execute sem conferir o destino.

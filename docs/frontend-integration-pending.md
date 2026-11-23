@@ -24,3 +24,7 @@ O backend local foi validado por HTTP. Esta etapa não alterou o frontend.
 ## Analytics
 
 Consumir `GET /api/analytics/dashboard` com `from`/`to` ISO com offset e filtros opcionais `sectorId`/`shiftRangeId`. Veja `docs/analytics.md`: o backend retorna sessões, NPS, médias por versão de pergunta, distribuições, séries por data e manifestações. Gráficos devem diferenciar ausência de dados (null) de nota/NPS zero. A taxa de resposta sobre atendimentos e a atribuição individual de equipe não estão disponíveis. Gestor não pode escolher setor fora do vínculo.
+
+## Diagnóstico de chamadas repetidas
+
+A revisão identificou StrictMode e effects de montagem, refetch após mutações e uma chamada de status para cada setor listado. O cliente já deduplica requisições em voo e refresh; conferir esse ciclo antes de propor cache. Respostas 304 são revalidação normal. Nenhuma mudança foi feita no frontend. O backend local agora é iniciado com `npm run dev` e override local; confirme que o proxy Vite aponta à porta 3000 e evite iniciar o modo `dev:configured` com `.env` do Supabase sem schema compatível.

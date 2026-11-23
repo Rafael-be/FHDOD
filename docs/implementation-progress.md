@@ -42,3 +42,18 @@ Branch `feature/backend-completion-analytics` parte de `1e8b005`, com dependênc
 ## Git e encerramento dos processos
 
 Commits: `c7d2a6a` (analytics), `1d60b85` (seed/Postman) e `0db229a` (catálogo e regressões). Push da branch `feature/backend-completion-analytics` recusado por falta de autenticação HTTPS (`could not read Username`). Nenhum merge executado. Servidor de demonstração e clusters 55437/55440 foram encerrados; o manual Postman contém os comandos para retomar o cluster demonstrativo. Não foi alterado `.env` nem frontend, nem acessado Supabase nesta missão.
+
+## Correção crítica e performance — 23/11/2026
+
+Branch `fix/backend-submission-performance`, base `8904e76`. Banco novo local em `.local/postgres`, porta 55440, `fhdod_test`, ledger 18. `.env` remoto preservado; `.env.development.local` ignorado aponta ambos os comandos ao banco local. `npm run dev` exige esse arquivo. Readiness detecta estruturas/policies/grants ausentes antes de ouvir HTTP, sem migrar automaticamente.
+
+- `bbf9ec7`: configuração local e prontidão de schema, incluindo testes de destino remoto/malformado e ausência da tabela 0015.
+- `189a1a5`: autenticação única administrativa, contadores SQL por request e métricas seguras de cache.
+- `699a8fb`: fixtures de rascunhos/publicação com IDs dinâmicos, montagem transacional e limpeza própria.
+- Teste inicial em banco novo: 225 aprovados, 6 falhas em três suítes com IDs fixos. Final: 63 suítes/236 testes aprovados, zero falhas ou ignorados. Typecheck, lint, build e diff-check aprovados.
+- Medianas locais com 15 amostras: dashboard 27,02→11,36ms (13→3 consultas); auditoria 15,02→7,75ms (7→3); catálogo 18,88→9,27ms (9→3). Sem extrapolar para Supabase. EXPLAIN de analytics: execução 1,53ms no dataset pequeno.
+- HTTP real: pesquisa completa [5,10], NPS agregado correto, capability inválida 403, expirada 410, sem publicação 409, restart/CSV válidos. Login de gestor, CSRF, conflito de revisão, publicação e restauração aprovados, mantendo snapshots históricos.
+- Supabase original apenas consultado por SELECTs com read-only: runtime fhdod_api/public, tabela ausente, ledger 14. Sem nenhuma escrita remota.
+- Relatório consolidado em `docs/backend-performance-audit.md`; limitações: Redis real indisponível, separação exata de espera de pool/serialização não medida, tempos remotos de segundos não reproduzidos.
+
+Últimas regressões desta rodada: `1a628c2` conecta publicação à invalidação versionada após commit (observador PostgreSQL independente confirmou o ponteiro novo; erro Redis não desfaz publicação); `4377881` acrescenta `migrate:local` com guardas de destino; `a4ee378` corrige a restauração da planilha após remover setor temporário no teste RLS, fechando conexões mesmo em falha. A última suíte completa, após todas essas correções, passou 63 suítes e 236 testes, sem falhas/ignorados. `npm run dev` e `npm run migrate:local` são os comandos locais seguros; o migrador original continua exigindo conferência explícita de destino.
