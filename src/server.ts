@@ -59,9 +59,6 @@ async function startServer(): Promise<void> {
   const redis = config.CACHE_ENABLED || config.SECURITY_REDIS_ENABLED ? new NodeRedisClient(config) : undefined;
   const cache = new RedisCacheService(redis, config.CACHE_ENABLED, config.CACHE_QUESTIONS_TTL_SECONDS);
   const securityRateLimiter = new SecurityRateLimiter(redis, config.SECURITY_REDIS_ENABLED, config.JWT_SECRET);
-  if (redis) void redis.connect().catch(() => {
-    process.stderr.write(`${JSON.stringify({ level: "warn", event: "cache.redis_unavailable" })}\n`);
-  });
   const clock = new SystemClock();
   const healthService = new HealthService(new HealthRepository(database.client));
 
@@ -73,6 +70,10 @@ async function startServer(): Promise<void> {
     process.exitCode = 1;
     return;
   }
+
+  if (redis) void redis.connect().catch(() => {
+    process.stderr.write(`${JSON.stringify({ level: "warn", event: "cache.redis_unavailable" })}\n`);
+  });
 
   const authService = new AuthService(
     new PostgresAuthRepository(database.client),

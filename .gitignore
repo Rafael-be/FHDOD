@@ -147,3 +147,6 @@ vite.config.ts.timestamp-*
 
 # Turbo Repo
 .turbo
+
+# Isolated local PostgreSQL data and diagnostics
+.local/
