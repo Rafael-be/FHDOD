@@ -34,3 +34,12 @@ it("keeps manager question routes reachable while shift sheets require a superus
   await request(app).get("/api/shift-sheets/template").set("Cookie", "access_token=test").expect(403)
     .expect(({ body }) => expect(body.error.code).toBe("FORBIDDEN"));
 });
+
+it("authenticates only once when an administrative request crosses module routers",async()=>{
+  let authentications=0;
+  const auth={authenticate:async()=>{authentications++;return {userId:1,sessionId:'test',role:'superuser',mustChangePassword:false};}} as AuthService;
+  const app=createApp(config,{authService:auth,adminService:{} as AdminService,shiftSheetService:{} as ShiftSheetService,
+    questionsService:{} as QuestionsService,analyticsService:{dashboard:async()=>({sessions:{started:0}})} as unknown as import('../../src/modules/analytics/analytics.service.js').AnalyticsService});
+  await request(app).get('/api/analytics/dashboard?from=2026-01-01T00:00:00Z&to=2026-01-02T00:00:00Z').set('Cookie','access_token=test').expect(200);
+  expect(authentications).toBe(1);
+});

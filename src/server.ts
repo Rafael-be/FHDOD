@@ -120,6 +120,7 @@ async function startServer(): Promise<void> {
 
     try {
       await closeServer(server);
+      if(config.PERFORMANCE_MEASUREMENTS) process.stdout.write(JSON.stringify({level:"info",event:"cache.metrics",...cache.metrics()})+"\n");
       await redis?.close();
       await database.close();
       logServerStopped();

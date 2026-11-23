@@ -104,17 +104,19 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
   if (submissionService) { app.use("/api", submissionRoutes(submissionService, securityRateLimiter, config.RATE_LIMIT_SUBMISSION_PER_IP)); app.use("/api", submissionAnswerRoutes(submissionService, securityRateLimiter, config.RATE_LIMIT_SUBMISSION_PER_IP)); app.use("/api", submissionRestartRoutes(submissionService, securityRateLimiter, config.RATE_LIMIT_SUBMISSION_PER_IP)); }
   if (contentService) app.use("/api", contentRoutes(contentService, authService));
   if (ombudsmanService) app.use("/api", ombudsmanRoutes(ombudsmanService, authService, securityRateLimiter, config.RATE_LIMIT_SUBMISSION_PER_IP));
+  // Public routers terminate above; administrative modules share one authentication boundary.
+  app.use("/api", authenticate(authService));
   if (adminService) {
     const adminMiddleware = securityRateLimiter
       ? rateLimitByIp(securityRateLimiter, "admin", { limit: config.RATE_LIMIT_ADMIN_PER_IP, windowSeconds: 60 }, "ADMIN_RATE_LIMITED", "Muitas solicitações administrativas. Aguarde um momento.")
       : (_request: express.Request, _response: express.Response, next: express.NextFunction) => next();
-    app.use("/api", authenticate(authService), adminMiddleware, adminRoutes(adminService, authService));
+    app.use("/api", adminMiddleware, adminRoutes(adminService, authService));
   }
-  if (shiftSheetService) app.use("/api", authenticate(authService), shiftSheetRoutes(shiftSheetService, authService));
-  if (auditService) app.use("/api", authenticate(authService), auditRoutes(auditService));
-  if (questionsService) app.use("/api", authenticate(authService), questionsRoutes(questionsService, authService));
-  if (formDraftService) app.use("/api", authenticate(authService), formDraftRoutes(formDraftService, authService));
-  if (dependencies.analyticsService) app.use("/api", authenticate(authService), analyticsRoutes(dependencies.analyticsService));
+  if (shiftSheetService) app.use("/api", shiftSheetRoutes(shiftSheetService, authService));
+  if (auditService) app.use("/api", auditRoutes(auditService));
+  if (questionsService) app.use("/api", questionsRoutes(questionsService, authService));
+  if (formDraftService) app.use("/api", formDraftRoutes(formDraftService, authService));
+  if (dependencies.analyticsService) app.use("/api", analyticsRoutes(dependencies.analyticsService));
   app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openapiDocument, { explorer: false }));
   app.use(notFoundHandler);
   app.use(errorHandler);
