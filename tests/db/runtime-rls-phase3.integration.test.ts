@@ -113,6 +113,7 @@ describeIntegration("Phase 3 runtime RLS contract", () => {
 
       await expect(runtime`delete from submission_form_answers where false`).rejects.toMatchObject({ code: "42501" });
     } finally {
+      try {
       if (sessionId) {
         await admin`delete from dashboard_dirty_groups where sector_id = ${sectorId}`;
         await admin`delete from submission_form_answers where session_id = ${sessionId}`;
@@ -130,8 +131,6 @@ describeIntegration("Phase 3 runtime RLS contract", () => {
         await admin`delete from shift_sheet_versions where id = ${versionId}`;
       }
       if (fixtureCurrentVersionId) await admin`delete from shift_sheet_versions where id = ${fixtureCurrentVersionId}`;
-      await restoreCurrentVersions(admin, originalCurrentVersionIds);
-      await expect(currentVersionIds(admin)).resolves.toEqual(originalCurrentVersionIds);
       if (questionId) {
         await admin`delete from sector_nps_assignments where question_id = ${questionId}`;
         await admin`delete from question_versions where question_id = ${questionId}`;
@@ -144,7 +143,10 @@ describeIntegration("Phase 3 runtime RLS contract", () => {
       }
       if (sectorId) await admin`delete from sectors where id = ${sectorId}`;
       if (userId) await admin`delete from users where id = ${userId}`;
-      await Promise.all([admin.end({ timeout: 5 }), runtime.end({ timeout: 5 })]);
+      // Format 2 validates all active sectors; remove the fixture before restoring its predecessor.
+      await restoreCurrentVersions(admin, originalCurrentVersionIds);
+      await expect(currentVersionIds(admin)).resolves.toEqual(originalCurrentVersionIds);
+      } finally { await Promise.all([admin.end({ timeout: 5 }), runtime.end({ timeout: 5 })]); }
     }
   });
 
