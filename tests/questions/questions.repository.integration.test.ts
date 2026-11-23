@@ -13,12 +13,21 @@ const superuser: AuthIdentity = { userId: 1, sessionId: "questions-integration",
 
 jest.setTimeout(15_000);
 
+// Keep each rollback fixture independent of a pre-existing global NPS in the local copy.
+function isolatedTransaction<T>(sql: postgres.Sql, work: (tx: postgres.Sql) => Promise<T>): Promise<T> {
+  return sql.begin(async (tx) => {
+    await tx`update questions set deleted_at=now() where is_nps=true and scope='all_sectors' and deleted_at is null`;
+    return work(tx as unknown as postgres.Sql);
+  }) as Promise<T>;
+}
+
+
 describeIntegration("QuestionsRepository PostgreSQL integration", () => {
   it("creates a version, reorders it and rolls back the complete transaction", async () => {
     const sql = postgres(testUrl!, { max: 1 });
     const suffix = randomUUID().slice(0, 8);
     try {
-      await expect(sql.begin(async (tx) => {
+      await expect(isolatedTransaction(sql, async (tx) => {
         const repository = new QuestionsRepository(tx as unknown as postgres.Sql);
         const [actor] = await tx<{ id: number }[]>`
           insert into users(role_id,full_name,email,password_hash,created_at,updated_at)
@@ -69,7 +78,7 @@ describeIntegration("QuestionsRepository PostgreSQL integration", () => {
     const sql = postgres(testUrl!, { max: 1 });
     const suffix = randomUUID().slice(0, 8);
     try {
-      await expect(sql.begin(async (tx) => {
+      await expect(isolatedTransaction(sql, async (tx) => {
         const repository = new QuestionsRepository(tx as unknown as postgres.Sql);
         const [actor] = await tx<{ id: number }[]>`
           insert into users(role_id,full_name,email,password_hash,created_at,updated_at)
@@ -98,7 +107,7 @@ describeIntegration("QuestionsRepository PostgreSQL integration", () => {
     const sql = postgres(testUrl!, { max: 1 });
     const suffix = randomUUID().slice(0, 8);
     try {
-      await expect(sql.begin(async (tx) => {
+      await expect(isolatedTransaction(sql, async (tx) => {
         const repository = new QuestionsRepository(tx as unknown as postgres.Sql);
         const [actor] = await tx<{ id: number }[]>`
           insert into users(role_id,full_name,email,password_hash,created_at,updated_at)
@@ -140,7 +149,7 @@ describeIntegration("QuestionsRepository PostgreSQL integration", () => {
     const sql = postgres(testUrl!, { max: 1 });
     const suffix = randomUUID().slice(0, 8);
     try {
-      await expect(sql.begin(async (tx) => {
+      await expect(isolatedTransaction(sql, async (tx) => {
         const repository = new QuestionsRepository(tx as unknown as postgres.Sql);
         const [actor] = await tx<{ id: number }[]>`
           insert into users(role_id,full_name,email,password_hash,created_at,updated_at)
@@ -179,7 +188,7 @@ describeIntegration("QuestionsRepository PostgreSQL integration", () => {
     const sql = postgres(testUrl!, { max: 1 });
     const suffix = randomUUID().slice(0, 8);
     try {
-      await expect(sql.begin(async (tx) => {
+      await expect(isolatedTransaction(sql, async (tx) => {
         const repository = new QuestionsRepository(tx as unknown as postgres.Sql);
         const [actor] = await tx<{ id: number }[]>`
           insert into users(role_id,full_name,email,password_hash,created_at,updated_at)
@@ -210,7 +219,7 @@ describeIntegration("QuestionsRepository PostgreSQL integration", () => {
     const sql = postgres(testUrl!, { max: 1 });
     const suffix = randomUUID().slice(0, 8);
     try {
-      await expect(sql.begin(async (tx) => {
+      await expect(isolatedTransaction(sql, async (tx) => {
         const repository = new QuestionsRepository(tx as unknown as postgres.Sql);
         const [actor] = await tx<{ id: number }[]>`
           insert into users(role_id,full_name,email,password_hash,created_at,updated_at)
@@ -231,7 +240,7 @@ describeIntegration("QuestionsRepository PostgreSQL integration", () => {
     const sql = postgres(testUrl!, { max: 1 });
     const suffix = randomUUID().slice(0, 8);
     try {
-      await expect(sql.begin(async (tx) => {
+      await expect(isolatedTransaction(sql, async (tx) => {
         const repository = new QuestionsRepository(tx as unknown as postgres.Sql);
         const [actor] = await tx<{ id: number }[]>`
           insert into users(role_id,full_name,email,password_hash,created_at,updated_at)
@@ -241,7 +250,7 @@ describeIntegration("QuestionsRepository PostgreSQL integration", () => {
         await expect(repository.createNps("Segundo NPS global", "all_sectors", [], actor!.id)).rejects.toMatchObject({ code: "23505" });
         return nps;
       })).rejects.toMatchObject({ code: "23505" });
-      await expect(sql.begin(async (tx) => {
+      await expect(isolatedTransaction(sql, async (tx) => {
         const repository = new QuestionsRepository(tx as unknown as postgres.Sql);
         const [actor] = await tx<{ id: number }[]>`
           insert into users(role_id,full_name,email,password_hash,created_at,updated_at)
@@ -263,7 +272,7 @@ describeIntegration("QuestionsRepository PostgreSQL integration", () => {
     const sql = postgres(testUrl!, { max: 1 });
     const suffix = randomUUID().slice(0, 8);
     try {
-      await expect(sql.begin(async (tx) => {
+      await expect(isolatedTransaction(sql, async (tx) => {
         const repository = new QuestionsRepository(tx as unknown as postgres.Sql);
         const [actor] = await tx<{ id: number }[]>`
           insert into users(role_id,full_name,email,password_hash,created_at,updated_at)
@@ -291,7 +300,7 @@ describeIntegration("QuestionsRepository PostgreSQL integration", () => {
     const sql = postgres(testUrl!, { max: 1 });
     const suffix = randomUUID().slice(0, 8);
     try {
-      await expect(sql.begin(async (tx) => {
+      await expect(isolatedTransaction(sql, async (tx) => {
         const repository = new QuestionsRepository(tx as unknown as postgres.Sql);
         const [actor] = await tx<{ id: number }[]>`insert into users(role_id,full_name,email,password_hash,created_at,updated_at) select id,${`Catalogue ${suffix}`},${`catalogue-${suffix}@test.invalid`},'hash',now(),now() from roles where code='superuser' returning id`;
         const [sector] = await tx<{ id: number }[]>`insert into sectors(code,name,created_at,updated_at) values(${`catalogue-${suffix}`},'Catalogue',now(),now()) returning id`;

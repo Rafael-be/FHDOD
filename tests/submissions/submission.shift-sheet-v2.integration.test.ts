@@ -4,6 +4,7 @@ import postgres from "postgres";
 import { SubmissionService } from "../../src/modules/submissions/submission.service.js";
 import { PostgresSubmissionRepository } from "../../src/modules/submissions/submission.repository.js";
 import { assertDisposableTestDatabase, testDatabaseUrl, usesIsolatedDatabase } from "../helpers/database.js";
+import { publishEffectiveForm } from "../helpers/publish-form.js";
 
 const testUrl = testDatabaseUrl();
 const runtimeUrl = process.env.DATABASE_URL;
@@ -54,6 +55,7 @@ describeIntegration("submissão com planilha sem funcionários", () => {
         await tx`
           insert into sector_nps_assignments (sector_id, question_id, assignment_source, assigned_at, assigned_by_user_id)
           values (${sector!.id}, ${nps!.id}, 'specific', now(), ${user!.id})`;
+        await publishEffectiveForm(tx as unknown as postgres.Sql, sector!.id, user!.id);
 
         let currentTime = now;
         const service = new SubmissionService(new PostgresSubmissionRepository(tx as unknown as postgres.Sql), { now: () => currentTime });

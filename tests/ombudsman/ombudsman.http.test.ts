@@ -4,6 +4,7 @@ import { createApp } from "../../src/app.js";
 import type { AppConfig } from "../../src/config/env.js";
 import type { AuthService } from "../../src/modules/auth/auth.service.js";
 import { OmbudsmanService } from "../../src/modules/ombudsman/ombudsman.service.js";
+import type { AdminService } from "../../src/modules/admin/admin.service.js";
 import type { OmbudsmanRepository } from "../../src/modules/ombudsman/ombudsman.repository.js";
 
 const config:AppConfig={NODE_ENV:"test",PORT:3000,DATABASE_URL:"postgres://unused:unused@localhost/unused",ALLOWED_ORIGIN:"http://localhost:5173",JWT_SECRET:"12345678901234567890123456789012",JWT_ISSUER:"fhdod-api",JWT_AUDIENCE:"fhdod-web",PERFORMANCE_MEASUREMENTS:false};
@@ -15,7 +16,7 @@ function fixture(role:"superuser"|"sector_manager"="superuser") {
   const repo={create,list,get,updateStatus} as unknown as OmbudsmanRepository;
   const auth={authenticate:async()=>({userId:7,sessionId:"session",role,mustChangePassword:false}),recoverCsrfForIdentity:async()=>"csrf"} as unknown as AuthService;
   const service=new OmbudsmanService(repo,{now:()=>new Date("2026-11-21T12:00:00.000Z")});
-  return {app:createApp(config,{authService:auth,ombudsmanService:service}),create,list,updateStatus};
+  return {app:createApp(config,{authService:auth,adminService:{} as AdminService,ombudsmanService:service}),create,list,updateStatus};
 }
 describe("ombudsman HTTP contract",()=>{
   it("validates public input, consent and returns only the ticket reference",async()=>{

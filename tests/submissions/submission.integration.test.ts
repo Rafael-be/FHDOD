@@ -4,6 +4,7 @@ import { SubmissionService } from "../../src/modules/submissions/submission.serv
 import { PostgresSubmissionRepository } from "../../src/modules/submissions/submission.repository.js";
 import { testDatabaseUrl, usesIsolatedDatabase } from "../helpers/database.js";
 import type { Clock } from "../../src/shared/core.js";
+import { publishEffectiveForm } from "../helpers/publish-form.js";
 
 const testUrl = testDatabaseUrl();
 const runtimeUrl = process.env.DATABASE_URL;
@@ -26,6 +27,7 @@ describeIntegration("anonymous submissions integration", () => {
         for (const [question, text] of [[sectorQuestion[0]!.id, "Setor"], [standardQuestion[0]!.id, "Padrão"], [npsQuestion[0]!.id, "NPS"]] as const) await tx`insert into question_versions (question_id, version_number, text, is_current, created_by_user_id, created_at) values (${question}, 1, ${text}, true, ${user[0]!.id}, now())`;
         await tx`insert into question_sector_assignments (question_id, sector_id, assignment_source, display_order, assigned_at, assigned_by_user_id) values (${standardQuestion[0]!.id}, ${sector[0]!.id}, 'global', 1, now(), ${user[0]!.id})`;
         await tx`insert into sector_nps_assignments (sector_id, question_id, assignment_source, assigned_at, assigned_by_user_id) values (${sector[0]!.id}, ${npsQuestion[0]!.id}, 'specific', now(), ${user[0]!.id})`;
+        await publishEffectiveForm(tx as unknown as postgres.Sql, sector[0]!.id, user[0]!.id);
         const service = new SubmissionService(new PostgresSubmissionRepository(tx as unknown as postgres.Sql), clock);
         const started = await service.start(sector[0]!.id, 4, "09:00");
         expect(started.questions).toHaveLength(3);

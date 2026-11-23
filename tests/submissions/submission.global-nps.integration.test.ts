@@ -4,6 +4,7 @@ import { SubmissionService } from "../../src/modules/submissions/submission.serv
 import { PostgresSubmissionRepository } from "../../src/modules/submissions/submission.repository.js";
 import { testDatabaseUrl, usesIsolatedDatabase } from "../helpers/database.js";
 import type { Clock } from "../../src/shared/core.js";
+import { publishEffectiveForm } from "../helpers/publish-form.js";
 
 const testUrl = testDatabaseUrl();
 const runtimeUrl = process.env.DATABASE_URL;
@@ -88,6 +89,7 @@ describeIntegration("anonymous submissions dynamic global NPS integration", () =
           values (${specific!.id}, 1, 'Specific NPS v1', true, ${user!.id}, now())`;
 
         const service = new SubmissionService(new PostgresSubmissionRepository(tx as unknown as postgres.Sql), clock);
+        for (const sectorId of sectors) await publishEffectiveForm(tx as unknown as postgres.Sql, sectorId, user!.id);
         const globalSessions = [] as Awaited<ReturnType<typeof service.start>>[];
         for (const [index, sectorId] of sectors.entries()) {
           const session = await service.start(sectorId, 4, "09:00");
@@ -112,6 +114,9 @@ describeIntegration("anonymous submissions dynamic global NPS integration", () =
         const [globalV2] = await tx<{ id: number }[]>`
           insert into question_versions (question_id, version_number, text, is_current, created_by_user_id, created_at)
           values (${global!.id}, 2, 'Global NPS v2', true, ${user!.id}, now()) returning id`;
+        const beforeExplicitPublish = await service.start(sectors[0]!, 4, "09:00");
+        expect(beforeExplicitPublish.session.formVersionId).toBe(globalSessions[0]!.session.formVersionId);
+        await publishEffectiveForm(tx as unknown as postgres.Sql, sectors[0]!, user!.id);
         const changedSession = await service.start(sectors[0]!, 4, "09:00");
         expect(changedSession.questions.at(-1)).toMatchObject({ questionId: global!.id, questionVersionId: globalV2!.id, text: "Global NPS v2" });
         expect(changedSession.session.formVersionId).not.toBe(globalSessions[0]!.session.formVersionId);
@@ -129,19 +134,21 @@ describeIntegration("anonymous submissions dynamic global NPS integration", () =
         await tx`
           insert into sector_nps_assignments (sector_id, question_id, assignment_source, assigned_at, assigned_by_user_id)
           values (${sectors[3]}, ${specific!.id}, 'specific', now(), ${user!.id})`;
+        await publishEffectiveForm(tx as unknown as postgres.Sql, sectors[3]!, user!.id);
         const overridden = await service.start(sectors[3]!, 4, "09:00");
         expect(overridden.questions.at(-1)).toMatchObject({ questionId: specific!.id, isNps: true, position: 3 });
         await tx`update sector_nps_assignments set ended_at = now() where sector_id = ${sectors[3]} and ended_at is null`;
+        await publishEffectiveForm(tx as unknown as postgres.Sql, sectors[3]!, user!.id);
         const restored = await service.start(sectors[3]!, 4, "09:00");
         expect(restored.questions.at(-1)).toMatchObject({ questionId: global!.id, isNps: true, position: 3 });
 
         await tx`update questions set deleted_at = now() where id = ${global!.id}`;
-        await expect(service.start(sectors[0]!, 4, "09:00")).rejects.toMatchObject({ code: "FORM_INCOMPLETE", status: 409 });
+        await expect(service.start(sectors[0]!, 4, "09:00")).resolves.toMatchObject({ session: { formVersionId: changedSession.session.formVersionId } });
         await tx`
           insert into sector_nps_assignments (sector_id, question_id, assignment_source, assigned_at, assigned_by_user_id)
           values (${sectors[3]}, ${specific!.id}, 'specific', now(), ${user!.id})`;
         await tx`update questions set deleted_at = now() where id = ${specific!.id}`;
-        await expect(service.start(sectors[3]!, 4, "09:00")).rejects.toMatchObject({ code: "FORM_INCOMPLETE", status: 409 });
+        await expect(service.start(sectors[3]!, 4, "09:00")).resolves.toMatchObject({ session: { formVersionId: restored.session.formVersionId } });
 
         throw new Error("ROLLBACK_TEST");
       })).rejects.toThrow("ROLLBACK_TEST");

@@ -82,6 +82,18 @@ describe("QuestionsService", () => {
     expect(listCatalog).toHaveBeenCalledWith(expect.objectContaining({ limit: 25, offset: 0 }));
   });
 
+  it("lets a linked manager view only the scoped catalogue without leaking other sector associations", async () => {
+    const listCatalog = jest.fn(async () => [{ id: 10, questionKind: "standard" as const, scope: "selected_sectors" as const,
+      sectorId: null, isNps: false, displayOrder: 1, deletedAt: null, versionNumber: 1, text: "Pergunta",
+      associations: [{ sectorId: 7, source: "selected" as const, active: true }, { sectorId: 8, source: "selected" as const, active: true }], total: 1 }]);
+    const service = new QuestionsService(repository({ listCatalog, sectorAccess: async (_userId, sectorId) => sectorId === 7 }));
+    await expect(service.listCatalog(manager, { sectorId: 7, page: 1, pageSize: 25 })).resolves.toMatchObject({
+      total: 1, items: [{ id: 10, associations: [{ sectorId: 7 }] }],
+    });
+    await expect(service.listCatalog(manager, { sectorId: 8, page: 1, pageSize: 25 })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(listCatalog).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects reactivation of an already active scoped question before recreating assignments", async () => {
     const activeStandard = { id: 9, questionKind: "standard" as const, scope: "all_sectors" as const, sectorId: null, isNps: false, displayOrder: 1, deletedAt: null, versionNumber: 1, text: "Pergunta" };
     const reactivateScoped = jest.fn(async () => undefined);
