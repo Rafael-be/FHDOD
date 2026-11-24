@@ -1,6 +1,6 @@
 # Plano de migração do Supabase (24/11/2026)
 
-**Estado: auditoria concluída; produção bloqueada.** Não foi executada nenhuma escrita no Supabase. Não há backup restaurado nem staging isolado validado. Este documento não autoriza executar migrations.
+**Estado: migrations concluídas no ambiente de desenvolvimento autorizado.** As migrations `0014`–`0017` foram aplicadas em 24/11/2026 ao projeto `kzyfzqppblfzuxrfudbi`, após confirmação do destino e do ledger. Não houve deploy de aplicação nem merge automático de PR.
 
 ## 1. Origem, destino e histórico
 
@@ -60,4 +60,13 @@ Pré-condições: referência do projeto confirmada pelo proprietário; staging 
 
 Aplicar somente `0014`–`0017` pelo migrador oficial usando conexão administrativa, sem editar o ledger. Parar em qualquer erro ou mudança inesperada, inspecionar estado real antes de repetir. Depois, verificar 18 entradas e hashes, 3 tabelas novas, 2 ponteiros esperados (se os dados não mudarem), grants/RLS/policies, readiness do backend e testes funcionais **não destrutivos**. Confirmar contagens e integridade dos dados preexistentes. Se falhar após commit de DDL, manter o backend compatível anterior ou suspender tráfego e decidir entre migration corretiva e restauração do backup ensaiado; não improvisar rollback por `DROP`.
 
-**Autorização:** não concedida. O próximo passo é confirmar o projeto, disponibilizar staging isolado, esclarecer o plano de backup e autorizar especificamente qualquer uso de dados reais no ensaio. A execução em produção requer nova autorização explícita depois que backup e staging forem validados.
+## 8. Execução autorizada e resultado
+
+- Destino confirmado pela configuração existente: projeto `kzyfzqppblfzuxrfudbi`, PostgreSQL 17.11, banco `postgres`. A auditoria imediatamente anterior confirmou 14 entradas no ledger, hashes e timestamps idênticos ao prefixo local, e a ausência dos objetos de `0014`–`0017`.
+- Foi produzido um snapshot lógico de schema, protegido em `/tmp` e fora do repositório. A tentativa de dump custom completo pelo pooler foi interrompida antes de gerar conteúdo; o arquivo resultante tem zero bytes e **não é backup válido**. Isso foi aceito para esta execução porque o proprietário declarou os dados remotos descartáveis de desenvolvimento/teste.
+- `npm run migrate` executou, usando o migrador Drizzle oficial. O comando concluiu com `Migrations confirmadas no ledger: 18.` As únicas mensagens foram notices esperados de criação idempotente do schema/tabela de ledger Drizzle.
+- O auditor posterior confirmou 18 hashes/timestamps válidos e a criação de `submission_form_drafts`, `submission_form_draft_questions` e `sector_current_forms`. As três tabelas têm RLS; foram criadas 4, 3 e 3 policies, respectivamente; os grants esperados para `fhdod_api` estão presentes.
+- O backfill de `0015` criou 2 ponteiros atuais, sem ponteiros nulos ou inválidos. O trigger `sector_current_form_complete`, a função `validate_current_form` e as policies de leitura legada da `0017` estão presentes. Consultas somente de leitura como `fhdod_api` confirmaram acesso a drafts, formulários atuais e respostas legadas.
+- Validações locais após a migração: `npm run typecheck`, `npm run lint`, `npm run build` e a suíte PostgreSQL completa passaram: **63 suítes, 236 testes, zero falhas e zero ignorados**. Nenhum teste mutável foi direcionado ao Supabase.
+
+Pendências: a função/policies de retenção de auditoria continuam fora destas quatro migrations e não foram aplicadas remotamente. Para um ambiente que venha a conter dados relevantes, usar backup recuperável validado e staging separado antes de alterações adicionais.
