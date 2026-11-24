@@ -1,3 +1,4 @@
+import { measureRequestStage } from "../../shared/performance.js";
 import type { NextFunction, Request, Response } from "express";
 import type { AuthService, AuthIdentity } from "./auth.service.js";
 import { DomainError } from "../../shared/core.js";
@@ -26,8 +27,8 @@ export function authenticate(service: AuthService, options: { touchSession?: boo
     for (const token of tokens) {
       try {
         request.identity = options.touchSession === false
-          ? await service.authenticate(token, options)
-          : await service.authenticate(token);
+          ? await measureRequestStage("authentication",()=>service.authenticate(token, options))
+          : await measureRequestStage("authentication",()=>service.authenticate(token));
         return next();
       } catch (error) {
         if (error instanceof DomainError && error.code === "UNAUTHENTICATED") {

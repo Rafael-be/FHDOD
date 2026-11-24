@@ -47,3 +47,16 @@ describe("RedisCacheService", () => {
     await expect(new RedisCacheService(redis, true, 60).getEffective(4)).resolves.toEqual({ state: "error" });
   });
 });
+
+it("counts cache outcomes without retaining keys or payloads",async()=>{
+  const redis=new MemoryRedis();const cache=new RedisCacheService(redis,true,60);
+  const miss=await cache.getEffective(1);
+  await cache.setEffective(1,[{id:9}],miss.state==='miss'?miss.version:undefined);
+  await cache.getEffective(1);await cache.invalidateQuestions();
+  expect(cache.metrics()).toMatchObject({hits:1,misses:1,postgresFallbacks:1,reads:2,writes:1,invalidations:1,errors:0});
+  expect(cache.metrics().averageReadMs).toBeGreaterThanOrEqual(0);
+  redis.get=async()=>{throw new Error('unavailable');};
+  await cache.getEffective(1);
+  expect(cache.metrics()).toMatchObject({errors:1,postgresFallbacks:2});
+  expect(JSON.stringify(cache.metrics())).not.toContain('fhdod:');
+});

@@ -1,4 +1,6 @@
 export const HOSPITAL_TIME_ZONE = "America/Sao_Paulo";
+export const SUBMISSION_INITIAL_MS = 3 * 60_000;
+export const SUBMISSION_EXTENSION_MS = 2 * 60_000;
 
 const weekdayByName: Record<string, number> = {
   Mon: 1,

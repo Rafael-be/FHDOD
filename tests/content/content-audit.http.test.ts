@@ -2,6 +2,7 @@ import argon2 from "argon2";
 import request from "supertest";
 import { createApp } from "../../src/app.js";
 import type { AuditService } from "../../src/modules/audit/audit.service.js";
+import type { AdminService } from "../../src/modules/admin/admin.service.js";
 import type { ContentService } from "../../src/modules/content/content.service.js";
 import type { AppConfig } from "../../src/config/env.js";
 import type { AuthRepository, AuthUser, RefreshToken, Session } from "../../src/modules/auth/auth.repository.js";
@@ -27,6 +28,7 @@ describe("content and audit HTTP contracts", () => {
     const audit = { list: async () => ({ records: [], nextCursor: null }) } as unknown as AuditService;
     const app = createApp(config, {
       authService: auth,
+      adminService: {} as AdminService,
       auditService: audit,
       contentService: content,
     });

@@ -22,6 +22,7 @@ describe("Drizzle migration inventory", () => {
 
     expect(new Set(journal.entries.map((entry) => entry.idx)).size).toBe(journal.entries.length);
     expect(new Set(journal.entries.map((entry) => entry.tag)).size).toBe(journal.entries.length);
+    expect(journal.entries.map((entry) => entry.idx)).toEqual(journal.entries.map((_, index) => index));
     expect(journal.entries.map((entry) => entry.when)).toEqual([...journal.entries]
       .sort((left, right) => left.when - right.when)
       .map((entry) => entry.when));
@@ -30,7 +31,10 @@ describe("Drizzle migration inventory", () => {
       await expect(readFile(resolve(migrationsDirectory, `${entry.tag}.sql`), "utf8")).resolves.toBeTruthy();
     }
 
-    expect(journal.entries.at(-1)).toMatchObject({ idx: 8, tag: "0008_shift_sheets_without_employees" });
+    expect(journal.entries[13]).toMatchObject({ idx: 13, tag: "0013_persist_submission_capabilities" });
+    expect(journal.entries.map((entry) => entry.tag).slice(14)).toEqual([
+      "0014_submission_form_drafts", "0015_sector_current_forms", "0016_validate_current_form", "0017_analytics_legacy_reads",
+    ]);
   });
 
   it("preserves hashes already recorded or pending in the approved sequence", async () => {

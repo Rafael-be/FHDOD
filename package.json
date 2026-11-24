@@ -7,7 +7,7 @@
     "node": ">=22"
   },
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "node scripts/dev-local.mjs",
     "start": "node dist/server.js",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc --noEmit",
@@ -16,7 +16,10 @@
     "migrate": "tsx src/db/migrate.ts",
     "migrate:drizzle": "drizzle-kit migrate --config drizzle.config.ts",
     "seed": "tsx src/db/seed/initial-seed.ts",
-    "audit:purge": "tsx src/db/purge-audit-logs.ts"
+    "audit:purge": "tsx src/db/purge-audit-logs.ts",
+    "seed:demo": "tsx src/db/seed/demo-seed.ts",
+    "dev:configured": "tsx watch src/server.ts",
+    "migrate:local": "node scripts/dev-local.mjs migrate"
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "^9.1.0",

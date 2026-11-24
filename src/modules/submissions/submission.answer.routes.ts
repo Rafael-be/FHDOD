@@ -4,12 +4,12 @@ import type { SubmissionService } from "./submission.service.js";
 import { rateLimitByIp } from "../../security/rate-limit.middleware.js";
 import type { SecurityRateLimiter } from "../../security/rate-limiter.js";
 
-const input = z.object({ sessionQuestionId: z.coerce.number().int().positive(), status: z.enum(["answered", "skipped"]), score: z.number().int().nullable() });
+const input = z.object({ questionId: z.number().int().positive(), questionVersionId: z.number().int().positive(), status: z.enum(["answered", "skipped"]), score: z.number().int().nullable() });
 const sessionId = z.string().uuid();
 
 export function submissionAnswerRoutes(service: SubmissionService, limiter?: SecurityRateLimiter, limit = 180): Router {
   const router = Router();
-  if (limiter) router.use(rateLimitByIp(limiter, "submission-public", { limit, windowSeconds: 60 }, "SUBMISSION_RATE_LIMITED", "Muitas solicitações. Aguarde um momento."));
+  if (limiter) router.use("/public/submissions/:sessionId/answers", rateLimitByIp(limiter, "submission-public", { limit, windowSeconds: 60 }, "SUBMISSION_RATE_LIMITED", "Muitas solicitações. Aguarde um momento."));
   router.post("/public/submissions/:sessionId/answers", async (request, response, next) => {
     try {
       const token = request.get("x-session-capability");

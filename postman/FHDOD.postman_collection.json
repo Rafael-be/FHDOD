@@ -1,0 +1,2243 @@
+{
+  "info": {
+    "name": "FHDOD local",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "const base=pm.environment.get('baseUrl'); if(!/^http:\\/\\/(localhost|127\\.0\\.0\\.1)(:\\d+)?$/.test(base)){throw new Error('Esta coleção aceita somente localhost HTTP.');}"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Health e diagnóstico",
+      "item": [
+        {
+          "name": "GET /health",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/health",
+            "description": "Verifica disponibilidade do processo"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /health/ready",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/health/ready",
+            "description": "Verifica disponibilidade do banco"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/pages/{slug}",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/pages/{{pageSlug}}",
+            "description": "Obtém a versão pública vigente de uma página"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /api/pages/{slug}",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/pages/{{pageSlug}}",
+            "description": "Publica nova versão imutável da página",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"title\": \"Política de Privacidade\",\n  \"content\": \"Conteúdo de desenvolvimento não publicado.\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Autenticação",
+      "item": [
+        {
+          "name": "POST /api/auth/login",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/auth/login",
+            "description": "Inicia uma sessão",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{adminEmail}}\",\n  \"password\": \"{{adminPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/auth/refresh",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/api/auth/refresh",
+            "description": "Rotaciona o refresh token"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/auth/me",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/auth/me",
+            "description": "Consulta o usuário autenticado sem renovar a sessão"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/auth/csrf",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/auth/csrf",
+            "description": "Recupera token CSRF da sessão"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/auth/change-temporary-password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/auth/change-temporary-password",
+            "description": "Troca a senha temporária e revoga as sessões",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"{{adminPassword}}\",\n  \"newPassword\": \"{{newPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([204]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/auth/change-password",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/auth/change-password",
+            "description": "Troca a própria senha e revoga as sessões",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"{{adminPassword}}\",\n  \"newPassword\": \"{{newPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([204]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/auth/change-email",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/auth/change-email",
+            "description": "Troca o próprio e-mail e revoga as sessões",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"currentPassword\": \"{{adminPassword}}\",\n  \"email\": \"test-local@example.invalid\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([204]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/auth/logout",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/auth/logout",
+            "description": "Revoga a sessão atual"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([204]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Login gestor (substitui cookies administrativos)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/auth/login",
+            "description": "Inicia uma sessão",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"{{managerEmail}}\",\n  \"password\": \"{{managerPassword}}\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Administradores e gestores",
+      "item": [
+        {
+          "name": "GET /api/managers",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/managers",
+            "description": "Lista gestores"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/managers",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/managers",
+            "description": "Cria gestor com senha temporária",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Gestor de desenvolvimento\",\n  \"email\": \"gestor@example.test\",\n  \"temporaryPassword\": \"senha-temporaria-teste\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([201]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }",
+                  "if(pm.response.code===201)pm.environment.set('managerId',pm.response.json().data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/managers/{id}",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/managers/{{managerId}}",
+            "description": "Consulta gestor e seus vínculos ativos"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH /api/managers/{id}",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/managers/{{managerId}}",
+            "description": "Edita gestor",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"fullName\": \"Gestor atualizado\",\n  \"email\": \"gestor-atualizado@example.test\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/managers/{id}/deactivate",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/managers/{{managerId}}/deactivate",
+            "description": "Desativa gestor e revoga suas sessões"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/managers/{id}/reactivate",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/managers/{{managerId}}/reactivate",
+            "description": "Reativa gestor com nova senha temporária",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"temporaryPassword\": \"nova-senha-temporaria\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/managers/{id}/sectors",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/managers/{{managerId}}/sectors",
+            "description": "Lista setores ativos de um gestor"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /api/managers/{managerId}/sectors/{sectorId}",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/managers/{{managerId}}/sectors/{{sectorId}}",
+            "description": "Vincula gestor a setor"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([204]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE /api/managers/{managerId}/sectors/{sectorId}",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/managers/{{managerId}}/sectors/{{sectorId}}",
+            "description": "Encerra vínculo ativo entre gestor e setor"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([204]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Setores",
+      "item": [
+        {
+          "name": "GET /api/sectors",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/sectors",
+            "description": "Lista setores autorizados"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/sectors",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/sectors",
+            "description": "Cria setor",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"uti\",\n  \"name\": \"UTI\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([201]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }",
+                  "if(pm.response.code===201)pm.environment.set('sectorId',pm.response.json().data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/sectors/{id}",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/sectors/{{sectorId}}",
+            "description": "Detalhe administrativo do setor"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH /api/sectors/{id}",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/sectors/{{sectorId}}",
+            "description": "Renomeia setor (código imutável)",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"UTI atualizada\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/sectors/{id}/status",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/sectors/{{sectorId}}/status",
+            "description": "Consulta requisitos de ativação do setor"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/sectors/{id}/deactivate",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/sectors/{{sectorId}}/deactivate",
+            "description": "Desativa setor"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/sectors/{id}/reactivate",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/sectors/{{sectorId}}/reactivate",
+            "description": "Reativa setor"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Catálogo de perguntas",
+      "item": [
+        {
+          "name": "GET /api/sectors/{sectorId}/questions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/sectors/{{sectorId}}/questions",
+            "description": "Lista perguntas efetivas do setor"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/sectors/{sectorId}/questions",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/sectors/{{sectorId}}/questions",
+            "description": "Escrita legada bloqueada; use rascunho e publicação",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Teste local\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([409]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/questions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/questions",
+            "description": "Somente superusuário. Filtros: type, state, scope, sectorId, page e pageSize."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/sectors/{sectorId}/questions/reorder",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/sectors/{{sectorId}}/questions/reorder",
+            "description": "orderedIds deve conter exatamente todas as perguntas setoriais e padrão ativas do setor. NPS não participa. Gestor vinculado ao setor ou superusuário; exige cookie de sessão e x-csrf-token.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderedIds\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([409]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/sectors/{sectorId}/standard-questions/reorder",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/sectors/{{sectorId}}/standard-questions/reorder",
+            "description": "Alias administrativo: orderedIds deve conter a sequência completa de perguntas comuns ativas, incluindo setoriais. NPS não participa; exige cookie de sessão e x-csrf-token.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"orderedIds\": []\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([409]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/questions/{id}",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/questions/{{questionId}}",
+            "description": "Detalhe administrativo de pergunta padrão ou NPS"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH /api/questions/{id}",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/questions/{{questionId}}",
+            "description": "Gestor só pode editar pergunta própria de setor vinculado; exige x-csrf-token.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Teste local\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([409]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/questions/{id}/deactivate",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/questions/{{questionId}}/deactivate",
+            "description": "Exige cookie de sessão e x-csrf-token. A desativação global preserva o histórico e o estado dos vínculos por setor."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([409]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/questions/{id}/reactivate",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/questions/{{questionId}}/reactivate",
+            "description": "Exige cookie de sessão e x-csrf-token; restaura a pergunta sem alterar os estados históricos dos vínculos por setor."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([409]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/standard-questions",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/standard-questions",
+            "description": "Escrita legada bloqueada; use rascunho e publicação",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Teste local\",\n  \"scope\": \"all_sectors\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([409]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/nps-questions",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/nps-questions",
+            "description": "NPS global é herdado dinamicamente. Use replaceGlobal=true para substituir o global; overrides específicos são preservados.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Teste local\",\n  \"scope\": \"all_sectors\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([409]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/sectors/{sectorId}/nps",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/sectors/{{sectorId}}/nps",
+            "description": "Escrita legada bloqueada; use rascunho e publicação",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"questionId\": 1\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([409]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE /api/sectors/{sectorId}/nps",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/sectors/{{sectorId}}/nps",
+            "description": "Escrita legada bloqueada; use rascunho e publicação"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([409]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/sectors/{sectorId}/standard-questions/{questionId}/deactivate",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/sectors/{{sectorId}}/standard-questions/{{questionId}}/deactivate",
+            "description": "Escrita legada bloqueada; use rascunho e publicação"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([409]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/sectors/{sectorId}/standard-questions/{questionId}/reactivate",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/sectors/{{sectorId}}/standard-questions/{{questionId}}/reactivate",
+            "description": "Recupera a posição anterior quando livre; caso contrário, anexa ao final."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([409]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cadastrar standard no catálogo (superusuário)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/catalog/standard-questions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Pergunta cat\\u00e1logo local\",\n  \"scope\": \"selected_sectors\",\n  \"sectorIds\": [\n    {{sectorId}}\n  ]\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Criado ou conflito de NPS esperado',()=>pm.expect([201,409]).to.include(pm.response.code)); if(pm.response.code===201){const q=pm.response.json().data;pm.environment.set('questionId',q.id);pm.environment.set('questionVersionId',q.versionId);}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Cadastrar nps no catálogo (superusuário)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/catalog/nps-questions",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"text\": \"Pergunta cat\\u00e1logo local\",\n  \"scope\": \"selected_sectors\",\n  \"sectorIds\": [\n    {{sectorId}}\n  ],\n  \"replaceGlobal\": false\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Criado ou conflito de NPS esperado',()=>pm.expect([201,409]).to.include(pm.response.code)); if(pm.response.code===201){const q=pm.response.json().data;pm.environment.set('questionId',q.id);pm.environment.set('questionVersionId',q.versionId);}"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Rascunhos",
+      "item": [
+        {
+          "name": "GET /api/sectors/{sectorId}/form-draft",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/sectors/{{sectorId}}/form-draft",
+            "description": "Consulta rascunho ou proposta inicial sem criar registros"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PUT /api/sectors/{sectorId}/form-draft",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/sectors/{{sectorId}}/form-draft",
+            "description": "Salva composição candidata completa sem publicar",
+            "body": {
+              "mode": "raw",
+              "raw": "{{draftPayload}}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const draft=JSON.parse(pm.environment.get('draftPayload')||'{}'); if(!Array.isArray(draft.items))throw new Error('Execute GET rascunho primeiro'); const nps=draft.items.findIndex(x=>x.isNps); draft.items.splice(nps<0?draft.items.length:nps,0,{questionId:null,sourceQuestionVersionId:null,questionKind:'sector',isNps:false,text:'Pergunta local Postman '+Date.now(),position:draft.items.length+1}); draft.items.forEach((x,i)=>x.position=i+1); pm.variables.set('draftPayload',JSON.stringify(draft));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "DELETE /api/sectors/{sectorId}/form-draft",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/sectors/{{sectorId}}/form-draft",
+            "description": "Descarta fisicamente rascunho e itens temporários",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"expectedRevision\": {{draftRevision}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/sectors/{sectorId}/form-draft/readiness",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/sectors/{{sectorId}}/form-draft/readiness",
+            "description": "Consulta prontidão do rascunho para publicação"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/sectors/{sectorId}/form-draft/publish",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/sectors/{{sectorId}}/form-draft/publish",
+            "description": "Publica explicitamente uma revisão do rascunho",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"expectedRevision\": {{draftRevision}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Publicações e histórico",
+      "item": [
+        {
+          "name": "GET /api/sectors/{sectorId}/form-versions",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/sectors/{{sectorId}}/form-versions",
+            "description": "Lista publicações históricas do setor"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }",
+                  "if(pm.response.code===200){const current=pm.response.json().data.find(x=>x.current);if(current)pm.environment.set('formVersionId',current.id);}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/sectors/{sectorId}/form-versions/{versionId}",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/sectors/{{sectorId}}/form-versions/{{formVersionId}}",
+            "description": "Consulta snapshot publicado"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/sectors/{sectorId}/form-versions/{versionId}/restore",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/sectors/{{sectorId}}/form-versions/{{formVersionId}}/restore",
+            "description": "Restaura snapshot histórico para rascunho sem publicar",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"expectedRevision\": {{draftRevision}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Horários e CSV",
+      "item": [
+        {
+          "name": "GET /api/shift-sheets",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/shift-sheets",
+            "description": "Baixa a planilha vigente (rota de compatibilidade)"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/shift-sheets",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/octet-stream"
+              }
+            ],
+            "url": "{{baseUrl}}/api/shift-sheets",
+            "description": "CSV UTF-8 com BOM, separador ; e colunas codigo_setor;nome_setor;nome_turno;hora_inicio;hora_fim;dia_semana_iso. Cada setor ativo deve declarar os sete dias. Para dia fechado use FECHADO;00:00;00:00. SEM_TURNO indica funcionamento sem divisão formal. Faixas parciais são permitidas; o CSV não declara limites esperados do expediente.",
+            "body": {
+              "mode": "file",
+              "file": {
+                "src": ""
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([201]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/shift-sheets/current/export",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/shift-sheets/current/export",
+            "description": "Exporta o CSV vigente reutilizável"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/shift-sheets/template",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/shift-sheets/template",
+            "description": "Baixa modelo CSV com setores ativos e sete dias FECHADO"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Sessões públicas",
+      "item": [
+        {
+          "name": "POST /api/public/sectors/{sectorId}/submissions",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": "{{baseUrl}}/api/public/sectors/{{sectorId}}/submissions",
+            "description": "Retorna a versão publicada, perguntas e capability efêmera. A sessão expira em três minutos; respostas efetivas e refresh acrescentam dois minutos ao prazo. Fora dos horários, shiftRangeId é null; sem versão vigente, shiftSheetVersionId também é null."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([201]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }",
+                  "if(pm.response.code===201){const q=pm.response.json().data.questions.find(x=>x.isNps);if(q){pm.environment.set('npsQuestionId',q.questionId);pm.environment.set('npsQuestionVersionId',q.questionVersionId);}}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/public/submissions/{sessionId}/refresh",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-session-capability",
+                "value": "{{sessionCapability}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/public/submissions/{{sessionId}}/refresh",
+            "description": "Acrescenta dois minutos ao prazo da sessão; máximo de três renovações"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/public/submissions/{sessionId}/close",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-session-capability",
+                "value": "{{sessionCapability}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/public/submissions/{{sessionId}}/close",
+            "description": "Encerra voluntariamente a sessão preservando respostas parciais"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POST /api/public/submissions/{sessionId}/restart",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-session-capability",
+                "value": "{{sessionCapability}}"
+              }
+            ],
+            "url": "{{baseUrl}}/api/public/submissions/{{sessionId}}/restart",
+            "description": "Reinicia uma sessão anônima"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([201]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Respostas",
+      "item": [
+        {
+          "name": "POST /api/public/submissions/{sessionId}/answers",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-session-capability",
+                "value": "{{sessionCapability}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/public/submissions/{{sessionId}}/answers",
+            "description": "Registra ou substitui uma resposta anônima",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"questionId\": {{questionId}},\n  \"questionVersionId\": {{questionVersionId}},\n  \"status\": \"answered\",\n  \"score\": 5\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Responder NPS (após demais perguntas)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "x-session-capability",
+                "value": "{{sessionCapability}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/public/submissions/{{sessionId}}/answers",
+            "description": "Registra ou substitui uma resposta anônima",
+            "body": {
+              "mode": "raw",
+              "raw": "{ \"questionId\": {{npsQuestionId}}, \"questionVersionId\": {{npsQuestionVersionId}}, \"status\": \"answered\", \"score\": 10 }",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Ouvidoria",
+      "item": [
+        {
+          "name": "POST /api/public/ombudsman/tickets",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/public/ombudsman/tickets",
+            "description": "Exige aceite da política LGPD vigente. Setor ativo; turno e versão de horários podem ser nulos fora do expediente. Não depende da sessão de pesquisa.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"sectorId\": 1,\n  \"ticketType\": \"complaint\",\n  \"body\": \"Teste local\",\n  \"policyAccepted\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([201]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }",
+                  "if(pm.response.code===201)pm.environment.set('ticketId',pm.response.json().data.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/ombudsman/tickets",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/ombudsman/tickets",
+            "description": "Somente superusuário. Filtros: sectorId, ticketType, status, from, to, page, pageSize. Ordena por data decrescente e id decrescente."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "GET /api/ombudsman/tickets/{id}",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/ombudsman/tickets/{{ticketId}}",
+            "description": "Consulta manifestação"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "PATCH /api/ombudsman/tickets/{id}/status",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "x-csrf-token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": "{{baseUrl}}/api/ombudsman/tickets/{{ticketId}}/status",
+            "description": "open→read; open/read→contact_attempt com telefone; contact_attempt→contact_failed; contact_failed→contact_attempt; qualquer estado não resolvido→resolved. Resolved é terminal.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"status\": \"open\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Dashboards e indicadores",
+      "item": [
+        {
+          "name": "GET /api/analytics/dashboard",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/analytics/dashboard?from={{from}}&to={{to}}",
+            "description": "Indicadores agregados de sessões, avaliações, NPS e Ouvidoria"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Auditoria",
+      "item": [
+        {
+          "name": "GET /api/audit-logs",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{baseUrl}}/api/audit-logs",
+            "description": "Consulta auditoria com cursor"
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Status esperado', () => pm.expect([200]).to.include(pm.response.code));",
+                  "if(pm.response.headers.get('Content-Type')?.includes('json') && pm.response.code<300){ const j=pm.response.json(); const d=j.data??j; if(j.csrfToken)pm.environment.set('csrfToken',j.csrfToken); if(d.revision!==undefined)pm.environment.set('draftRevision',d.revision); if(d.formVersionId)pm.environment.set('formVersionId',d.formVersionId); if(d.capability){pm.environment.set('sessionId',d.capability.sessionId);pm.environment.set('sessionCapability',d.capability.token);} if(d.questions?.length){const q=d.questions.find(x=>!x.isNps);if(q){pm.environment.set('questionId',q.questionId);pm.environment.set('questionVersionId',q.questionVersionId);}} if(Array.isArray(d.items)&&d.sectorId){pm.environment.set('draftPayload',JSON.stringify({expectedRevision:d.revision,items:d.items.map(({questionId,sourceQuestionVersionId,questionKind,isNps,text,position})=>({questionId,sourceQuestionVersionId,questionKind,isNps,text,position}))}));} }"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Testes negativos de segurança e permissões",
+      "item": [
+        {
+          "name": "Capability incorreta",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/public/submissions/{{sessionId}}/answers",
+            "header": [
+              {
+                "key": "x-session-capability",
+                "value": "invalid"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"questionId\":{{questionId}},\"questionVersionId\":{{questionVersionId}},\"status\":\"answered\",\"score\":5}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Rejeitado',()=>pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "CSRF ausente",
+          "request": {
+            "method": "PUT",
+            "url": "{{baseUrl}}/api/sectors/{{sectorId}}/form-draft",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\"expectedRevision\":0,\"items\":[]}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Rejeitado',()=>pm.response.to.have.status(403));"
+                ]
+              }
+            },
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const draft=JSON.parse(pm.environment.get('draftPayload')||'{}'); if(!Array.isArray(draft.items))throw new Error('Execute GET rascunho primeiro'); const nps=draft.items.findIndex(x=>x.isNps); draft.items.splice(nps<0?draft.items.length:nps,0,{questionId:null,sourceQuestionVersionId:null,questionKind:'sector',isNps:false,text:'Pergunta local Postman '+Date.now(),position:draft.items.length+1}); draft.items.forEach((x,i)=>x.position=i+1); pm.variables.set('draftPayload',JSON.stringify(draft));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Refresh inválido (limpe cookies primeiro)",
+          "request": {
+            "method": "POST",
+            "url": "{{baseUrl}}/api/auth/refresh",
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Rejeitado',()=>pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Gestor sem vínculo",
+          "request": {
+            "method": "GET",
+            "url": "{{baseUrl}}/api/sectors/{{otherSectorId}}/form-draft",
+            "header": []
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Rejeitado',()=>pm.response.to.have.status(403));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

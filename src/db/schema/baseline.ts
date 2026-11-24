@@ -4,7 +4,7 @@ import { sql } from "drizzle-orm"
 export const answerStatus = pgEnum("answer_status", ['answered', 'skipped'])
 export const dashboardSummaryType = pgEnum("dashboard_summary_type", ['answers', 'sessions', 'ombudsman'])
 export const npsAssignmentSource = pgEnum("nps_assignment_source", ['global', 'specific'])
-export const ombudsmanTicketStatus = pgEnum("ombudsman_ticket_status", ['open', 'in_contact_attempt', 'resolved', 'unresolved', 'read'])
+export const ombudsmanTicketStatus = pgEnum("ombudsman_ticket_status", ['open', 'in_contact_attempt', 'resolved', 'unresolved', 'read', 'contact_attempt', 'contact_failed'])
 export const ombudsmanTicketType = pgEnum("ombudsman_ticket_type", ['complaint', 'compliment', 'suggestion_other'])
 export const questionAssignmentSource = pgEnum("question_assignment_source", ['global', 'selected'])
 export const questionKind = pgEnum("question_kind", ['sector', 'standard'])
@@ -344,12 +344,16 @@ export const submissionSessions = pgTable("submission_sessions", {
 	sectorId: integer("sector_id").notNull(),
 	shiftSheetVersionId: integer("shift_sheet_version_id"),
 	shiftRangeId: integer("shift_range_id"),
+	formVersionId: integer("form_version_id"),
+	expiresAt: timestamp("expires_at", { withTimezone: true, mode: 'string' }),
+	refreshCount: smallint("refresh_count").default(0).notNull(),
 	startedAt: timestamp("started_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	lastActivityAt: timestamp("last_activity_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	endedAt: timestamp("ended_at", { withTimezone: true, mode: 'string' }),
 	status: submissionStatus().default('incomplete').notNull(),
 }, (table) => [
 	index("submission_sessions_incomplete_activity_idx").using("btree", table.lastActivityAt.asc().nullsLast().op("timestamptz_ops")).where(sql`((status = 'incomplete'::submission_status) AND (ended_at IS NULL))`),
+	index("submission_sessions_expiry_idx").using("btree", table.expiresAt.asc().nullsLast().op("timestamptz_ops")).where(sql`ended_at IS NULL`),
 	index("submission_sessions_sector_time_idx").using("btree", table.sectorId.asc().nullsLast().op("timestamptz_ops"), table.startedAt.desc().nullsFirst().op("int4_ops")),
 	index("submission_sessions_shift_time_idx").using("btree", table.shiftRangeId.asc().nullsLast().op("timestamptz_ops"), table.startedAt.desc().nullsFirst().op("int4_ops")),
 	foreignKey({
@@ -357,6 +361,10 @@ export const submissionSessions = pgTable("submission_sessions", {
 			foreignColumns: [sectors.id],
 			name: "submission_sessions_sector_id_fkey"
 		}).onDelete("restrict"),
+	foreignKey({ columns: [table.formVersionId], foreignColumns: [submissionFormVersions.id], name: "submission_sessions_form_version_id_fkey" }).onDelete("restrict"),
+	foreignKey({ columns: [table.formVersionId, table.sectorId], foreignColumns: [submissionFormVersions.id, submissionFormVersions.sectorId], name: "submission_session_form_sector_fk" }).onDelete("restrict"),
+	unique("submission_session_form_pair_uq").on(table.id, table.formVersionId),
+	check("submission_sessions_refresh_count_check", sql`refresh_count BETWEEN 0 AND 3`),
 	foreignKey({
 			columns: [table.sectorId, table.shiftSheetVersionId, table.shiftRangeId],
 			foreignColumns: [sectorShiftRanges.id, sectorShiftRanges.shiftSheetVersionId, sectorShiftRanges.sectorId],
@@ -368,6 +376,61 @@ export const submissionSessions = pgTable("submission_sessions", {
 	pgPolicy("fhdod_api_submission_sessions_update", { as: "permissive", for: "update", to: ["fhdod_api"], using: sql`true`, withCheck: sql`true` }),
 	pgPolicy("fhdod_api_submission_sessions_insert", { as: "permissive", for: "insert", to: ["fhdod_api"], withCheck: sql`true` }),
 	pgPolicy("fhdod_api_submission_sessions_select", { as: "permissive", for: "select", to: ["fhdod_api"], using: sql`true` }),
+]).enableRLS();
+
+export const submissionFormVersions = pgTable("submission_form_versions", {
+	id: integer().primaryKey().generatedByDefaultAsIdentity(),
+	sectorId: integer("sector_id").notNull(),
+	versionNumber: integer("version_number").notNull(),
+	fingerprint: text().notNull(),
+	publishedAt: timestamp("published_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	foreignKey({ columns: [table.sectorId], foreignColumns: [sectors.id], name: "submission_form_versions_sector_id_fkey" }).onDelete("restrict"),
+	unique("submission_form_versions_sector_id_version_number_key").on(table.sectorId, table.versionNumber),
+	unique("submission_form_versions_id_sector_id_key").on(table.id, table.sectorId),
+	check("submission_form_versions_version_number_check", sql`version_number > 0`),
+	pgPolicy("fhdod_api_form_versions_select", { as: "permissive", for: "select", to: ["fhdod_api"], using: sql`true` }),
+	pgPolicy("fhdod_api_form_versions_insert", { as: "permissive", for: "insert", to: ["fhdod_api"], withCheck: sql`true` }),
+]).enableRLS();
+
+export const submissionFormQuestions = pgTable("submission_form_questions", {
+	formVersionId: integer("form_version_id").notNull(),
+	questionId: integer("question_id").notNull(),
+	questionVersionId: integer("question_version_id").notNull(),
+	position: integer().notNull(),
+	questionKind: questionKind("question_kind").notNull(),
+	isNps: boolean("is_nps").notNull(),
+	text: text().notNull(),
+}, (table) => [
+	primaryKey({ columns: [table.formVersionId, table.questionId] }),
+	foreignKey({ columns: [table.formVersionId], foreignColumns: [submissionFormVersions.id], name: "submission_form_questions_form_version_id_fkey" }).onDelete("restrict"),
+	foreignKey({ columns: [table.questionId], foreignColumns: [questions.id], name: "submission_form_questions_question_id_fkey" }).onDelete("restrict"),
+	foreignKey({ columns: [table.questionVersionId, table.questionId], foreignColumns: [questionVersions.id, questionVersions.questionId], name: "submission_form_questions_question_version_id_question_id_fkey" }).onDelete("restrict"),
+	unique("submission_form_questions_form_version_id_position_key").on(table.formVersionId, table.position),
+	unique("submission_form_questions_form_version_id_question_id_quest_key").on(table.formVersionId, table.questionId, table.questionVersionId),
+	check("submission_form_questions_position_check", sql`position > 0`),
+	pgPolicy("fhdod_api_form_questions_select", { as: "permissive", for: "select", to: ["fhdod_api"], using: sql`true` }),
+	pgPolicy("fhdod_api_form_questions_insert", { as: "permissive", for: "insert", to: ["fhdod_api"], withCheck: sql`true` }),
+]).enableRLS();
+
+export const submissionFormAnswers = pgTable("submission_form_answers", {
+	sessionId: uuid("session_id").notNull(),
+	formVersionId: integer("form_version_id").notNull(),
+	questionId: integer("question_id").notNull(),
+	questionVersionId: integer("question_version_id").notNull(),
+	status: answerStatus().notNull(),
+	score: integer(),
+	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+	updatedAt: timestamp("updated_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
+}, (table) => [
+	primaryKey({ columns: [table.sessionId, table.questionId] }),
+	foreignKey({ columns: [table.sessionId, table.formVersionId], foreignColumns: [submissionSessions.id, submissionSessions.formVersionId], name: "submission_form_answers_session_id_form_version_id_fkey" }).onDelete("restrict"),
+	foreignKey({ columns: [table.sessionId], foreignColumns: [submissionSessions.id], name: "submission_form_answers_session_id_fkey" }).onDelete("restrict"),
+	foreignKey({ columns: [table.formVersionId, table.questionId, table.questionVersionId], foreignColumns: [submissionFormQuestions.formVersionId, submissionFormQuestions.questionId, submissionFormQuestions.questionVersionId], name: "submission_form_answers_form_version_id_question_id_questi_fkey" }).onDelete("restrict"),
+	check("submission_form_answer_score_check", sql`((status = 'skipped'::answer_status) AND (score IS NULL)) OR ((status = 'answered'::answer_status) AND (score IS NOT NULL) AND (score >= 0) AND (score <= 10))`),
+	pgPolicy("fhdod_api_form_answers_select", { as: "permissive", for: "select", to: ["fhdod_api"], using: sql`true` }),
+	pgPolicy("fhdod_api_form_answers_insert", { as: "permissive", for: "insert", to: ["fhdod_api"], withCheck: sql`true` }),
+	pgPolicy("fhdod_api_form_answers_update", { as: "permissive", for: "update", to: ["fhdod_api"], using: sql`true`, withCheck: sql`true` }),
 ]).enableRLS();
 
 export const submissionAnswers = pgTable("submission_answers", {
@@ -442,8 +505,8 @@ export const contentPageVersions = pgTable("content_page_versions", {
 export const ombudsmanTickets = pgTable("ombudsman_tickets", {
 	id: integer().primaryKey().generatedByDefaultAsIdentity({ name: "ombudsman_tickets_id_seq", startWith: 1, increment: 1, minValue: 1, maxValue: 2147483647, cache: 1 }),
 	sectorId: integer("sector_id").notNull(),
-	shiftSheetVersionId: integer("shift_sheet_version_id").notNull(),
-	shiftRangeId: integer("shift_range_id").notNull(),
+	shiftSheetVersionId: integer("shift_sheet_version_id"),
+	shiftRangeId: integer("shift_range_id"),
 	occurredAt: timestamp("occurred_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	ticketType: ombudsmanTicketType("ticket_type").notNull(),
 	status: ombudsmanTicketStatus().default('open').notNull(),
