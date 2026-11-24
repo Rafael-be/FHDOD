@@ -22,7 +22,7 @@
 | Constraints de tabelas, excluindo `_not_null` do PG18 | 179 | 160 | 19 das tabelas novas |
 | Triggers públicos de usuário | 7 | 6 | `sector_current_form_complete` (0016) |
 
-Nas tabelas compartilhadas, não foram encontradas diferenças em nomes, tipos, nulabilidade ou defaults de colunas, definições de índices/constraints/triggers, nem definições de policies. As contagens de constraints brutas diferem também porque PostgreSQL 18 expõe constraints `_not_null` que a versão 17 não expõe da mesma forma. O Supabase possui função `rls_auto_enable` e extensões gerenciadas que não existem no PostgreSQL local; não sobrescrever objetos gerenciados. O local possui `purge_expired_audit_logs` e duas policies de retenção instaladas por scripts separados, ausentes no remoto; essa operação é **fora** das quatro migrations e requer decisão própria. A role `fhdod_api` existe no remoto; os grants adicionais locais abrangem as novas tabelas. Não foi encontrada divergência de grant nas tabelas compartilhadas.
+Nas tabelas compartilhadas, não foram encontradas diferenças em nomes, tipos, nulabilidade ou defaults de colunas, definições de índices/constraints/triggers/funções, nem definições de policies. As contagens de constraints brutas diferem também porque PostgreSQL 18 expõe constraints `_not_null` que a versão 17 não expõe da mesma forma. O Supabase possui função `rls_auto_enable` e extensões gerenciadas que não existem no PostgreSQL local; não sobrescrever objetos gerenciados. O local possui `purge_expired_audit_logs` e duas policies de retenção instaladas por scripts separados, ausentes no remoto; essa operação é **fora** das quatro migrations e requer decisão própria. A role `fhdod_api` existe no remoto; os grants adicionais locais abrangem as novas tabelas. Não foi encontrada divergência de grant nas tabelas compartilhadas.
 
 Contagens remotas observadas, sem ler conteúdo pessoal: 4 setores, 2 versões de formulário, 6 perguntas publicadas, 9 sessões e 4 respostas legadas. Os 2 formulários mais recentes de setores ativos possuem exatamente um NPS e ao menos uma pergunta padrão, logo são candidatos ao backfill da 0015. Os dados existentes devem permanecer intactos. A inspeção de catálogo e contagens não prova ausência absoluta de alterações manuais em objetos gerenciados ou fora de `public`; staging deve testar restauração e permissões da plataforma.
 
@@ -50,7 +50,11 @@ Criar projeto Supabase separado e isolado (somente após confirmar custo e autor
 
 Executar `npm run typecheck`, `npm run lint`, `npm run build`, `npm test` e testes PostgreSQL habilitados para banco descartável. Validar login/refresh, CSRF, permissões por setor, publicação, histórico/restauração, `POST /api/public/sectors/:sectorId/submissions`, respostas/NPS/conclusão, analytics/dashboard, ouvidoria, CSV, turnos, logs de auditoria e LGPD. Nunca apontar testes mutáveis para produção. **Nenhum staging separado foi provisionado ou migrado nesta sessão.**
 
-## 6. Procedimento de produção, somente após nova autorização
+## 6. Validação local e CI
+
+Validação executada nesta branch: `node --check scripts/db/audit-migration-readiness.mjs`, `npm run typecheck`, `npm run lint` e `npm run build` passaram. `npm test` passou com 40 suítes/193 testes sem integração PostgreSQL. Com `POSTGRES_INTEGRATION_TESTS=true` e URLs explícitas para o banco local descartável, incluindo as roles de retenção, **63 suítes e 236 testes passaram, zero ignorados**. Os checks de push e PR no GitHub passaram para o commit de documentação/auditoria. Esses resultados não substituem os testes em staging equivalente ao Supabase remoto.
+
+## 7. Procedimento de produção, somente após nova autorização
 
 Pré-condições: referência do projeto confirmada pelo proprietário; staging limpo e aprovado; backup e restauração comprovados; versão implantada do backend compatível; janela e responsável definidos. Suspender novas publicações e controlar conexões de migração. Revalidar imediatamente antes da janela que o ledger ainda possui exatamente os mesmos 14 hashes/timestamps, que não há objetos concorrentes e que o backup está acessível. Definir `lock_timeout`/`statement_timeout` conforme ensaio e monitorar locks; não usar limites arbitrários sem medir staging.
 
