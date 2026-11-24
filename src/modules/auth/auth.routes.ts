@@ -11,7 +11,7 @@ import { rateLimitByIp } from "../../security/rate-limit.middleware.js";
 
 export { loginCredentialsSchema } from "./auth.schemas.js";
 const csrfHeader = "x-csrf-token";
-const baseCookieOptions = (config: AppConfig) => ({ httpOnly: true, secure: config.NODE_ENV === "production", sameSite: "lax" as const });
+const baseCookieOptions = (config: AppConfig) => ({ httpOnly: true, secure: config.NODE_ENV === "production", sameSite: "none" as const });
 const accessCookieOptions = (config: AppConfig) => ({ ...baseCookieOptions(config), path: "/api" });
 const refreshCookieOptions = (config: AppConfig) => ({ ...baseCookieOptions(config), path: "/api/auth" });
 const legacyAccessCookieOptions = (config: AppConfig) => ({ ...baseCookieOptions(config), path: "/api/auth" });
