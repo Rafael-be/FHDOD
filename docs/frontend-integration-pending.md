@@ -12,7 +12,7 @@ O backend local foi validado por HTTP. Esta etapa não alterou o frontend.
 
 ## Sessões públicas e horários
 
-- Criar sessão em `POST /api/public/sectors/:sectorId/submissions`; guardar a capability retornada apenas pelo tempo necessário à sessão. Enviar `x-session-capability` nas rotas de resposta, refresh, restart e close.
+- Carregar `GET /api/public/sectors/:sectorId/current-form` sem sessão e usar `staleTime` de cinco minutos. Na primeira resposta, gerar `attemptId` UUID e capability aleatória base64url de 32 bytes e enviar ambos, `formVersionId` e `answer` em `POST /api/public/sectors/:sectorId/submissions`. Guardar a capability somente durante a tentativa. Enviar `x-session-capability` nas respostas seguintes, refresh, restart e close. Consulte [o contrato atualizado](public-survey-session-optimization.md).
 - Exibir as perguntas na ordem da versão publicada recebida. A versão vigente pode mudar entre sessões; cada sessão continua associada à versão com que foi criada.
 - Importar CSV por `POST /api/shift-sheets` com corpo binário, `application/octet-stream` e CSRF; baixar modelo em `GET /api/shift-sheets/template` e vigente em `GET /api/shift-sheets/current/export`. O CSV usa BOM UTF-8, `;`, `SEM_TURNO` e `FECHADO`.
 

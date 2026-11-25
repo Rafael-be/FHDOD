@@ -1,6 +1,8 @@
 # Formulários publicados e submissões
 
-## Contrato público
+> Contrato atualizado: veja [Pesquisa pública: formulário e sessão por primeira resposta](public-survey-session-optimization.md). As notas abaixo documentam a primeira etapa histórica e não descrevem o contrato HTTP vigente.
+
+## Contrato público (histórico)
 
 `POST /api/public/sectors/:sectorId/submissions` cria uma sessão de três minutos e retorna `capability.token`, `session.formVersionId`, `session.expiresAt` e as perguntas (`questionId`, `questionVersionId`). O token é anônimo e efêmero.
 

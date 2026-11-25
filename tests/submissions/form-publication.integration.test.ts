@@ -45,6 +45,7 @@ integration("manual form publication on disposable PostgreSQL", () => {
       await expect(sql.begin(async (tx) => {
         const [sector] = await tx<{ id: number }[]>`insert into sectors(code,name) values (${`unpublished-${Date.now()}`},'Sem publicação') returning id`;
         const patient = new SubmissionService(new PostgresSubmissionRepository(tx as unknown as postgres.Sql), { now: () => new Date() });
+        await expect(patient.currentForm(sector!.id)).rejects.toMatchObject({ code: "FORM_NOT_PUBLISHED" });
         await expect(patient.startNow(sector!.id)).rejects.toMatchObject({ code: "FORM_NOT_PUBLISHED" });
         const [version] = await tx<{ id: number }[]>`insert into submission_form_versions(sector_id,version_number,fingerprint)
           values (${sector!.id},1,${`incomplete-${Date.now()}`}) returning id`;
@@ -84,6 +85,9 @@ integration("manual form publication on disposable PostgreSQL", () => {
       if (prior.draftStatus === "drafting") await service.discard(manager(), fixture.sectorId, prior.revision);
       const initial = await service.get(manager(), fixture.sectorId);
       const beforeVersions = await service.history(manager(), fixture.sectorId);
+      const patient = new SubmissionService(new PostgresSubmissionRepository(sql), { now: () => new Date() });
+      const initialPublicForm = await patient.currentForm(fixture.sectorId);
+      expect(initialPublicForm.formVersionId).toBe(initial.publishedVersionId);
       const oldQuestion = initial.items.find((q) => q.questionId === fixture.ownQuestionId)!;
       const oldText = (await sql<{ text: string }[]>`select text from question_versions where id=${oldQuestion.sourceQuestionVersionId}`)[0]!.text;
       const updatedText = `Rascunho publicado ${Date.now()}`;
@@ -104,7 +108,9 @@ integration("manual form publication on disposable PostgreSQL", () => {
       expect((await sql<{ text: string }[]>`select text from question_versions where id=${oldQuestion.sourceQuestionVersionId}`)[0]!.text).toBe(oldText);
       expect(await sql`select id from submission_form_drafts where sector_id=${fixture.sectorId}`).toHaveLength(0);
       expect(await restarted.history(manager(), fixture.sectorId)).toHaveLength(beforeVersions.length + 1);
-      const patient = new SubmissionService(new PostgresSubmissionRepository(sql), { now: () => new Date() });
+      const publishedPublicForm = await patient.currentForm(fixture.sectorId);
+      expect(publishedPublicForm.formVersionId).toBe(result.formVersionId);
+      expect(publishedPublicForm.etag).not.toBe(initialPublicForm.etag);
       const session = await patient.startNow(fixture.sectorId);
       expect(session.session.formVersionId).toBe(result.formVersionId);
       expect(session.questions.find((q) => q.questionId === fixture.ownQuestionId)?.text).toBe(updatedText);
@@ -116,6 +122,7 @@ integration("manual form publication on disposable PostgreSQL", () => {
       expect(restored.formVersionId).not.toBe(result.formVersionId);
       expect((await service.history(manager(), fixture.sectorId))[0]).toMatchObject({ id: restored.formVersionId, current: true });
       const fresh = await patient.startNow(fixture.sectorId);
+      expect((await patient.currentForm(fixture.sectorId)).etag).not.toBe(publishedPublicForm.etag);
       expect(fresh.session.formVersionId).toBe(restored.formVersionId);
       expect(fresh.questions.find((q) => q.questionId === fixture.ownQuestionId)?.text).toBe(oldText);
       expect((await sql<{ formVersionId: number }[]>`select form_version_id as "formVersionId" from submission_sessions where id=${session.session.id}`)[0]?.formVersionId).toBe(result.formVersionId);

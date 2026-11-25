@@ -97,7 +97,7 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
   app.use(cors({ origin: (origin, callback) => callback(null, !origin || origin === config.ALLOWED_ORIGIN), credentials: true, methods: ["GET", "POST", "PUT", "PATCH", "DELETE"] }));
   app.use(express.json({ limit: "32kb" })); app.use(cookieParser());
   app.use(express.raw({ type: "application/octet-stream", limit: "5mb" }));
-  app.use(performanceRequestLogger(config.PERFORMANCE_MEASUREMENTS));
+  app.use(performanceRequestLogger(config.NODE_ENV === "development" && config.PERFORMANCE_MEASUREMENTS));
   if (healthService) app.use(healthRoutes(healthService));
   else app.get("/health", (_request, response) => response.status(200).json({ data: { status: "ok" } }));
   app.use("/api/auth", authRoutes(authService, config, securityRateLimiter));

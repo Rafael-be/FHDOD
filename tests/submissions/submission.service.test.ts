@@ -59,12 +59,12 @@ describe("SubmissionService", () => {
     await expect(service.answer(result.capability.sessionId, result.capability.token, { questionId: 1, questionVersionId: 1, status: "answered", score: null })).rejects.toMatchObject({ code: "INVALID_ANSWER" });
   });
 
-  it("ends the old session and issues a new capability on restart", async () => {
-    const repository: SubmissionRepository = { transaction: async (work) => work(repository), createSessionSnapshot: async (input) => ({ session: { id: input.sessionId, sectorId: input.sectorId, shiftSheetVersionId: 1, shiftRangeId: 2 }, questions: [] }), saveAnswer: async (sessionId, input) => ({ sessionId, status: "incomplete", answered: input.status === "answered" }), endSession: async () => ({ sectorId: 7 }) };
+  it("ends the old session and returns the form for a fresh attempt on restart", async () => {
+    const repository: SubmissionRepository = { transaction: async (work) => work(repository), createSessionSnapshot: async (input) => ({ session: { id: input.sessionId, sectorId: input.sectorId, shiftSheetVersionId: 1, shiftRangeId: 2 }, questions: [] }), saveAnswer: async (sessionId, input) => ({ sessionId, status: "incomplete", answered: input.status === "answered" }), endSession: async () => ({ sectorId: 7 }), currentForm: async () => ({ formVersionId: 3, questions: [] }) };
     const service = new SubmissionService(repository, clock);
     const first = await service.start(7, 4, "09:00");
     const restarted = await service.restart(first.capability.sessionId, first.capability.token);
-    expect(restarted.capability.sessionId).not.toBe(first.capability.sessionId);
+    expect(restarted.formVersionId).toBe(3);
     await expect(service.authorize(first.capability.sessionId, first.capability.token)).resolves.toBe(false);
   });
 
