@@ -54,6 +54,28 @@ integration("analytics on disposable PostgreSQL", () => {
         const mixed = await repo.dashboard(filter,null);
         expect(mixed.sessions).toMatchObject({ started:2, incomplete:2 });
         expect(mixed.nps).toMatchObject({ responses:2,value:score<=6 ? 0 : score<=8 ? 50 : 100 });
+        await db`reset role`;
+        const [other] = await db`insert into sectors(code,name) values (${crypto.randomUUID()},'Other sector') returning id`;
+        // A second published version and a heavily unbalanced sector validate pooled NPS.
+        const [nextForm] = await db`insert into submission_form_versions(sector_id,version_number,fingerprint)
+          values (${other!.id},2,${crypto.randomUUID()}) returning id`;
+        await db`insert into submission_form_questions(form_version_id,question_id,question_version_id,position,question_kind,is_nps,text)
+          values (${nextForm!.id},${ids[2]!},${ids[3]!},1,'standard',true,'Fixture question')`;
+        await db`with added as (
+          insert into submission_sessions(sector_id,form_version_id,started_at,last_activity_at,ended_at,status,capability_hash)
+          select ${other!.id},${nextForm!.id},'2050-01-01T04:00Z','2050-01-01T04:00Z','2050-01-01T04:01Z','complete',decode(repeat('03',32),'hex')
+          from generate_series(1,18) returning id)
+          insert into submission_form_answers(session_id,form_version_id,question_id,question_version_id,status,score)
+          select id,${nextForm!.id},${ids[2]!},${ids[3]!},'answered',0 from added`;
+        await db`insert into submission_sessions(sector_id,started_at,last_activity_at,capability_hash)
+          values (${other!.id},'2050-01-01T04:00Z','2050-01-01T04:00Z',decode(repeat('04',32),'hex'))`;
+        await db`set local role fhdod_api`;
+        const multiple = { from: filter.from, to: filter.to, sectorIds: [sector!.id, other!.id] };
+        const pooled = await repo.dashboard(multiple, null);
+        expect(pooled.sessions).toMatchObject({ started: 20, complete: 18, incomplete: 2, completionRate: 90, nonCompletionRate: 10 });
+        expect(pooled.nps).toMatchObject({ responses: 20, value: score <= 6 ? -90 : score <= 8 ? -85 : -80 });
+        await expect(service.dashboard({ userId:user!.id, sessionId:'test',role:'sector_manager',mustChangePassword:false },multiple))
+          .rejects.toMatchObject({ code:'FORBIDDEN' });
         throw rollback;
       })).rejects.toBe(rollback);
     } finally { await sql.end({ timeout: 5 }); }

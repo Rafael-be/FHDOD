@@ -1,38 +1,57 @@
 import type postgres from "postgres";
 
-export interface AnalyticsFilter { from: string; to: string; sectorId?: number; shiftRangeId?: number; }
+export interface AnalyticsFilter { from: string; to: string; sectorId?: number; sectorIds?: number[]; shiftRangeId?: number; }
 export class AnalyticsRepository {
   constructor(private readonly sql: postgres.Sql) {}
   async sectorIds(userId: number): Promise<number[]> {
     const rows = await this.sql<{ id: number }[]>`select sector_id as id from user_sector_assignments where user_id=${userId} and unassigned_at is null`;
     return rows.map(row => row.id);
   }
-  async dashboard(filter: AnalyticsFilter, allowed: number[] | null): Promise<Record<string, unknown>> {
-    // Each source is filtered before aggregation. Answers never join a session-count query.
-    const [row] = await this.sql<{ data: Record<string, unknown> }[]>`
-      with sessions as materialized (
-        select id, sector_id, form_version_id, status, started_at, ended_at, shift_range_id
+  private sectorScope(filter: AnalyticsFilter, allowed: number[] | null) {
+    if (!filter.sectorIds) return allowed;
+    return allowed === null ? filter.sectorIds : filter.sectorIds.filter(id => allowed.includes(id));
+  }
+  private cohort(filter: AnalyticsFilter, scope: number[] | null) {
+    return this.sql`
+      with candidates as materialized (
+        select id, sector_id, form_version_id, status, started_at, ended_at, expires_at, shift_range_id
         from submission_sessions s where started_at>=${filter.from}::timestamptz and started_at<${filter.to}::timestamptz
           and (${filter.sectorId ?? null}::int is null or s.sector_id=${filter.sectorId ?? null})
           and (${filter.shiftRangeId ?? null}::int is null or s.shift_range_id=${filter.shiftRangeId ?? null})
-          and (${allowed === null} or s.sector_id=any(${allowed ?? []}::int[]))
-      ), answers as materialized (
-        select s.sector_id, s.started_at, a.question_id, a.question_version_id, q.is_nps, a.status, a.score
-        from sessions s join submission_form_answers a on a.session_id=s.id
+          and (${scope === null} or s.sector_id=any(${scope ?? []}::int[]))
+      ), raw_answers as (
+        select s.id as session_id, s.sector_id, s.started_at, a.question_id, a.question_version_id, q.is_nps, a.status, a.score
+        from candidates s join submission_form_answers a on a.session_id=s.id
           join submission_form_questions q on q.form_version_id=a.form_version_id and q.question_id=a.question_id
         union all
-        select s.sector_id, s.started_at, q.question_id, q.question_version_id, q.is_nps, a.status, a.score
-        from sessions s join submission_session_questions q on q.session_id=s.id
+        select s.id as session_id, s.sector_id, s.started_at, q.question_id, q.question_version_id, q.is_nps, a.status, a.score
+        from candidates s join submission_session_questions q on q.session_id=s.id
           join submission_answers a on a.session_question_id=q.id where s.form_version_id is null
-      ), tickets as (
+      ), answers as materialized (
+        select * from raw_answers where status='skipped' or
+          (status='answered' and score between (case when is_nps then 0 else 1 end) and (case when is_nps then 10 else 5 end))
+      ), sessions as (
+        select * from candidates s where exists (
+          select 1 from answers a where a.session_id=s.id and a.status='answered')
+      )`;
+  }
+  async dashboard(filter: AnalyticsFilter, allowed: number[] | null): Promise<Record<string, unknown>> {
+    const scope = this.sectorScope(filter, allowed);
+    const [row] = await this.sql<{ data: Record<string, unknown> }[]>`
+      ${this.cohort(filter, scope)}, tickets as (
         select sector_id,ticket_type,status from ombudsman_tickets t
-        where occurred_at>=${filter.from}::timestamptz and occurred_at<${filter.to}::timestamptz
+        where ${allowed === null} and occurred_at>=${filter.from}::timestamptz and occurred_at<${filter.to}::timestamptz
           and (${filter.sectorId ?? null}::int is null or t.sector_id=${filter.sectorId ?? null})
           and (${filter.shiftRangeId ?? null}::int is null or t.shift_range_id=${filter.shiftRangeId ?? null})
-          and (${allowed === null} or t.sector_id=any(${allowed ?? []}::int[]))
+          and (${scope === null} or t.sector_id=any(${scope ?? []}::int[]))
       ) select jsonb_build_object(
         'sessions',(select jsonb_build_object('started',count(*),'complete',count(*) filter(where status='complete'),
-          'incomplete',count(*) filter(where status='incomplete'),'closedIncomplete',count(*) filter(where status='incomplete' and ended_at is not null)) from sessions),
+          'incomplete',count(*) filter(where status='incomplete'),'closedIncomplete',count(*) filter(where status='incomplete' and ended_at is not null),
+          'inProgress',count(*) filter(where status='incomplete' and ended_at is null and expires_at>=statement_timestamp()),
+          'endedOrExpired',count(*) filter(where status='incomplete' and (ended_at is not null or expires_at<statement_timestamp())),
+          'unknownDeadline',count(*) filter(where status='incomplete' and ended_at is null and expires_at is null),
+          'completionRate',100.0*count(*) filter(where status='complete')/nullif(count(*),0),
+          'nonCompletionRate',100.0*count(*) filter(where status='incomplete')/nullif(count(*),0)) from sessions),
         'nps',(select jsonb_build_object('responses',count(*),'detractors',count(*) filter(where score<=6),
           'passives',count(*) filter(where score between 7 and 8),'promoters',count(*) filter(where score>=9),
           'value',100.0*(count(*) filter(where score>=9)-count(*) filter(where score<=6))/nullif(count(*),0)) from answers where is_nps and status='answered'),

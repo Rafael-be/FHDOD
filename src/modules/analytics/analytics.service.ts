@@ -8,7 +8,7 @@ export class AnalyticsService {
     if (actor.role === "superuser") return this.repository.dashboard(filter, null);
     if (actor.role !== "sector_manager") throw new DomainError("FORBIDDEN", "Acesso não permitido.", 403);
     const allowed = await this.repository.sectorIds(actor.userId);
-    if (filter.sectorId !== undefined && !allowed.includes(filter.sectorId))
+    if ((filter.sectorIds ?? (filter.sectorId ? [filter.sectorId] : [])).some(id => !allowed.includes(id)))
       throw new DomainError("FORBIDDEN", "Setor fora do seu escopo.", 403);
     return this.repository.dashboard(filter, allowed);
   }
