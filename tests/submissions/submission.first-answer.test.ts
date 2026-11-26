@@ -67,3 +67,16 @@ describe("public survey first answer", () => {
     expect(f.exists()).toBe(false);
   });
 });
+
+it("requires the matching capability to close and rejects a scored skip without persistence", async () => {
+  const f = fixture();
+  f.repository.capabilityHash = async () => Buffer.alloc(32);
+  const close = jest.fn();
+  f.repository.closeSession = close;
+  const service = new SubmissionService(f.repository, { now: () => now });
+  await expect(service.close(attemptId, token)).rejects.toMatchObject({ code: "SUBMISSION_CAPABILITY_INVALID" });
+  expect(close).not.toHaveBeenCalled();
+  await expect(service.startWithFirstAnswer(9, 7, attemptId, token, { ...first, status: "skipped" }))
+    .rejects.toMatchObject({ code: "INVALID_ANSWER" });
+  expect(f.create).not.toHaveBeenCalled();
+});

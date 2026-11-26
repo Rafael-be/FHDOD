@@ -26,7 +26,7 @@ export interface SubmissionRepository {
   saveAnswer(sessionId: string, input: SubmissionAnswerInput, now: Date, first?: boolean, confirmedAt?: () => Date): Promise<{ sessionId: string; status: "incomplete" | "complete"; answered: boolean; expiresAt: string; replayed?: boolean }>;
   endSession(sessionId: string, now: Date): Promise<{ sectorId: number }>;
   refreshSession?(sessionId: string, now: Date): Promise<{ expiresAt: string; refreshesUsed: number; refreshesRemaining: number }>;
-  closeSession?(sessionId: string, now: Date): Promise<{ sessionId: string; status: "closed" }>;
+  closeSession?(sessionId: string, now: Date, confirmedAt?: () => Date): Promise<{ sessionId: string; status: "closed" }>;
   reconcileExpired?(now: Date): Promise<number>;
   expireSession?(sessionId: string, now: Date): Promise<boolean>;
 }
@@ -192,8 +192,15 @@ export class PostgresSubmissionRepository implements SubmissionRepository {
     await this.sql`update submission_sessions set refresh_count=${refreshesUsed}, expires_at=${expiresAt}, last_activity_at=${now.toISOString()} where id=${sessionId}`;
     return { expiresAt, refreshesUsed, refreshesRemaining: 3 - refreshesUsed };
   }
-  async closeSession(sessionId: string, now: Date) {
+  async closeSession(sessionId: string, now: Date, confirmedAt?: () => Date) {
     const session = await this.lockSession(sessionId);
+    if (session.status === "complete")
+      throw new DomainError("SUBMISSION_COMPLETED", "Sessão já concluída.", 409);
+    now = confirmedAt?.() ?? now;
+    // A previously closed session can be retried even after its original deadline.
+    const effectiveEnd = session.endedAt ?? now;
+    if (timestampToMillis(effectiveEnd) > timestampToMillis(session.expiresAt!))
+      throw new DomainError("SUBMISSION_EXPIRED", "Sessão expirada.", 410);
     if (!session.endedAt) await this.sql`update submission_sessions set ended_at=${now.toISOString()} where id=${sessionId}`;
     return { sessionId, status: "closed" as const };
   }

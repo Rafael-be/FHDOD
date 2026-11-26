@@ -137,6 +137,6 @@ export class SubmissionService {
 
   async close(sessionId: string, token: string) {
     if (!await this.authorize(sessionId, token)) throw new DomainError("SUBMISSION_CAPABILITY_INVALID", "Capability de sessão inválida.", 403);
-    return this.repository.transaction((repository) => repository.closeSession!(sessionId, this.clock.now()));
+    return this.repository.transaction((repository) => repository.closeSession!(sessionId, this.clock.now(), () => this.clock.now()));
   }
 }
