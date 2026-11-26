@@ -34,8 +34,15 @@ integration("analytics on disposable PostgreSQL", () => {
             values (${session!.id},${form!.id},${q},${v},'answered',${value})`;
         const repo = new AnalyticsRepository(db);
         const filter = { from: '2050-01-01T03:00:00Z', to: '2050-01-02T03:00:00Z', sectorId: sector!.id };
+        const [page] = await db`insert into content_pages(slug,title) values (${crypto.randomUUID()},'Policy') returning id`;
+        const [policy] = await db`insert into content_page_versions(page_id,version_number,content,created_by_user_id)
+          values (${page!.id},1,'Consent',${user!.id}) returning id`;
+        await db`insert into ombudsman_tickets(sector_id,ticket_type,body,accepted_policy_version_id,policy_accepted_at,occurred_at)
+          values (${sector!.id},'compliment','Fixture',${policy!.id},now(),${filter.from})`;
         await db`set local role fhdod_api`;
         const data = await repo.dashboard(filter, null);
+        expect(data.ombudsman).toMatchObject([{sector_id:sector!.id,tickets:1}]);
+        expect((await repo.dashboard(filter,[sector!.id])).ombudsman).toEqual([]);
         expect(data.sessions).toMatchObject({ started: 1, complete: 0, incomplete: 1 });
         expect(data.nps).toMatchObject({ responses: 1, value: expected });
         expect(data.questions).toEqual(expect.arrayContaining([expect.objectContaining({ question_id: ids[0],question_version_id: ids[1],responses: 1,mean: 5 })]));
