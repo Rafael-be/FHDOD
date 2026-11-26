@@ -34,6 +34,23 @@ export const analyticsPaths = {
     security: cookie, parameters: [...filters, { in:"query", name:"questionId", schema:id }],
     responses: { "200": { description: "data é uma lista com questionId, questionVersionId, isNps, text, publishedSectorIds, responses, mean, distribution e sectors." }, "400": invalid, ...authErrors },
   } },
+  "/api/analytics/heatmap": { get: {
+    summary:"Médias de satisfação e NPS, notas positivas e conclusão por setor autorizado",
+    description:"Usa sessões iniciadas em [from,to). Respostas válidas são agregadas separadamente das sessões. Sem denominador, médias e percentuais são null; contagens são zero.",
+    security:cookie,parameters:filters,responses:{"200":{description:"data é lista de sectorId, satisfactionMean (1–5), npsMean (0–10), positivePercentage, completionRate, responses, npsResponses, started e completed."},"400":invalid,...authErrors},
+  } },
+  "/api/analytics/questions/distribution": { get: {
+    summary:"Distribuição 1–5 das perguntas comuns do formulário vigente de um setor",
+    description:"Contabiliza somente a versão exata de cada pergunta vigente, inclusive respostas históricas dessa versão. Exclui NPS; ordem é a posição no formulário. Retorna todas as notas de 1 a 5, com zero nas faixas vazias; mean é null sem respostas.",
+    security:cookie,parameters:filters.map(parameter => parameter.name === "sectorId" ? {...parameter,required:true} : parameter),
+    responses:{"200":{description:"data contém sectorId, formVersionId e questions com questionId, questionVersionId, text, position, mean, responses, skipped e distribution (score, responses)."},"400":invalid,"404":{description:"FORM_NOT_PUBLISHED"},...authErrors},
+  } },
+  "/api/analytics/questions/critical": { get: {
+    summary:"Perguntas comuns vigentes com menores médias por setor, identidade e versão",
+    description:"Inclui perguntas locais e globais dos setores autorizados. Mínimo configurável por ANALYTICS_MIN_RESPONSES (padrão 5; 1–1000). Perguntas abaixo do mínimo são omitidas.",
+    security:cookie,parameters:[...filters,{in:"query",name:"limit",schema:{type:"integer",enum:[3,5],default:5}}],
+    responses:{"200":{description:"data contém minimumResponses e items ordenados por mean crescente, com sectorId, questionId, questionVersionId, text, mean e responses."},"400":invalid,...authErrors},
+  } },
   "/api/tv-wall/config": {
     get: { summary:"Configuração do TV Wall para superusuários", security:cookie, responses:{"200":configResponse,...authErrors} },
     put: { summary:"Substitui a seleção e a ordem do TV Wall", security:cookie,

@@ -25,5 +25,23 @@ export function analyticsRoutes(service: AnalyticsService): Router {
       res.set("Cache-Control", "no-store").json({ data: await service.globalQuestions(req.identity!, filter, questionId) });
     } catch (error) { next(error); }
   });
+  router.get("/analytics/heatmap", requireRole("superuser", "sector_manager"), async (req, res, next) => {
+    try { res.set("Cache-Control", "no-store").json({ data: await service.heatmap(req.identity!, analyticsQuery.parse(req.query)) }); }
+    catch (error) { next(error); }
+  });
+  router.get("/analytics/questions/distribution", requireRole("superuser", "sector_manager"), async (req, res, next) => {
+    try {
+      const filter = analyticsQuery.parse(req.query);
+      if (!filter.sectorId) { res.status(400).json({error:{code:"VALIDATION_ERROR",message:"Informe sectorId."}}); return; }
+      res.set("Cache-Control", "no-store").json({ data: await service.questionDistribution(req.identity!, filter) });
+    } catch (error) { next(error); }
+  });
+  router.get("/analytics/questions/critical", requireRole("superuser", "sector_manager"), async (req, res, next) => {
+    try {
+      const filter = analyticsQuery.parse(req.query);
+      const limit = z.coerce.number().pipe(z.union([z.literal(3),z.literal(5)])).default(5).parse(req.query.limit);
+      res.set("Cache-Control", "no-store").json({ data: await service.criticalQuestions(req.identity!, filter, limit) });
+    } catch (error) { next(error); }
+  });
   return router;
 }

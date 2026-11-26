@@ -30,3 +30,22 @@ it("passes selected IDs to the global question service and rejects ambiguous sec
   for (const scope of [{sectorIds:"8,3",sectorId:"8"},{sectorIds:"8,0"},{sectorIds:"invalid"},{questionId:"2147483648"}])
     await request(app).get("/analytics/global-questions").query({...range,...scope}).expect(400);
 });
+
+it("validates analytics insight filters and keeps authenticated response envelopes", async () => {
+  const calls: string[] = [];
+  const app = express();
+  app.use((req,_res,next) => { req.identity={userId:1,sessionId:"test",role:"superuser",mustChangePassword:false}; next(); });
+  app.use(analyticsRoutes({
+    heatmap:async () => {calls.push("heatmap"); return [];},
+    questionDistribution:async () => {calls.push("distribution"); return {sectorId:2,formVersionId:4,questions:[]};},
+    criticalQuestions:async (_actor:unknown,_filter:unknown,limit:number) => {calls.push(String(limit)); return {minimumResponses:5,items:[]};},
+  } as unknown as AnalyticsService));
+  app.use(errorHandler);
+  const range={from:"2050-01-01T00:00:00Z",to:"2050-01-02T00:00:00Z"};
+  await request(app).get("/analytics/heatmap").query(range).expect(200,{data:[]});
+  await request(app).get("/analytics/questions/distribution").query(range).expect(400);
+  await request(app).get("/analytics/questions/distribution").query({...range,sectorId:2}).expect(200);
+  await request(app).get("/analytics/questions/critical").query({...range,limit:3}).expect(200,{data:{minimumResponses:5,items:[]}});
+  await request(app).get("/analytics/questions/critical").query({...range,limit:4}).expect(400);
+  expect(calls).toEqual(["heatmap","distribution","3"]);
+});

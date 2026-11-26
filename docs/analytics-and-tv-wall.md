@@ -127,6 +127,16 @@ A última confirmação em ordem conclui a sessão. Um fechamento voluntário pr
 
 GET `/api/analytics/dashboard` e GET `/api/analytics/global-questions` exigem cookie `access_token` de superusuário ou gestor com senha definitiva. Envie `from` e `to` em ISO 8601 com offset, intervalo crescente de até 366 dias. Uma consulta de dois setores pode usar `?from=2026-11-01T03:00:00Z&to=2026-12-01T03:00:00Z&sectorIds=2,7`. Use `sectorId` para um setor ou `sectorIds` para até 200 IDs distintos. A ausência desses filtros seleciona todos os setores autorizados. `shiftRangeId` é opcional nos dois endpoints. Um único setor solicitado fora do escopo do gestor invalida a solicitação inteira.
 
+### Agregados para os painéis de qualidade
+
+Os três endpoints abaixo reutilizam o mesmo intervalo `[from,to)`, filtros e cookie do dashboard. O gestor só recebe setores com vínculo ativo; um `sectorId` fora desse escopo retorna 403. Todos retornam `Cache-Control: no-store` e não incluem dados pessoais.
+
+- `GET /api/analytics/heatmap`: `data` é uma lista por setor ativo autorizado com `sectorId`, `satisfactionMean`, `npsMean`, `positivePercentage`, `completionRate`, `responses`, `npsResponses`, `started` e `completed`. As médias são `avg(score)` de respostas válidas não NPS (1–5) e NPS (0–10), respectivamente. O percentual positivo é `100 × notas 4 ou 5 / respostas comuns`; a conclusão é `100 × sessões completas / sessões iniciadas`. Sessões são contadas antes do join com respostas. Sem denominador, médias e percentuais são `null`; contagens são zero.
+- `GET /api/analytics/questions/distribution`: exige `sectorId`. `data` contém `sectorId`, `formVersionId` e `questions` ordenadas por `position`. Cada pergunta comum do formulário vigente contém `questionId`, `questionVersionId`, `text`, `position`, `mean`, `responses`, `skipped` e `distribution` com todas as notas de 1 a 5; faixas vazias têm `responses: 0`. Respostas históricas só contam quando a identidade e a versão da pergunta coincidem exatamente com o snapshot vigente. Sem respostas, `mean` é `null`. Setor sem formulário publicado retorna `FORM_NOT_PUBLISHED` (404).
+- `GET /api/analytics/questions/critical`: aceita `limit=3` ou `limit=5` (padrão 5). `data` contém `minimumResponses` e `items` com `sectorId`, `questionId`, `questionVersionId`, `text`, `mean` e `responses`. Cada item representa uma pergunta vigente em um setor; textos iguais não são fundidos. Inclui perguntas locais e globais, exclui NPS e ordena por média crescente, depois maior amostra. O limiar mínimo é configurável por `ANALYTICS_MIN_RESPONSES` (inteiro de 1 a 1000; padrão técnico 5). Itens abaixo do limiar não entram no ranking. Esse padrão não representa uma política clínica oficial.
+
+O frontend da branch `feature/analytics-tv-wall-frontend` ainda lê o mapa a partir de `dashboard.sectors`, a distribuição a partir de `global-questions` e o ranking a partir de `dashboard.questions`. Para consumir estes agregados, deve chamar os novos endpoints com o mesmo período e filtros aplicados; a distribuição deve ser requisitada somente com um setor selecionado. Os tipos de resposta estão em `analytics.types.ts`. A tela deve usar `minimumResponses` e `items` do ranking em vez de recalcular o Top 3/5 localmente.
+
 O dashboard retorna estes campos em `data`.
 
 | Campo | Forma JSON |

@@ -26,6 +26,21 @@ export interface GlobalQuestionMetric extends Satisfaction {
   sectors: (Satisfaction & { sectorId: number })[];
 }
 
+export interface SectorHeatmapMetric {
+  sectorId: number; satisfactionMean: number | null; npsMean: number | null;
+  positivePercentage: number | null; completionRate: number | null;
+  responses: number; npsResponses: number; started: number; completed: number;
+}
+export interface QuestionDistributionMetric {
+  questionId: number; questionVersionId: number; text: string; position: number;
+  mean: number | null; responses: number; skipped: number;
+  distribution: { score: number; responses: number }[];
+}
+export interface CriticalQuestionMetric {
+  sectorId: number; questionId: number; questionVersionId: number;
+  text: string; mean: number; responses: number;
+}
+
 export interface Dashboard {
   sessions: {
     started: number;

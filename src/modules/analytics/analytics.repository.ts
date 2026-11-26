@@ -1,6 +1,6 @@
 import type postgres from "postgres";
 
-import type { AnalyticsFilter, Dashboard, GlobalQuestionMetric } from "./analytics.types.js";
+import type { AnalyticsFilter, Dashboard, GlobalQuestionMetric, SectorHeatmapMetric, QuestionDistributionMetric, CriticalQuestionMetric } from "./analytics.types.js";
 
 export type { AnalyticsFilter } from "./analytics.types.js";
 
@@ -9,6 +9,82 @@ export class AnalyticsRepository {
   async sectorIds(userId: number): Promise<number[]> {
     const rows = await this.sql<{ id: number }[]>`select sector_id as id from user_sector_assignments where user_id=${userId} and unassigned_at is null`;
     return rows.map(row => row.id);
+  }
+  async heatmap(filter: AnalyticsFilter, allowed: number[] | null): Promise<SectorHeatmapMetric[]> {
+    const scope = this.sectorScope(filter, allowed);
+    return this.sql<SectorHeatmapMetric[]>`
+      ${this.cohort(filter, scope)}, session_totals as (
+        select sector_id, count(*)::int as started, count(*) filter(where status='complete')::int as completed
+        from candidates group by sector_id
+      ), answer_totals as (
+        select sector_id,
+          avg(score) filter(where status='answered' and not is_nps)::float8 as "satisfactionMean",
+          avg(score) filter(where status='answered' and is_nps)::float8 as "npsMean",
+          (100.0*count(*) filter(where status='answered' and not is_nps and score>=4)/
+            nullif(count(*) filter(where status='answered' and not is_nps),0))::float8 as "positivePercentage",
+          count(*) filter(where status='answered' and not is_nps)::int as responses,
+          count(*) filter(where status='answered' and is_nps)::int as "npsResponses"
+        from answers group by sector_id
+      )
+      select s.id as "sectorId", a."satisfactionMean", a."npsMean", a."positivePercentage",
+        (100.0*t.completed/nullif(t.started,0))::float8 as "completionRate",
+        coalesce(a.responses,0)::int as responses,coalesce(a."npsResponses",0)::int as "npsResponses",
+        coalesce(t.started,0)::int as started,coalesce(t.completed,0)::int as completed
+      from sectors s left join session_totals t on t.sector_id=s.id
+      left join answer_totals a on a.sector_id=s.id
+      where s.deleted_at is null and (${scope === null} or s.id=any(${scope ?? []}::int[]))
+        and (${filter.sectorId ?? null}::int is null or s.id=${filter.sectorId ?? null})
+      order by s.id`;
+  }
+  async questionDistribution(filter: AnalyticsFilter, allowed: number[] | null): Promise<{ sectorId:number; formVersionId:number; questions:QuestionDistributionMetric[] } | null> {
+    const scope = this.sectorScope(filter, allowed);
+    const rows = await this.sql<{sectorId:number;formVersionId:number;questions:QuestionDistributionMetric[]}[]>`
+      ${this.cohort(filter, scope)}, current_form as (
+        select c.sector_id,c.form_version_id from sector_current_forms c
+        join sectors s on s.id=c.sector_id and s.deleted_at is null
+        where c.sector_id=${filter.sectorId!} and c.form_version_id is not null
+          and (${scope === null} or c.sector_id=any(${scope ?? []}::int[]))
+      ), current_questions as (
+        select q.question_id,q.question_version_id,q.text,q.position
+        from current_form c join submission_form_questions q on q.form_version_id=c.form_version_id
+        where not q.is_nps
+      ), counts as (
+        select a.question_id,a.question_version_id,a.score,a.status,count(*)::int as n
+        from answers a join current_questions q on q.question_id=a.question_id and q.question_version_id=a.question_version_id
+        where a.sector_id=${filter.sectorId!} and not a.is_nps
+        group by a.question_id,a.question_version_id,a.score,a.status
+      )
+      select c.sector_id as "sectorId",c.form_version_id as "formVersionId",
+        coalesce((select jsonb_agg(jsonb_build_object(
+          'questionId',q.question_id,'questionVersionId',q.question_version_id,'text',q.text,'position',q.position,
+          'mean',(select sum(score*n)::float8/nullif(sum(n),0) from counts x where x.question_id=q.question_id and x.question_version_id=q.question_version_id and x.status='answered'),
+          'responses',(select coalesce(sum(n),0)::int from counts x where x.question_id=q.question_id and x.question_version_id=q.question_version_id and x.status='answered'),
+          'skipped',(select coalesce(sum(n),0)::int from counts x where x.question_id=q.question_id and x.question_version_id=q.question_version_id and x.status='skipped'),
+          'distribution',(select jsonb_agg(jsonb_build_object('score',grade.score,'responses',coalesce(x.n,0)) order by grade.score)
+            from generate_series(1,5) as grade(score)
+            left join counts x on x.question_id=q.question_id and x.question_version_id=q.question_version_id
+              and x.status='answered' and x.score=grade.score)
+        ) order by q.position) from current_questions q),'[]'::jsonb) as questions
+      from current_form c`;
+    return rows[0] ?? null;
+  }
+  async criticalQuestions(filter: AnalyticsFilter, allowed: number[] | null, limit: 3 | 5, minimumResponses: number): Promise<CriticalQuestionMetric[]> {
+    const scope = this.sectorScope(filter, allowed);
+    return this.sql<CriticalQuestionMetric[]>`
+      ${this.cohort(filter, scope)}, current_questions as (
+        select c.sector_id,q.question_id,q.question_version_id,q.text
+        from sector_current_forms c join sectors s on s.id=c.sector_id and s.deleted_at is null
+        join submission_form_questions q on q.form_version_id=c.form_version_id and not q.is_nps
+        where c.form_version_id is not null and (${scope === null} or c.sector_id=any(${scope ?? []}::int[]))
+          and (${filter.sectorId ?? null}::int is null or c.sector_id=${filter.sectorId ?? null})
+      )
+      select q.sector_id as "sectorId",q.question_id as "questionId",q.question_version_id as "questionVersionId",
+        q.text,avg(a.score)::float8 as mean,count(*)::int as responses
+      from current_questions q join answers a on a.sector_id=q.sector_id and a.question_id=q.question_id
+        and a.question_version_id=q.question_version_id and not a.is_nps and a.status='answered'
+      group by q.sector_id,q.question_id,q.question_version_id,q.text
+      having count(*)>=${minimumResponses}
+      order by mean asc,responses desc,q.sector_id,q.question_id,q.question_version_id limit ${limit}`;
   }
   private sectorScope(filter: AnalyticsFilter, allowed: number[] | null) {
     if (!filter.sectorIds) return allowed;
