@@ -24,8 +24,8 @@ export interface SubmissionRepository {
   createSessionSnapshot(input: SubmissionStart, expectedFormVersionId?: number): Promise<{ session: { id: string; sectorId: number; formVersionId: number; expiresAt: string; shiftSheetVersionId: number | null; shiftRangeId: number | null }; questions: SubmissionQuestion[] }>;
   capabilityHash?(sessionId: string): Promise<Buffer | null>;
   saveAnswer(sessionId: string, input: SubmissionAnswerInput, now: Date, first?: boolean, confirmedAt?: () => Date): Promise<{ sessionId: string; status: "incomplete" | "complete"; answered: boolean; expiresAt: string; replayed?: boolean }>;
-  endSession(sessionId: string, now: Date): Promise<{ sectorId: number }>;
-  refreshSession?(sessionId: string, now: Date): Promise<{ expiresAt: string; refreshesUsed: number; refreshesRemaining: number }>;
+  endSession(sessionId: string, now: Date, confirmedAt?: () => Date): Promise<{ sectorId: number }>;
+  refreshSession?(sessionId: string, now: Date, confirmedAt?: () => Date): Promise<{ expiresAt: string; refreshesUsed: number; refreshesRemaining: number }>;
   closeSession?(sessionId: string, now: Date, confirmedAt?: () => Date): Promise<{ sessionId: string; status: "closed" }>;
   reconcileExpired?(now: Date): Promise<number>;
   expireSession?(sessionId: string, now: Date): Promise<boolean>;
@@ -151,7 +151,7 @@ export class PostgresSubmissionRepository implements SubmissionRepository {
     const question = questions
       .find((q) => q.questionId === input.questionId && q.questionVersionId === input.questionVersionId);
     if (!question) throw new DomainError("SUBMISSION_QUESTION_NOT_FOUND", "Pergunta ou versão não pertence ao formulário.", 404);
-    if (input.status === "skipped" && question.questionKind !== "sector")
+    if (input.status === "skipped" && (question.isNps || question.questionKind !== "sector"))
       throw new DomainError("QUESTION_NOT_SKIPPABLE", "Somente perguntas de setor podem ser puladas.", 400);
     if (input.status === "answered" && (input.score === null || input.score < (question.isNps ? 0 : 1) || input.score > (question.isNps ? 10 : 5)))
       throw new DomainError("INVALID_ANSWER_SCORE", "Nota fora da escala da pergunta.", 400);
@@ -183,8 +183,9 @@ export class PostgresSubmissionRepository implements SubmissionRepository {
     if (complete) await this.sql`update submission_sessions set status='complete', ended_at=${now.toISOString()} where id=${sessionId}`;
     return { sessionId, status: complete ? "complete" as const : "incomplete" as const, answered: input.status === "answered", expiresAt, replayed: false };
   }
-  async refreshSession(sessionId: string, now: Date) {
+  async refreshSession(sessionId: string, now: Date, confirmedAt?: () => Date) {
     const session = await this.lockSession(sessionId);
+    now = confirmedAt?.() ?? now;
     this.assertActive(session, now);
     if (session.refreshCount >= 3) throw new DomainError("SUBMISSION_REFRESH_LIMIT", "Limite de três renovações atingido.", 409);
     const expiresAt = new Date(now.getTime() + SUBMISSION_EXTENSION_MS).toISOString();
@@ -204,8 +205,9 @@ export class PostgresSubmissionRepository implements SubmissionRepository {
     if (!session.endedAt) await this.sql`update submission_sessions set ended_at=${now.toISOString()} where id=${sessionId}`;
     return { sessionId, status: "closed" as const };
   }
-  async endSession(sessionId: string, now: Date): Promise<{ sectorId: number }> {
+  async endSession(sessionId: string, now: Date, confirmedAt?: () => Date): Promise<{ sectorId: number }> {
     const session = await this.lockSession(sessionId);
+    now = confirmedAt?.() ?? now;
     this.assertActive(session, now);
     await this.sql`update submission_sessions set ended_at=${now.toISOString()} where id=${sessionId}`;
     return { sectorId: session.sectorId };

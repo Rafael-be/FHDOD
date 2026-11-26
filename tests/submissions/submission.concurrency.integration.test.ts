@@ -63,17 +63,15 @@ integration("published form answer concurrency", () => {
       } else {
         expect(race[0]).toMatchObject({ reason: { code: "SUBMISSION_COMPLETED" } });
       }
-      const results = await Promise.allSettled([1, 5].map((score) => service.answer(sessionId, started.capability.token, {
-        questionId: commonId, questionVersionId: question.questionVersionId, status: "answered", score,
-      })));
+      const results = await Promise.allSettled([skip, firstInput].map(input => service.answer(sessionId, started.capability.token, input)));
       expect(results).toHaveLength(2);
       expect(results.filter((item) => item.status === "fulfilled")).toHaveLength(1);
       expect(results.filter((item) => item.status === "rejected")).toHaveLength(1);
-      const answers = await admin<{ count: number; score: number }[]>`
+      const answers = await admin<{ count: number; score: number | null }[]>`
         select count(*)::int as count, max(score)::int as score
         from submission_form_answers where session_id=${sessionId} and question_id=${commonId}`;
       expect(answers[0]!.count).toBe(1);
-      expect([1, 5]).toContain(answers[0]!.score);
+      expect(answers[0]!.score).toBe(results[0]!.status === "fulfilled" ? null : 5);
       await admin`update submission_sessions set expires_at=now()-interval '1 second' where id=${sessionId}`;
       await expect(service.close(sessionId, started.capability.token)).rejects.toMatchObject({ code: "SUBMISSION_EXPIRED" });
       expect(await new PostgresSubmissionRepository(runtime).reconcileExpired(new Date())).toBeGreaterThanOrEqual(1);

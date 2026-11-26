@@ -67,6 +67,12 @@ describeIntegration("anonymous submissions integration", () => {
           .rejects.toMatchObject({ code: "SUBMISSION_CLOSED" });
         await tx`insert into sector_shift_ranges (shift_sheet_version_id,sector_id,shift_name,starts_at,ends_at,day_of_week)
           values (${version[0]!.id},${sectorId},'Noite','20:00','07:00',4)`;
+        const skippedOnly = await service.start(sectorId, 4, "09:00");
+        const skip = { ...sectorItem, status:"skipped" as const, score:null };
+        await service.answer(skippedOnly.session.id, skippedOnly.capability.token, skip);
+        await expect(service.answer(skippedOnly.session.id, skippedOnly.capability.token, skip)).resolves.toMatchObject({answered:false,replayed:true});
+        await expect(service.close(skippedOnly.session.id, partial.capability.token)).rejects.toMatchObject({code:"SUBMISSION_CAPABILITY_INVALID"});
+        await service.close(skippedOnly.session.id, skippedOnly.capability.token);
         const report = await new AnalyticsRepository(tx as unknown as postgres.Sql).dashboard({
           sectorId, from: "2026-01-01T00:00:00Z", to: "2026-01-02T00:00:00Z",
         }, null);
@@ -76,7 +82,7 @@ describeIntegration("anonymous submissions integration", () => {
           expect.objectContaining({ name:"Noite", completed:0, percentage:0 }),
         ]);
         expect(report.unclassifiedCompleted).toBe(0);
-        expect(report.questions).toContainEqual(expect.objectContaining({question_id:sectorItem.questionId,responses:1,skipped:2,mean:3}));
+        expect(report.questions).toContainEqual(expect.objectContaining({question_id:sectorItem.questionId,responses:1,skipped:3,mean:3}));
         const analytics = new AnalyticsRepository(tx as unknown as postgres.Sql);
         const range = { sectorId, from:"2026-01-01T00:00:00Z", to:"2026-01-02T00:00:00Z" };
         const global = await analytics.globalQuestions(range, [sectorId], standardItem.questionId);
@@ -89,9 +95,22 @@ describeIntegration("anonymous submissions integration", () => {
         expect(await analytics.globalQuestions({...range, to:range.from}, null)).toEqual([
           expect.objectContaining({publishedSectorIds:[sectorId], responses:0, mean:null, distribution:[], sectors:[]}),
         ]);
+        const pinned = await service.start(sectorId, 4, "09:00");
+        await tx`update question_versions set is_current=false where question_id=${standardItem.questionId}`;
+        await tx`insert into question_versions(question_id,version_number,text,is_current,created_by_user_id)
+          values (${standardItem.questionId},2,'Nova redação',true,${user[0]!.id})`;
+        await publishEffectiveForm(tx as unknown as postgres.Sql,sectorId,user[0]!.id);
+        // The next published version must not affect either skipping or answering the old snapshot.
+        await service.answer(pinned.session.id,pinned.capability.token,skip);
+        await service.answer(pinned.session.id,pinned.capability.token,{...standardItem,status:"answered",score:4});
+        const versions = await analytics.globalQuestions(range, null, standardItem.questionId);
+        expect(versions).toEqual([
+          expect.objectContaining({questionVersionId:standardItem.questionVersionId,publishedSectorIds:[],responses:3}),
+          expect.objectContaining({text:"Nova redação",publishedSectorIds:[sectorId],responses:0}),
+        ]);
         await tx`delete from sector_current_forms where sector_id=${sectorId}`;
         expect(await analytics.globalQuestions(range, null)).toEqual([
-          expect.objectContaining({questionId:standardItem.questionId, publishedSectorIds:[], responses:2}),
+          expect.objectContaining({questionId:standardItem.questionId, publishedSectorIds:[], responses:3}),
         ]);
         throw new Error("ROLLBACK_SUBMISSION_FIXTURE");
       })).rejects.toThrow("ROLLBACK_SUBMISSION_FIXTURE");

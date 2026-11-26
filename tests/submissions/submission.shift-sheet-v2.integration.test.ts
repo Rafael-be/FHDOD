@@ -133,9 +133,17 @@ describeIntegration("submissão com planilha sem funcionários", () => {
         await service.answer(noSchedule.capability.sessionId, noSchedule.capability.token, { questionId: noSchedule.questions[1]!.questionId, questionVersionId: noSchedule.questions[1]!.questionVersionId, status: "skipped", score: null });
         await expect(service.answer(noSchedule.capability.sessionId, noSchedule.capability.token, { questionId: noSchedule.questions[2]!.questionId, questionVersionId: noSchedule.questions[2]!.questionVersionId, status: "answered", score: 8 })).resolves.toMatchObject({ status: "complete" });
         const expiring = await service.start(sector!.id, 1, "19:00");
+        const locked = new PostgresSubmissionRepository(tx as unknown as postgres.Sql);
+        const afterLock = () => new Date(now.getTime() + 180_001);
+        await expect(locked.refreshSession(expiring.session.id, now, afterLock)).rejects.toMatchObject({ code:"SUBMISSION_EXPIRED" });
+        await expect(locked.closeSession(expiring.session.id, now, afterLock)).rejects.toMatchObject({ code:"SUBMISSION_EXPIRED" });
+        await expect(locked.endSession(expiring.session.id, now, afterLock)).rejects.toMatchObject({ code:"SUBMISSION_EXPIRED" });
         currentTime = new Date(now.getTime() + 180_001);
         await expect(service.answer(expiring.capability.sessionId, expiring.capability.token, { questionId: standardItem.questionId, questionVersionId: standardItem.questionVersionId, status: "answered", score: 5 })).rejects.toMatchObject({ code: "SUBMISSION_EXPIRED" });
         expect(await tx<{ ended: boolean }[]>`select ended_at is not null as ended from submission_sessions where id=${expiring.capability.sessionId}`).toEqual([{ ended: true }]);
+        await expect(service.close(expiring.session.id, expiring.capability.token)).rejects.toMatchObject({ code: "SUBMISSION_EXPIRED" });
+        await expect(service.close(inHours.session.id, inHours.capability.token)).resolves.toMatchObject({ status: "closed" });
+        await expect(service.close(outside.session.id, outside.capability.token)).rejects.toMatchObject({ code: "SUBMISSION_COMPLETED" });
         await tx`update sectors set deleted_at = now() where id = ${sector!.id}`;
         await expect(service.start(sector!.id, 1, "19:00")).rejects.toMatchObject({ code: "SECTOR_NOT_FOUND" });
         expect(await tx`select id from submission_sessions where sector_id = ${sector!.id}`).toHaveLength(5);
