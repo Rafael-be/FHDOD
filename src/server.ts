@@ -54,7 +54,7 @@ function closeServer(server: Server): Promise<void> {
 
 async function startServer(): Promise<void> {
   const config = loadConfig();
-  publishedFormCache.setTracing(config.PERFORMANCE_MEASUREMENTS);
+  publishedFormCache.setTracing(config.NODE_ENV === "development" && config.PERFORMANCE_MEASUREMENTS);
   const database = createDatabase(config);
   const redis = config.CACHE_ENABLED || config.SECURITY_REDIS_ENABLED ? new NodeRedisClient(config) : undefined;
   const cache = new RedisCacheService(redis, config.CACHE_ENABLED, config.CACHE_QUESTIONS_TTL_SECONDS);
@@ -93,7 +93,7 @@ async function startServer(): Promise<void> {
     analyticsService: new AnalyticsService(new AnalyticsRepository(database.client)),
     contentService: new ContentService(new ContentRepository(database.client)),
     shiftSheetService: new ShiftSheetService(new PostgresShiftSheetRepository(database.client), clock.now.bind(clock)),
-    submissionService: new SubmissionService(new PostgresSubmissionRepository(database.client, config.PERFORMANCE_MEASUREMENTS), clock, undefined, config.PERFORMANCE_MEASUREMENTS),
+    submissionService: new SubmissionService(new PostgresSubmissionRepository(database.client, config.NODE_ENV === "development" && config.PERFORMANCE_MEASUREMENTS), clock, undefined, config.NODE_ENV === "development" && config.PERFORMANCE_MEASUREMENTS),
     formDraftService: new FormDraftService(database.client, cache),
     questionsService: new QuestionsService(new QuestionsRepository(database.client), cache),
     securityRateLimiter,

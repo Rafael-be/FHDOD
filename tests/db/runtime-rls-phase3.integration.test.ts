@@ -103,6 +103,13 @@ describeIntegration("Phase 3 runtime RLS contract", () => {
       }));
       expect(snapshot.questions).toHaveLength(2);
       formVersionId = snapshot.session.formVersionId;
+      const standardQuestion = snapshot.questions.find((item) => !item.isNps)!;
+      await submissions.transaction((repository) => repository.saveAnswer(sessionId, {
+        questionId: standardQuestion.questionId,
+        questionVersionId: standardQuestion.questionVersionId,
+        status: "answered",
+        score: 5,
+      }, now));
       const npsQuestion = snapshot.questions.find((item) => item.isNps)!;
       await submissions.transaction((repository) => repository.saveAnswer(sessionId, {
         questionId: npsQuestion.questionId,

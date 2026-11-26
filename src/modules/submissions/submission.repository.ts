@@ -4,6 +4,7 @@ import { DomainError } from "../../shared/core.js";
 import { publishedFormCache } from "./form-cache.js";
 import { measurePerformance } from "../../shared/performance.js";
 import { logPerformanceMeasurement } from "../../shared/logger.js";
+import { surveyEvent } from "../../shared/performance.js";
 import { SUBMISSION_EXTENSION_MS, SUBMISSION_INITIAL_MS } from "./submission-time.js";
 import type { SubmissionAnswerInput, SubmissionQuestion, SubmissionStart } from "./submission.service.js";
 
@@ -17,9 +18,12 @@ export function timestampToIso(value: DatabaseTimestamp): string { return new Da
 
 export interface SubmissionRepository {
   transaction<T>(work: (repository: SubmissionRepository) => Promise<T>): Promise<T>;
-  createSessionSnapshot(input: SubmissionStart): Promise<{ session: { id: string; sectorId: number; formVersionId: number; expiresAt: string; shiftSheetVersionId: number | null; shiftRangeId: number | null }; questions: SubmissionQuestion[] }>;
+  currentForm?(sectorId: number): Promise<{ formVersionId: number; questions: SubmissionQuestion[] }>;
+  lockAttempt?(attemptId: string): Promise<void>;
+  firstAttempt?(attemptId: string): Promise<{ sectorId: number; formVersionId: number; capabilityHash: Buffer; answer: { questionId: number; questionVersionId: number; status: string; score: number | null }; expiresAt: string; status: string } | null>;
+  createSessionSnapshot(input: SubmissionStart, expectedFormVersionId?: number): Promise<{ session: { id: string; sectorId: number; formVersionId: number; expiresAt: string; shiftSheetVersionId: number | null; shiftRangeId: number | null }; questions: SubmissionQuestion[] }>;
   capabilityHash?(sessionId: string): Promise<Buffer | null>;
-  saveAnswer(sessionId: string, input: SubmissionAnswerInput, now: Date): Promise<{ sessionId: string; status: "incomplete" | "complete"; answered: boolean; expiresAt: string }>;
+  saveAnswer(sessionId: string, input: SubmissionAnswerInput, now: Date, first?: boolean, confirmedAt?: () => Date): Promise<{ sessionId: string; status: "incomplete" | "complete"; answered: boolean; expiresAt: string; replayed?: boolean }>;
   endSession(sessionId: string, now: Date): Promise<{ sectorId: number }>;
   refreshSession?(sessionId: string, now: Date): Promise<{ expiresAt: string; refreshesUsed: number; refreshesRemaining: number }>;
   closeSession?(sessionId: string, now: Date): Promise<{ sessionId: string; status: "closed" }>;
@@ -29,7 +33,7 @@ export interface SubmissionRepository {
 interface LockedSession {
   sectorId: number; formVersionId: number | null; shiftRangeId: number | null;
   startedAt: DatabaseTimestamp; expiresAt: DatabaseTimestamp | null;
-  endedAt: DatabaseTimestamp | null; refreshCount: number;
+  endedAt: DatabaseTimestamp | null; refreshCount: number; status: string;
 }
 
 export class PostgresSubmissionRepository implements SubmissionRepository {
@@ -40,6 +44,35 @@ export class PostgresSubmissionRepository implements SubmissionRepository {
   async capabilityHash(sessionId: string): Promise<Buffer | null> {
     const rows = await this.sql<{ hash: Buffer }[]>`select capability_hash as hash from submission_sessions where id=${sessionId}`;
     return rows[0]?.hash ?? null;
+  }
+  async lockAttempt(attemptId: string): Promise<void> {
+    await this.sql`select pg_advisory_xact_lock(912011, hashtext(${attemptId}))`;
+  }
+  async firstAttempt(attemptId: string) {
+    const rows = await this.sql<{ sectorId: number; formVersionId: number; capabilityHash: Buffer; expiresAt: DatabaseTimestamp; status: string }[]>`
+      select sector_id as "sectorId", form_version_id as "formVersionId", capability_hash as "capabilityHash", expires_at as "expiresAt", status
+      from submission_sessions where id=${attemptId}`;
+    if (!rows[0]) return null;
+    const answers = await this.sql<{ questionId: number; questionVersionId: number; status: string; score: number | null }[]>`
+      select a.question_id as "questionId", a.question_version_id as "questionVersionId", a.status, a.score
+      from submission_form_answers a join submission_form_questions q
+        on q.form_version_id=a.form_version_id and q.question_id=a.question_id
+      where a.session_id=${attemptId} order by q.position limit 1`;
+    if (!answers[0]) throw new DomainError("SUBMISSION_CONFLICT", "Tentativa sem resposta inicial.", 409);
+    return { ...rows[0], expiresAt: timestampToIso(rows[0].expiresAt), answer: answers[0] };
+  }
+  async currentForm(sectorId: number) {
+    const rows = await this.sql<{ formVersionId: number | null }[]>`
+      select c.form_version_id as "formVersionId"
+      from sectors s left join sector_current_forms c on c.sector_id=s.id
+      where s.id=${sectorId} and s.deleted_at is null limit 1`;
+    if (!rows[0]) throw new DomainError("SECTOR_NOT_FOUND", "Setor inexistente ou inativo.", 404);
+    if (!rows[0].formVersionId) throw new DomainError("FORM_NOT_PUBLISHED", "Setor sem formulário publicado vigente.", 409);
+    const formVersionId = rows[0].formVersionId;
+    const questions = await publishedFormCache.get(this.sql, formVersionId);
+    if (questions.filter((q) => q.isNps).length !== 1 || !questions.some((q) => q.questionKind === "standard" && !q.isNps))
+      throw new DomainError("FORM_INCOMPLETE", "Formulário publicado incompleto.", 409);
+    return { formVersionId, questions };
   }
   async transaction<T>(work: (repository: SubmissionRepository) => Promise<T>): Promise<T> {
     if (typeof (this.sql as unknown as { begin?: unknown }).begin !== "function") return work(this);
@@ -66,7 +99,7 @@ export class PostgresSubmissionRepository implements SubmissionRepository {
   private async lockSession(sessionId: string): Promise<LockedSession> {
     const rows = await this.sql<LockedSession[]>`
       select sector_id as "sectorId", form_version_id as "formVersionId", shift_range_id as "shiftRangeId",
-        started_at as "startedAt", expires_at as "expiresAt", ended_at as "endedAt", refresh_count as "refreshCount"
+        started_at as "startedAt", expires_at as "expiresAt", ended_at as "endedAt", refresh_count as "refreshCount", status
       from submission_sessions where id = ${sessionId} for update`;
     if (!rows[0] || rows[0].formVersionId === null || rows[0].expiresAt === null)
       throw new DomainError("SUBMISSION_NOT_FOUND", "Sessão não encontrada.", 404);
@@ -76,7 +109,7 @@ export class PostgresSubmissionRepository implements SubmissionRepository {
     if (session.endedAt) throw new DomainError("SUBMISSION_CLOSED", "Sessão já encerrada.", 409);
     if (timestampToMillis(session.expiresAt!) < now.getTime()) throw new DomainError("SUBMISSION_EXPIRED", "Sessão expirada.", 410);
   }
-  async createSessionSnapshot(input: SubmissionStart) {
+  async createSessionSnapshot(input: SubmissionStart, expectedFormVersionId?: number) {
     const shifts = await this.measured("shift_query", () => this.sql<{ versionId: number; rangeId: number }[]>`
       select distinct v.id as "versionId", r.id as "rangeId"
       from shift_sheet_versions v
@@ -97,66 +130,64 @@ export class PostgresSubmissionRepository implements SubmissionRepository {
     if (!shifts[0] && !fallback) throw new DomainError("SECTOR_NOT_FOUND", "Setor inexistente ou inativo.", 404);
     const shift = shifts[0] ?? fallback!;
     await this.measured("sector_lock_wait", () => this.sql`select pg_advisory_xact_lock(912010, ${input.sectorId})`);
-    const current = (await this.measured("published_form_lookup", () => this.sql<{ id: number }[]>`
-      select c.form_version_id as id from sector_current_forms c
-      join submission_form_versions v on v.id=c.form_version_id and v.sector_id=c.sector_id
-      where c.sector_id=${input.sectorId}`))[0];
-    if (!current) throw new DomainError("FORM_NOT_PUBLISHED", "Setor sem formulário publicado vigente.", 409);
-    const formVersionId = current.id;
-    const questions = await publishedFormCache.get(this.sql, formVersionId);
-    if (questions.filter((q) => q.isNps).length !== 1 || !questions.some((q) => q.questionKind === "standard" && !q.isNps))
-      throw new DomainError("FORM_INCOMPLETE", "Formulário publicado incompleto.", 409);
-    const expiresAt = new Date(input.now.getTime() + SUBMISSION_INITIAL_MS).toISOString();
+    const { formVersionId, questions } = await this.measured("published_form_lookup", () => this.currentForm(input.sectorId));
+    if (expectedFormVersionId !== undefined && formVersionId !== expectedFormVersionId)
+      throw new DomainError("FORM_VERSION_CHANGED", "O formulário vigente foi alterado. Recarregue a pesquisa.", 409);
+    const createdAt = input.confirmedAt?.() ?? input.now;
+    const expiresAt = new Date(createdAt.getTime() + SUBMISSION_INITIAL_MS).toISOString();
     const rows = await this.measured("session_insert", () => this.sql<{ id: string }[]>`
       insert into submission_sessions(id, sector_id, form_version_id, shift_sheet_version_id, shift_range_id,
         started_at, last_activity_at, expires_at, status, capability_hash)
       values (${input.sessionId}, ${input.sectorId}, ${formVersionId}, ${shift.versionId}, ${shift.rangeId},
-        ${input.now.toISOString()}, ${input.now.toISOString()}, ${expiresAt}, 'incomplete', ${input.capabilityHash ?? createHash("sha256").update(input.sessionId).digest()}) returning id`);
+        ${createdAt.toISOString()}, ${createdAt.toISOString()}, ${expiresAt}, 'incomplete', ${input.capabilityHash ?? createHash("sha256").update(input.sessionId).digest()}) returning id`);
     return { session: { id: rows[0]!.id, sectorId: input.sectorId, formVersionId, expiresAt,
       shiftSheetVersionId: shift.versionId, shiftRangeId: shift.rangeId }, questions };
   }
-  async saveAnswer(sessionId: string, input: SubmissionAnswerInput, now: Date) {
+  async saveAnswer(sessionId: string, input: SubmissionAnswerInput, now: Date, first = false, confirmedAt?: () => Date) {
     const session = await this.lockSession(sessionId);
-    this.assertActive(session, now);
-    const question = (await publishedFormCache.get(this.sql, session.formVersionId!))
+    now = confirmedAt?.() ?? now;
+    if (session.status !== "complete") this.assertActive(session, now);
+    const questions = await publishedFormCache.get(this.sql, session.formVersionId!);
+    const question = questions
       .find((q) => q.questionId === input.questionId && q.questionVersionId === input.questionVersionId);
     if (!question) throw new DomainError("SUBMISSION_QUESTION_NOT_FOUND", "Pergunta ou versão não pertence ao formulário.", 404);
     if (input.status === "skipped" && question.questionKind !== "sector")
       throw new DomainError("QUESTION_NOT_SKIPPABLE", "Somente perguntas de setor podem ser puladas.", 400);
     if (input.status === "answered" && (input.score === null || input.score < (question.isNps ? 0 : 1) || input.score > (question.isNps ? 10 : 5)))
       throw new DomainError("INVALID_ANSWER_SCORE", "Nota fora da escala da pergunta.", 400);
-    const previous = (await this.sql<{ status: string; score: number | null }[]>`
-      select status, score from submission_form_answers where session_id = ${sessionId} and question_id = ${input.questionId}`)[0];
-    const changed = !previous || previous.status !== input.status || previous.score !== input.score;
-    const expiresAt = changed ? new Date(timestampToMillis(session.expiresAt!) + SUBMISSION_EXTENSION_MS).toISOString() : timestampToIso(session.expiresAt!);
-    if (changed) {
+    const existing = await this.sql<{ questionId: number; status: string; score: number | null }[]>`
+      select question_id as "questionId", status, score from submission_form_answers where session_id=${sessionId}`;
+    const previous = existing.find((row) => row.questionId === input.questionId);
+    if (previous && (previous.status !== input.status || previous.score !== input.score))
+      throw new DomainError("ANSWER_ALREADY_CONFIRMED", "Resposta já confirmada não pode ser alterada.", 409);
+    if (previous) return { sessionId, status: session.status === "complete" ? "complete" as const : "incomplete" as const, answered: input.status === "answered", expiresAt: timestampToIso(session.expiresAt!), replayed: true };
+    if (session.status === "complete") throw new DomainError("SUBMISSION_CLOSED", "Sessão já encerrada.", 409);
+    const expected = questions.find((item) => !existing.some((row) => row.questionId === item.questionId));
+    if (!previous && expected?.questionId !== input.questionId)
+      throw new DomainError("QUESTION_OUT_OF_SEQUENCE", "Responda a próxima pergunta do formulário.", 409);
+    surveyEvent("ANSWER_VALIDATED", "submission.answer");
+    const expiresAt = !previous && !first ? new Date(now.getTime() + SUBMISSION_EXTENSION_MS).toISOString() : timestampToIso(session.expiresAt!);
+    if (!previous) {
       await this.sql`
         insert into submission_form_answers(session_id, form_version_id, question_id, question_version_id, status, score, created_at, updated_at)
         values (${sessionId}, ${session.formVersionId!}, ${input.questionId}, ${input.questionVersionId}, ${input.status}, ${input.score}, ${now.toISOString()}, ${now.toISOString()})
-        on conflict (session_id, question_id) do update set status=excluded.status, score=excluded.score, updated_at=excluded.updated_at`;
-      await this.sql`update submission_sessions set last_activity_at=${now.toISOString()}, expires_at=${expiresAt} where id=${sessionId}`;
+        on conflict (session_id, question_id) do nothing`;
+      if (!first) await this.sql`update submission_sessions set last_activity_at=${now.toISOString()}, expires_at=${expiresAt} where id=${sessionId}`;
       if (session.shiftRangeId !== null) await this.sql`
         insert into dashboard_dirty_groups(summary_type, hour_bucket, sector_id, shift_range_id, question_id, question_version_id, queued_at)
         values ('answers', date_trunc('hour', ${timestampToIso(session.startedAt)}::timestamptz), ${session.sectorId}, ${session.shiftRangeId}, ${input.questionId}, ${input.questionVersionId}, ${now.toISOString()})
         on conflict do nothing`;
     }
-    const count = (await this.sql<{ required: number; requiredAnswered: number; npsTotal: number; npsAnswered: number }[]>`
-      select count(*) filter (where q.question_kind='standard')::int as required,
-        count(*) filter (where q.question_kind='standard' and a.status='answered')::int as "requiredAnswered",
-        count(*) filter (where q.is_nps)::int as "npsTotal",
-        count(*) filter (where q.is_nps and a.status='answered')::int as "npsAnswered"
-      from submission_form_questions q
-      left join submission_form_answers a on a.form_version_id=q.form_version_id and a.question_id=q.question_id and a.session_id=${sessionId}
-      where q.form_version_id=${session.formVersionId!}`)[0]!;
-    const complete = count.requiredAnswered === count.required && count.npsTotal === 1 && count.npsAnswered === 1;
+    // Sequential validation guarantees every preceding standard/NPS question was answered.
+    const complete = existing.length + 1 === questions.length;
     if (complete) await this.sql`update submission_sessions set status='complete', ended_at=${now.toISOString()} where id=${sessionId}`;
-    return { sessionId, status: complete ? "complete" as const : "incomplete" as const, answered: input.status === "answered", expiresAt };
+    return { sessionId, status: complete ? "complete" as const : "incomplete" as const, answered: input.status === "answered", expiresAt, replayed: false };
   }
   async refreshSession(sessionId: string, now: Date) {
     const session = await this.lockSession(sessionId);
     this.assertActive(session, now);
     if (session.refreshCount >= 3) throw new DomainError("SUBMISSION_REFRESH_LIMIT", "Limite de três renovações atingido.", 409);
-    const expiresAt = new Date(timestampToMillis(session.expiresAt!) + SUBMISSION_EXTENSION_MS).toISOString();
+    const expiresAt = new Date(now.getTime() + SUBMISSION_EXTENSION_MS).toISOString();
     const refreshesUsed = session.refreshCount + 1;
     await this.sql`update submission_sessions set refresh_count=${refreshesUsed}, expires_at=${expiresAt}, last_activity_at=${now.toISOString()} where id=${sessionId}`;
     return { expiresAt, refreshesUsed, refreshesRemaining: 3 - refreshesUsed };

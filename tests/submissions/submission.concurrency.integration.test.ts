@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import postgres from "postgres";
 import { SubmissionService } from "../../src/modules/submissions/submission.service.js";
 import { PostgresSubmissionRepository } from "../../src/modules/submissions/submission.repository.js";
@@ -16,7 +16,7 @@ integration("published form answer concurrency", () => {
     const admin = postgres(adminUrl!, { max: 1 });
     const runtime = postgres(runtimeUrl!, { max: 4 });
     const suffix = randomUUID().slice(0, 8);
-    let userId = 0, sectorId = 0, commonId = 0, standardId = 0, npsId = 0, formVersionId = 0, sessionId = "";
+    let userId = 0, sectorId = 0, commonId = 0, standardId = 0, npsId = 0, formVersionId = 0, sessionId = "", firstAttemptId = "";
     try {
       const user = await admin<{ id: number }[]>`insert into users (role_id, full_name, email, password_hash) values (1, 'Concorrência', ${`race-${suffix}@test.invalid`}, 'hash') returning id`;
       userId = user[0]!.id;
@@ -38,11 +38,18 @@ integration("published form answer concurrency", () => {
       sessionId = started.capability.sessionId;
       formVersionId = started.session.formVersionId;
       const question = started.questions.find((item) => item.questionId === commonId)!;
-      const results = await Promise.all([1, 5].map((score) => service.answer(sessionId, started.capability.token, {
+      firstAttemptId = randomUUID();
+      const firstCapability = randomBytes(32).toString("base64url");
+      const firstInput = { questionId: commonId, questionVersionId: question.questionVersionId, status: "answered" as const, score: 5 };
+      const firstResults = await Promise.all([0, 1].map(() => service.startWithFirstAnswer(sectorId, formVersionId, firstAttemptId, firstCapability, firstInput)));
+      expect(firstResults.map((item) => item.replayed).sort()).toEqual([false, true]);
+      expect((await admin<{ count: number }[]>`select count(*)::int as count from submission_form_answers where session_id=${firstAttemptId}`)[0]!.count).toBe(1);
+      const results = await Promise.allSettled([1, 5].map((score) => service.answer(sessionId, started.capability.token, {
         questionId: commonId, questionVersionId: question.questionVersionId, status: "answered", score,
       })));
       expect(results).toHaveLength(2);
-      expect(new Set(results.map((item) => item.expiresAt)).size).toBe(2);
+      expect(results.filter((item) => item.status === "fulfilled")).toHaveLength(1);
+      expect(results.filter((item) => item.status === "rejected")).toHaveLength(1);
       const answers = await admin<{ count: number; score: number }[]>`
         select count(*)::int as count, max(score)::int as score
         from submission_form_answers where session_id=${sessionId} and question_id=${commonId}`;
@@ -52,6 +59,10 @@ integration("published form answer concurrency", () => {
       expect(await new PostgresSubmissionRepository(runtime).reconcileExpired(new Date())).toBeGreaterThanOrEqual(1);
       expect((await admin<{ ended: boolean }[]>`select ended_at is not null as ended from submission_sessions where id=${sessionId}`)[0]!.ended).toBe(true);
     } finally {
+      if (firstAttemptId) {
+        await admin`delete from submission_form_answers where session_id=${firstAttemptId}`;
+        await admin`delete from submission_sessions where id=${firstAttemptId}`;
+      }
       if (sessionId) {
         await admin`delete from submission_form_answers where session_id=${sessionId}`;
         await admin`delete from submission_sessions where id=${sessionId}`;

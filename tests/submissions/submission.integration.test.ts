@@ -12,7 +12,7 @@ const describeIntegration = usesIsolatedDatabase(testUrl, runtimeUrl) ? describe
 const clock: Clock = { now: () => new Date("2026-01-01T12:00:00Z") };
 
 describeIntegration("anonymous submissions integration", () => {
-  it("completes with skipped or unanswered sector questions while requiring standard and NPS answers", async () => {
+  it("completes in published order with explicitly skipped sector questions", async () => {
     const sql = postgres(testUrl!, { max: 1 });
     try {
       await expect(sql.begin(async (tx) => {
@@ -36,8 +36,9 @@ describeIntegration("anonymous submissions integration", () => {
         const npsItem = started.questions.find((question) => question.isNps)!;
         await expect(service.answer(started.capability.sessionId, started.capability.token, { questionId: sectorItem.questionId, questionVersionId: sectorItem.questionVersionId, status: "answered", score: 6 })).rejects.toMatchObject({ code: "INVALID_ANSWER_SCORE" });
         await expect(service.answer(started.capability.sessionId, started.capability.token, { questionId: sectorItem.questionId, questionVersionId: sectorItem.questionVersionId, status: "skipped", score: null })).resolves.toMatchObject({ status: "incomplete" });
-        await expect(service.answer(started.capability.sessionId, started.capability.token, { questionId: npsItem.questionId, questionVersionId: npsItem.questionVersionId, status: "answered", score: 10 })).resolves.toMatchObject({ status: "incomplete" });
-        await expect(service.answer(started.capability.sessionId, started.capability.token, { questionId: standardItem.questionId, questionVersionId: standardItem.questionVersionId, status: "answered", score: 5 })).resolves.toMatchObject({ status: "complete" });
+        await expect(service.answer(started.capability.sessionId, started.capability.token, { questionId: npsItem.questionId, questionVersionId: npsItem.questionVersionId, status: "answered", score: 10 })).rejects.toMatchObject({ code: "QUESTION_OUT_OF_SEQUENCE" });
+        await expect(service.answer(started.capability.sessionId, started.capability.token, { questionId: standardItem.questionId, questionVersionId: standardItem.questionVersionId, status: "answered", score: 5 })).resolves.toMatchObject({ status: "incomplete" });
+        await expect(service.answer(started.capability.sessionId, started.capability.token, { questionId: npsItem.questionId, questionVersionId: npsItem.questionVersionId, status: "answered", score: 10 })).resolves.toMatchObject({ status: "complete" });
         const answer = await tx<{ status: string; score: number | null }[]>`select status, score from submission_form_answers where session_id=${started.capability.sessionId} and question_id=${sectorItem.questionId}`;
         expect(answer).toEqual([{ status: "skipped", score: null }]);
 
@@ -45,6 +46,8 @@ describeIntegration("anonymous submissions integration", () => {
         const required = withoutOptionalAnswer.questions.filter((question) => question.questionKind === "standard");
         const common = required.find((question) => !question.isNps)!;
         const nps = required.find((question) => question.isNps)!;
+        const sectorOptional = withoutOptionalAnswer.questions.find((question) => question.questionKind === "sector")!;
+        await service.answer(withoutOptionalAnswer.capability.sessionId, withoutOptionalAnswer.capability.token, { questionId: sectorOptional.questionId, questionVersionId: sectorOptional.questionVersionId, status: "skipped", score: null });
         await expect(service.answer(withoutOptionalAnswer.capability.sessionId, withoutOptionalAnswer.capability.token, { questionId: common.questionId, questionVersionId: common.questionVersionId, status: "answered", score: 5 })).resolves.toMatchObject({ status: "incomplete" });
         await expect(service.answer(withoutOptionalAnswer.capability.sessionId, withoutOptionalAnswer.capability.token, { questionId: nps.questionId, questionVersionId: nps.questionVersionId, status: "answered", score: 10 })).resolves.toMatchObject({ status: "complete" });
         const optionalAnswers = await tx<{ count: number }[]>`
@@ -52,7 +55,7 @@ describeIntegration("anonymous submissions integration", () => {
           from submission_form_answers a join submission_form_questions q on q.form_version_id=a.form_version_id and q.question_id=a.question_id
           where a.session_id = ${withoutOptionalAnswer.capability.sessionId} and q.question_kind = 'sector'
         `;
-        expect(optionalAnswers[0]!.count).toBe(0);
+        expect(optionalAnswers[0]!.count).toBe(1);
         throw new Error("ROLLBACK_SUBMISSION_FIXTURE");
       })).rejects.toThrow("ROLLBACK_SUBMISSION_FIXTURE");
     } finally { await sql.end({ timeout: 5 }); }

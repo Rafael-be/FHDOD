@@ -15,11 +15,12 @@ const config = { NODE_ENV: "test", PORT: 3000, DATABASE_URL: "postgres://unused@
 it("keeps public submission limits on public paths while administrative routes remain reachable", async () => {
   const auth = { authenticate: async () => ({ userId: 1, sessionId: "test", role: "superuser", mustChangePassword: false }) } as AuthService;
   const admin = { listSectors: async () => [] } as unknown as AdminService;
-  const submissions = { startNow: async () => ({ session: { id: "test" } }) } as unknown as SubmissionService;
+  const submissions = { startWithFirstAnswer: async () => ({ session: { id: "test" }, replayed: false }) } as unknown as SubmissionService;
   const app = createApp(config, { authService: auth, adminService: admin, submissionService: submissions,
     securityRateLimiter: new SecurityRateLimiter(undefined, false, config.JWT_SECRET) });
   for (let i = 0; i < 3; i++) await request(app).get("/api/sectors").set("Cookie", "access_token=test").expect(200);
-  await request(app).post("/api/public/sectors/1/submissions").expect(201);
+  const body = { formVersionId: 1, attemptId: "00000000-0000-4000-8000-000000000001", capability: "A".repeat(43), answer: { questionId: 1, questionVersionId: 1, status: "answered", score: 3 } };
+  await request(app).post("/api/public/sectors/1/submissions").send(body).expect(201);
   await request(app).post("/api/public/sectors/1/submissions").expect(429)
     .expect(({ body }) => expect(body.error.code).toBe("SUBMISSION_RATE_LIMITED"));
 });

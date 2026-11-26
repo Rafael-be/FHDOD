@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import postgres from "postgres";
 import { SubmissionService } from "../../src/modules/submissions/submission.service.js";
 import { PostgresSubmissionRepository } from "../../src/modules/submissions/submission.repository.js";
@@ -59,6 +59,20 @@ describeIntegration("submissão com planilha sem funcionários", () => {
 
         let currentTime = now;
         const service = new SubmissionService(new PostgresSubmissionRepository(tx as unknown as postgres.Sql), { now: () => currentTime });
+        const publicForm = await service.currentForm(sector!.id);
+        expect(publicForm.questions.map((item) => item.position)).toEqual([1, 2, 3]);
+        expect(await tx`select id from submission_sessions where sector_id=${sector!.id}`).toHaveLength(0);
+        const firstAttemptId = randomUUID();
+        const firstCapability = randomBytes(32).toString("base64url");
+        const firstInput = { questionId: publicForm.questions[0]!.questionId, questionVersionId: publicForm.questions[0]!.questionVersionId, status: "answered" as const, score: 5 };
+        const firstStarted = await service.startWithFirstAnswer(sector!.id, publicForm.formVersionId, firstAttemptId, firstCapability, firstInput);
+        expect(firstStarted).toMatchObject({ replayed: false, session: { formVersionId: publicForm.formVersionId, expiresAt: new Date(now.getTime() + 180_000).toISOString() } });
+        expect(await tx`select question_id from submission_form_answers where session_id=${firstAttemptId}`).toHaveLength(1);
+        await expect(service.startWithFirstAnswer(sector!.id, publicForm.formVersionId, firstAttemptId, firstCapability, firstInput)).resolves.toMatchObject({ replayed: true, session: { expiresAt: firstStarted.session.expiresAt } });
+        currentTime = new Date(now.getTime() + 60_000);
+        await expect(service.answer(firstAttemptId, firstCapability, { questionId: publicForm.questions[1]!.questionId, questionVersionId: publicForm.questions[1]!.questionVersionId, status: "skipped", score: null })).resolves.toMatchObject({ expiresAt: new Date(now.getTime() + 180_000).toISOString() });
+        await expect(service.startWithFirstAnswer(sector!.id, publicForm.formVersionId, firstAttemptId, firstCapability, firstInput)).resolves.toMatchObject({ replayed: true });
+        currentTime = now;
         const inHours = await service.start(sector!.id, 1, "09:00");
         expect(inHours.session).toMatchObject({ sectorId: sector!.id, shiftSheetVersionId: version!.id, shiftRangeId: range!.id });
         expect(inHours.session.expiresAt).toBe(new Date(now.getTime() + 180_000).toISOString());
@@ -79,18 +93,22 @@ describeIntegration("submissão com planilha sem funcionários", () => {
         await expect(service.answer(outside.capability.sessionId, outside.capability.token, { questionId: standardItem.questionId, questionVersionId: npsItem.questionVersionId, status: "answered", score: 5 })).rejects.toMatchObject({ code: "SUBMISSION_QUESTION_NOT_FOUND" });
         expect(await tx`select question_id from submission_form_answers where session_id=${outside.capability.sessionId}`).toHaveLength(0);
         const firstAnswer = await service.answer(outside.capability.sessionId, outside.capability.token, { questionId: standardItem.questionId, questionVersionId: standardItem.questionVersionId, status: "answered", score: 5 });
-        expect(firstAnswer).toMatchObject({ status: "incomplete", expiresAt: new Date(now.getTime() + 300_000).toISOString() });
+        expect(firstAnswer).toMatchObject({ status: "incomplete", expiresAt: new Date(now.getTime() + 120_000).toISOString() });
         // Simulates a process restart: this instance has no shared in-memory state.
         const restartedService = new SubmissionService(new PostgresSubmissionRepository(tx as unknown as postgres.Sql), { now: () => currentTime });
         await expect(restartedService.refresh(outside.capability.sessionId, outside.capability.token)).resolves.toMatchObject({ refreshesUsed: 1 });
         await expect(restartedService.refresh(outside.capability.sessionId, "x".repeat(43))).rejects.toMatchObject({ code: "SUBMISSION_CAPABILITY_INVALID" });
         const retry = await service.answer(outside.capability.sessionId, outside.capability.token, { questionId: standardItem.questionId, questionVersionId: standardItem.questionVersionId, status: "answered", score: 5 });
-        expect(retry.expiresAt).toBe(new Date(now.getTime() + 420_000).toISOString());
+        expect(retry.expiresAt).toBe(new Date(now.getTime() + 120_000).toISOString());
         for (let attempt = 2; attempt <= 3; attempt++) {
-          await expect(service.refresh(outside.capability.sessionId, outside.capability.token)).resolves.toMatchObject({ refreshesUsed: attempt, refreshesRemaining: 3 - attempt, expiresAt: new Date(now.getTime() + (5 + 2 * attempt) * 60_000).toISOString() });
+          await expect(service.refresh(outside.capability.sessionId, outside.capability.token)).resolves.toMatchObject({ refreshesUsed: attempt, refreshesRemaining: 3 - attempt, expiresAt: new Date(now.getTime() + 120_000).toISOString() });
         }
         await expect(service.refresh(outside.capability.sessionId, outside.capability.token)).rejects.toMatchObject({ code: "SUBMISSION_REFRESH_LIMIT" });
+        const localItem = outside.questions[1]!;
+        await service.answer(outside.capability.sessionId, outside.capability.token, { questionId: localItem.questionId, questionVersionId: localItem.questionVersionId, status: "skipped", score: null });
         await expect(service.answer(outside.capability.sessionId, outside.capability.token, { questionId: npsItem.questionId, questionVersionId: npsItem.questionVersionId, status: "answered", score: 9 })).resolves.toMatchObject({ status: "complete" });
+        await expect(service.answer(outside.capability.sessionId, outside.capability.token, { questionId: npsItem.questionId, questionVersionId: npsItem.questionVersionId, status: "answered", score: 9 })).resolves.toMatchObject({ status: "complete", replayed: true });
+        await expect(service.answer(outside.capability.sessionId, outside.capability.token, { questionId: npsItem.questionId, questionVersionId: npsItem.questionVersionId, status: "answered", score: 8 })).rejects.toMatchObject({ code: "ANSWER_ALREADY_CONFIRMED" });
         const answers = await tx<{ questionId: number; text: string; score: number; status: string }[]>`
           select q.question_id as "questionId", v.text, a.score, a.status
           from submission_form_answers a
@@ -99,6 +117,7 @@ describeIntegration("submissão com planilha sem funcionários", () => {
           where a.session_id = ${outside.capability.sessionId} order by q.position`;
         expect(answers).toEqual([
           { questionId: standard!.id, text: "Qualidade", score: 5, status: "answered" },
+          { questionId: local!.id, text: "Atendimento", score: null, status: "skipped" },
           { questionId: nps!.id, text: "NPS", score: 9, status: "answered" },
         ]);
         await expect(service.refresh(outside.capability.sessionId, outside.capability.token)).rejects.toMatchObject({ code: "SUBMISSION_CLOSED" });
@@ -111,6 +130,7 @@ describeIntegration("submissão com planilha sem funcionários", () => {
           select shift_sheet_version_id as "versionId", shift_range_id as "rangeId" from submission_sessions
           where id = ${noSchedule.capability.sessionId}`).toEqual([{ versionId: null, rangeId: null }]);
         await service.answer(noSchedule.capability.sessionId, noSchedule.capability.token, { questionId: noSchedule.questions[0]!.questionId, questionVersionId: noSchedule.questions[0]!.questionVersionId, status: "answered", score: 4 });
+        await service.answer(noSchedule.capability.sessionId, noSchedule.capability.token, { questionId: noSchedule.questions[1]!.questionId, questionVersionId: noSchedule.questions[1]!.questionVersionId, status: "skipped", score: null });
         await expect(service.answer(noSchedule.capability.sessionId, noSchedule.capability.token, { questionId: noSchedule.questions[2]!.questionId, questionVersionId: noSchedule.questions[2]!.questionVersionId, status: "answered", score: 8 })).resolves.toMatchObject({ status: "complete" });
         const expiring = await service.start(sector!.id, 1, "19:00");
         currentTime = new Date(now.getTime() + 180_001);
@@ -118,7 +138,7 @@ describeIntegration("submissão com planilha sem funcionários", () => {
         expect(await tx<{ ended: boolean }[]>`select ended_at is not null as ended from submission_sessions where id=${expiring.capability.sessionId}`).toEqual([{ ended: true }]);
         await tx`update sectors set deleted_at = now() where id = ${sector!.id}`;
         await expect(service.start(sector!.id, 1, "19:00")).rejects.toMatchObject({ code: "SECTOR_NOT_FOUND" });
-        expect(await tx`select id from submission_sessions where sector_id = ${sector!.id}`).toHaveLength(4);
+        expect(await tx`select id from submission_sessions where sector_id = ${sector!.id}`).toHaveLength(5);
         throw new Error("ROLLBACK_PATIENT_FLOW");
       })).rejects.toThrow("ROLLBACK_PATIENT_FLOW");
       expect(await sql`select id from sectors where code = ${code}`).toHaveLength(0);

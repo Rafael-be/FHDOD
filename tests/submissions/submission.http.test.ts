@@ -7,7 +7,8 @@ import type { SubmissionService } from "../../src/modules/submissions/submission
 
 const receivedAnswers: Array<{ sessionId: string; token: string; input: { questionId: number; questionVersionId: number; status: string; score: number | null } }> = [];
 const service = {
-  startNow: async (sectorId: number) => ({ capability: { sessionId: "session", token: "capability" }, session: { sectorId }, questions: [] }),
+  currentForm: async (sectorId: number) => ({ sectorId, formVersionId: 1, questions: [], etag: '"one"' }),
+  startWithFirstAnswer: async (sectorId: number, _version: number, attemptId: string, token: string) => ({ capability: { sessionId: attemptId, token }, session: { sectorId }, replayed: false }),
   answer: async (sessionId: string, token: string, input: { questionId: number; questionVersionId: number; status: string; score: number | null }) => { receivedAnswers.push({ sessionId, token, input }); return { sessionId, status: "incomplete", answered: true }; },
   restart: async () => ({ capability: { sessionId: "new-session", token: "new-capability" }, session: { sectorId: 7 }, questions: [] }),
   refresh: async () => ({ expiresAt: "2026-01-01T12:05:00.000Z", refreshesUsed: 1, refreshesRemaining: 2 }),
@@ -22,8 +23,9 @@ app.use("/api", submissionRestartRoutes(service));
 app.use((error: unknown, _request: express.Request, response: express.Response, _next: express.NextFunction) => response.status(500).json({ error }));
 
 describe("anonymous submission HTTP routes", () => {
-  it("starts without an administrative cookie or CSRF token", async () => {
-    await request(app).post("/api/public/sectors/7/submissions").expect(201).expect(({ body }) => expect(body.data.capability.token).toBe("capability"));
+  it("starts on the first answer without an administrative cookie or CSRF token", async () => {
+    await request(app).get("/api/public/sectors/7/current-form").expect(200);
+    await request(app).post("/api/public/sectors/7/submissions").send({ formVersionId: 1, attemptId: sessionId, capability: "A".repeat(43), answer: { questionId: 1, questionVersionId: 2, status: "answered", score: 3 } }).expect(201).expect(({ body }) => expect(body.data.capability.token).toBe("A".repeat(43)));
   });
 
   it("requires the ephemeral capability for answers and restart", async () => {

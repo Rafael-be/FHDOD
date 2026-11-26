@@ -125,9 +125,14 @@ describeIntegration("anonymous submissions dynamic global NPS integration", () =
           from submission_form_questions fq
           where fq.form_version_id = ${globalSessions[0]!.session.formVersionId} and fq.question_id = ${global!.id}`;
         expect(preservedSnapshot).toEqual([{ questionVersionId: originalSnapshot[0]!.questionVersionId, text: "Global NPS v1" }]);
+        for (const question of globalSessions[0]!.questions.filter((item) => !item.isNps))
+          await service.answer(globalSessions[0]!.capability.sessionId, globalSessions[0]!.capability.token, {
+            questionId: question.questionId, questionVersionId: question.questionVersionId,
+            status: question.questionKind === "sector" ? "skipped" : "answered", score: question.questionKind === "sector" ? null : 5,
+          });
         await expect(service.answer(globalSessions[0]!.capability.sessionId, globalSessions[0]!.capability.token, {
           questionId: global!.id, questionVersionId: originalSnapshot[0]!.questionVersionId, status: "answered", score: 10,
-        })).resolves.toMatchObject({ status: "incomplete" });
+        })).resolves.toMatchObject({ status: "complete" });
         expect(await tx<{ questionVersionId: number }[]>`select question_version_id as "questionVersionId" from submission_form_answers where session_id=${globalSessions[0]!.capability.sessionId} and question_id=${global!.id}`)
           .toEqual([{ questionVersionId: originalSnapshot[0]!.questionVersionId }]);
 
