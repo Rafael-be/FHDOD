@@ -1,6 +1,9 @@
 import type postgres from "postgres";
 
-export interface AnalyticsFilter { from: string; to: string; sectorId?: number; sectorIds?: number[]; shiftRangeId?: number; }
+import type { AnalyticsFilter, Dashboard, GlobalQuestionMetric } from "./analytics.types.js";
+
+export type { AnalyticsFilter } from "./analytics.types.js";
+
 export class AnalyticsRepository {
   constructor(private readonly sql: postgres.Sql) {}
   async sectorIds(userId: number): Promise<number[]> {
@@ -61,7 +64,7 @@ export class AnalyticsRepository {
   }
   async globalQuestions(filter: AnalyticsFilter, allowed: number[] | null, questionId?: number) {
     const scope = this.sectorScope(filter, allowed);
-    const rows = await this.sql`
+    const rows = await this.sql<GlobalQuestionMetric[]>`
       ${this.cohort(filter, scope)}, published as (
         select c.sector_id, q.question_id, q.question_version_id, q.is_nps, q.text
         from sector_current_forms c join sectors s on s.id=c.sector_id and s.deleted_at is null
@@ -101,9 +104,9 @@ export class AnalyticsRepository {
       order by 1,2,3`;
     return rows;
   }
-  async dashboard(filter: AnalyticsFilter, allowed: number[] | null): Promise<Record<string, unknown>> {
+  async dashboard(filter: AnalyticsFilter, allowed: number[] | null): Promise<Dashboard> {
     const scope = this.sectorScope(filter, allowed);
-    const [row] = await this.sql<{ data: Record<string, unknown> }[]>`
+    const [row] = await this.sql<{ data: Dashboard }[]>`
       ${this.cohort(filter, scope)}, tickets as (
         select sector_id,ticket_type,status from ombudsman_tickets t
         where ${allowed === null} and occurred_at>=${filter.from}::timestamptz and occurred_at<${filter.to}::timestamptz

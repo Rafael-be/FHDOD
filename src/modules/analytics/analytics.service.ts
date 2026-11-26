@@ -1,6 +1,7 @@
 import type { AuthIdentity } from "../auth/auth.service.js";
 import { DomainError } from "../../shared/core.js";
-import type { AnalyticsFilter, AnalyticsRepository } from "./analytics.repository.js";
+import type { AnalyticsFilter } from "./analytics.types.js";
+import type { AnalyticsRepository } from "./analytics.repository.js";
 
 export class AnalyticsService {
   constructor(private readonly repository: AnalyticsRepository) {}

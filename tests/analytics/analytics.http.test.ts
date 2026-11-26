@@ -14,3 +14,19 @@ it("requires identity and validates bounded timezone-aware periods", async () =>
   await request(admin).get('/analytics/dashboard?from=2050-01-01T00:00:00Z&to=2050-01-02T00:00:00Z').expect(200)
     .expect(({body}) => expect(body.data.sessions.started).toBe(0));
 });
+
+it("passes selected IDs to the global question service and rejects ambiguous sector filters", async () => {
+  const calls: unknown[] = [];
+  const app = express();
+  app.use((req,_res,next) => {
+    req.identity={userId:1,sessionId:"test",role:"sector_manager",mustChangePassword:false};
+    next();
+  });
+  app.use(analyticsRoutes({globalQuestions:async (...args: unknown[]) => { calls.push(args); return []; }} as unknown as AnalyticsService));
+  app.use(errorHandler);
+  const range = {from:"2050-01-01T00:00:00Z",to:"2050-01-02T00:00:00Z"};
+  await request(app).get("/analytics/global-questions").query({...range,sectorIds:"3,8,3",questionId:"9"}).expect(200,{data:[]});
+  expect(calls).toEqual([[expect.objectContaining({role:"sector_manager"}),{...range,sectorIds:[3,8]},9]]);
+  for (const scope of [{sectorIds:"8,3",sectorId:"8"},{sectorIds:"8,0"},{sectorIds:"invalid"},{questionId:"2147483648"}])
+    await request(app).get("/analytics/global-questions").query({...range,...scope}).expect(400);
+});
