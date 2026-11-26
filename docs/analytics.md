@@ -1,5 +1,7 @@
 # Indicadores de experiência do paciente
 
+> Registro da versão anterior do dashboard. Para a integração atual, use as definições de sessão avaliada, turnos, escopo da Ouvidoria e filtros múltiplos do [contrato de indicadores e TV Wall](analytics-and-tv-wall.md).
+
 `GET /api/analytics/dashboard` exige cookie autenticado de superusuário ou gestor. Parâmetros obrigatórios `from` e `to`: ISO datetime com offset, janela crescente de até 366 dias, intervalo `[from,to)`. `sectorId` e `shiftRangeId` são filtros opcionais; o turno identifica a faixa histórica exata, não uma equipe. Gestor sem filtro recebe somente os setores com vínculo ativo; filtro fora do escopo retorna 403. A resposta usa `Cache-Control: no-store`.
 
 O envelope `{data}` contém `sessions`, `nps`, `questions`, `distribution`, `daily`, `dailyAnswers`, `sectors` e `ombudsman`. Sem respostas, contagens são zero e médias/NPS são null. Listas vazias são `[]`. Os campos das linhas agregadas usam nomes SQL (`question_id`, `question_version_id`, `is_nps`, `sector_id`, `nps_responses`). Não retornam identificadores de pacientes, capabilities, textos de manifestações nem telefones.

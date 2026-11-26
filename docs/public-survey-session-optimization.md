@@ -25,6 +25,8 @@ As próximas respostas usam `POST /api/public/submissions/:sessionId/answers`, c
 
 O POST antigo sem corpo deixa de criar sessão e retorna `400`. O frontend precisa trocar a abertura da página pelo GET e enviar a primeira resposta no POST. As respostas continuam individuais. Não há migração: `submission_sessions` já tinha versão, expiração, capability hash e estado; `submission_form_answers` já tinha chave primária `(session_id, question_id)`. As constraints históricas e a política de publicação não foram alteradas.
 
+O contrato complementar de pulo e encerramento descreve a disputa com a última resposta, o reenvio após encerramento voluntário e os novos erros de conclusão e expiração no `close`. [Contrato do frontend](analytics-and-tv-wall.md#pesquisa-pública)
+
 ## Prazos, cache e segurança
 
 A primeira resposta confirmada define `expiresAt = instante de criação + 3 minutos`. Cada resposta nova seguinte define `expiresAt = instante da confirmação + 2 minutos`, sem acumular prazo. Rejeições e repetições não renovam. O endpoint explícito `refresh` permanece para compatibilidade, limitado a três usos, e agora define o prazo em dois minutos após a chamada. O rate limit público permanece em 180/min por IP por padrão; não há `setTimeout` no fluxo.
