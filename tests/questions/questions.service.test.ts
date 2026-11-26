@@ -2,6 +2,7 @@ import { QuestionsService } from "../../src/modules/questions/questions.service.
 import { jest } from "@jest/globals";
 import type { AuthIdentity } from "../../src/modules/auth/auth.service.js";
 import type { QuestionsRepository } from "../../src/modules/questions/questions.repository.js";
+import type { QuestionsCache } from "../../src/cache/cache.service.js";
 
 const superuser: AuthIdentity = { userId: 1, sessionId: "s", role: "superuser", mustChangePassword: false };
 const manager: AuthIdentity = { userId: 2, sessionId: "s", role: "sector_manager", mustChangePassword: false };
@@ -24,6 +25,29 @@ function repository(overrides: Partial<QuestionsRepository> = {}) {
 }
 
 describe("QuestionsService", () => {
+  it("returns an authorized sector's effective questions from cache without querying PostgreSQL", async () => {
+    const listEffective = jest.fn(async () => []);
+    const cache: QuestionsCache = {
+      getEffective: async () => ({ state: "hit", value: [{ id: 1, text: "Em cache" }] }),
+      setEffective: async () => undefined,
+      invalidateQuestions: async () => undefined,
+    };
+    const service = new QuestionsService(repository({ listEffective }), cache);
+    await expect(service.listSector(manager, 7, false)).resolves.toEqual([{ id: 1, text: "Em cache" }]);
+    expect(listEffective).not.toHaveBeenCalled();
+  });
+
+  it("invalidates effective-question cache only after a successful committed mutation", async () => {
+    const invalidateQuestions = jest.fn(async () => undefined);
+    const service = new QuestionsService(repository(), {
+      getEffective: async () => ({ state: "miss" }),
+      setEffective: async () => undefined,
+      invalidateQuestions,
+    });
+    await service.createStandard(superuser, { text: "Pergunta", scope: "all_sectors", sectorIds: [] });
+    expect(invalidateQuestions).toHaveBeenCalledTimes(1);
+  });
+
   it("keeps standard and NPS management restricted to superusers", async () => {
     const service = new QuestionsService(repository());
     await expect(service.createStandard(manager, { text: "x", scope: "all_sectors", sectorIds: [], displayOrder: 1 })).rejects.toMatchObject({ code: "FORBIDDEN" });
@@ -56,6 +80,18 @@ describe("QuestionsService", () => {
     await expect(service.listCatalog(manager, { page: 1, pageSize: 25 })).rejects.toMatchObject({ code: "FORBIDDEN" });
     await expect(service.listCatalog(superuser, { page: 1, pageSize: 25 })).resolves.toMatchObject({ total: 1, items: [{ id: 10 }] });
     expect(listCatalog).toHaveBeenCalledWith(expect.objectContaining({ limit: 25, offset: 0 }));
+  });
+
+  it("lets a linked manager view only the scoped catalogue without leaking other sector associations", async () => {
+    const listCatalog = jest.fn(async () => [{ id: 10, questionKind: "standard" as const, scope: "selected_sectors" as const,
+      sectorId: null, isNps: false, displayOrder: 1, deletedAt: null, versionNumber: 1, text: "Pergunta",
+      associations: [{ sectorId: 7, source: "selected" as const, active: true }, { sectorId: 8, source: "selected" as const, active: true }], total: 1 }]);
+    const service = new QuestionsService(repository({ listCatalog, sectorAccess: async (_userId, sectorId) => sectorId === 7 }));
+    await expect(service.listCatalog(manager, { sectorId: 7, page: 1, pageSize: 25 })).resolves.toMatchObject({
+      total: 1, items: [{ id: 10, associations: [{ sectorId: 7 }] }],
+    });
+    await expect(service.listCatalog(manager, { sectorId: 8, page: 1, pageSize: 25 })).rejects.toMatchObject({ code: "FORBIDDEN" });
+    expect(listCatalog).toHaveBeenCalledTimes(1);
   });
 
   it("rejects reactivation of an already active scoped question before recreating assignments", async () => {

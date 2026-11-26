@@ -4,6 +4,7 @@ import postgres from "postgres";
 import { PostgresShiftSheetRepository } from "../../src/modules/shifts/shift-sheet.repository.js";
 import { PostgresSubmissionRepository } from "../../src/modules/submissions/submission.repository.js";
 import { assertDisposableTestDatabase, testDatabaseUrl, usesIsolatedDatabase } from "../helpers/database.js";
+import { publishEffectiveForm } from "../helpers/publish-form.js";
 
 const adminUrl = testDatabaseUrl();
 const runtimeUrl = process.env.DATABASE_URL;
@@ -30,9 +31,10 @@ describeIntegration("Phase 3 runtime RLS contract", () => {
     const suffix = randomUUID().slice(0, 8);
     const now = new Date("2026-01-01T12:00:00.000Z");
     let sectorId = 0;
-    let employeeId = 0;
     let userId = 0;
     let questionId = 0;
+    let commonQuestionId = 0;
+    let formVersionId = 0;
     let versionId = 0;
     let fixtureCurrentVersionId = 0;
     let originalCurrentVersionIds: number[] = [];
@@ -54,28 +56,38 @@ describeIntegration("Phase 3 runtime RLS contract", () => {
       userId = user[0]!.id;
       const sector = await admin<{ id: number }[]>`insert into sectors (code, name, created_by_user_id, created_at, updated_at) values (${`rls-${suffix}`}, 'Setor RLS', ${userId}, now(), now()) returning id`;
       sectorId = sector[0]!.id;
-      const employee = await admin<{ id: number }[]>`insert into employees (employee_code, full_name) values (${`EMP-${suffix}`}, 'Funcionário RLS') returning id`;
-      employeeId = employee[0]!.id;
       const question = await admin<{ id: number }[]>`insert into questions (question_kind, scope, sector_id, is_nps, display_order, created_by_user_id, created_at, updated_at) values ('standard', 'selected_sectors', null, true, 2147483647, ${userId}, now(), now()) returning id`;
       questionId = question[0]!.id;
       await admin`insert into question_versions (question_id, version_number, text, is_current, created_by_user_id, created_at) values (${questionId}, 1, 'NPS RLS', true, ${userId}, now())`;
       await admin`insert into sector_nps_assignments (sector_id, question_id, assignment_source, assigned_at, assigned_by_user_id) values (${sectorId}, ${questionId}, 'specific', now(), ${userId})`;
+      const common = await admin<{ id: number }[]>`insert into questions (question_kind, scope, sector_id, is_nps, display_order, created_by_user_id, created_at, updated_at) values ('standard', 'selected_sectors', null, false, 1, ${userId}, now(), now()) returning id`;
+      commonQuestionId = common[0]!.id;
+      await admin`insert into question_versions (question_id, version_number, text, is_current, created_by_user_id, created_at) values (${commonQuestionId}, 1, 'Atendimento RLS', true, ${userId}, now())`;
+      await admin`insert into question_sector_assignments(question_id,sector_id,assignment_source,display_order,assigned_by_user_id)
+        values (${commonQuestionId},${sectorId},'selected',1,${userId})`;
+      formVersionId = await publishEffectiveForm(admin, sectorId, userId);
 
       const shifts = new PostgresShiftSheetRepository(runtime);
-      const sheet = await shifts.transaction((repository) => repository.replaceCurrentSheet([{
-        codigo_setor: `rls-${suffix}`,
-        nome_setor: "Setor RLS",
-        nome_turno: "Dia",
-        hora_inicio: "08:00",
-        hora_fim: "16:00",
-        codigo_funcionario: `EMP-${suffix}`,
-        nome_funcionario: "Funcionário RLS",
-        dia_semana_iso: "4",
-        line: 2,
-        startsAt: 480,
-        endsAt: 960,
-        dayOfWeek: 4,
-      }], now));
+      const activeSectors = await shifts.sectors();
+      const rows = activeSectors.flatMap((activeSector) => Array.from({ length: 7 }, (_, index) => {
+        const dayOfWeek = index + 1;
+        const isFixtureSector = activeSector.code === `rls-${suffix}`;
+        const open = isFixtureSector && dayOfWeek === 4;
+        return {
+          codigo_setor: activeSector.code,
+          nome_setor: activeSector.name,
+          nome_turno: open ? "Dia" : "FECHADO",
+          hora_inicio: open ? "08:00" : "00:00",
+          hora_fim: open ? "16:00" : "00:00",
+          dia_semana_iso: String(dayOfWeek),
+          line: dayOfWeek + 1,
+          startsAt: open ? 480 : 0,
+          endsAt: open ? 960 : 0,
+          dayOfWeek,
+          closed: !open,
+        };
+      }));
+      const sheet = await shifts.transaction((repository) => repository.replaceCurrentSheet(rows, now));
       versionId = sheet.versionId;
       await shifts.recordUploadAttempt(userId, "accepted", versionId, []);
 
@@ -89,39 +101,59 @@ describeIntegration("Phase 3 runtime RLS contract", () => {
         localTime: "09:00",
         now,
       }));
-      expect(snapshot.questions).toHaveLength(1);
+      expect(snapshot.questions).toHaveLength(2);
+      formVersionId = snapshot.session.formVersionId;
+      const standardQuestion = snapshot.questions.find((item) => !item.isNps)!;
       await submissions.transaction((repository) => repository.saveAnswer(sessionId, {
-        sessionQuestionId: snapshot.questions[0]!.sessionQuestionId,
+        questionId: standardQuestion.questionId,
+        questionVersionId: standardQuestion.questionVersionId,
+        status: "answered",
+        score: 5,
+      }, now));
+      const npsQuestion = snapshot.questions.find((item) => item.isNps)!;
+      await submissions.transaction((repository) => repository.saveAnswer(sessionId, {
+        questionId: npsQuestion.questionId,
+        questionVersionId: npsQuestion.questionVersionId,
         status: "answered",
         score: 10,
       }, now));
 
-      await expect(runtime`delete from submission_answers where false`).rejects.toMatchObject({ code: "42501" });
+      await expect(runtime`delete from submission_form_answers where false`).rejects.toMatchObject({ code: "42501" });
     } finally {
+      try {
       if (sessionId) {
         await admin`delete from dashboard_dirty_groups where sector_id = ${sectorId}`;
-        await admin`delete from submission_answers where session_question_id in (select id from submission_session_questions where session_id = ${sessionId})`;
-        await admin`delete from submission_session_questions where session_id = ${sessionId}`;
+        await admin`delete from submission_form_answers where session_id = ${sessionId}`;
         await admin`delete from submission_sessions where id = ${sessionId}`;
+      }
+      if (formVersionId) {
+        await admin`delete from sector_current_forms where sector_id=${sectorId}`;
+        await admin`delete from submission_form_questions where form_version_id = ${formVersionId}`;
+        await admin`delete from submission_form_versions where id = ${formVersionId}`;
       }
       if (versionId) {
         await admin`delete from shift_upload_attempts where resulting_version_id = ${versionId}`;
-        await admin`delete from employee_shift_assignments where shift_sheet_version_id = ${versionId}`;
         await admin`delete from sector_shift_ranges where shift_sheet_version_id = ${versionId}`;
+        await admin`delete from sector_shift_days where shift_sheet_version_id = ${versionId}`;
         await admin`delete from shift_sheet_versions where id = ${versionId}`;
       }
       if (fixtureCurrentVersionId) await admin`delete from shift_sheet_versions where id = ${fixtureCurrentVersionId}`;
-      await restoreCurrentVersions(admin, originalCurrentVersionIds);
-      await expect(currentVersionIds(admin)).resolves.toEqual(originalCurrentVersionIds);
       if (questionId) {
         await admin`delete from sector_nps_assignments where question_id = ${questionId}`;
         await admin`delete from question_versions where question_id = ${questionId}`;
         await admin`delete from questions where id = ${questionId}`;
       }
-      if (employeeId) await admin`delete from employees where id = ${employeeId}`;
+      if (commonQuestionId) {
+        await admin`delete from question_sector_assignments where question_id=${commonQuestionId}`;
+        await admin`delete from question_versions where question_id = ${commonQuestionId}`;
+        await admin`delete from questions where id = ${commonQuestionId}`;
+      }
       if (sectorId) await admin`delete from sectors where id = ${sectorId}`;
       if (userId) await admin`delete from users where id = ${userId}`;
-      await Promise.all([admin.end({ timeout: 5 }), runtime.end({ timeout: 5 })]);
+      // Format 2 validates all active sectors; remove the fixture before restoring its predecessor.
+      await restoreCurrentVersions(admin, originalCurrentVersionIds);
+      await expect(currentVersionIds(admin)).resolves.toEqual(originalCurrentVersionIds);
+      } finally { await Promise.all([admin.end({ timeout: 5 }), runtime.end({ timeout: 5 })]); }
     }
   });
 

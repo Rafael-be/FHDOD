@@ -1,3 +1,5 @@
+import { AnalyticsService } from "./modules/analytics/analytics.service.js";
+import { AnalyticsRepository } from "./modules/analytics/analytics.repository.js";
 import "dotenv/config";
 import type { Server } from "node:http";
 import { loadConfig } from "./config/env.js";
@@ -18,8 +20,15 @@ import { PostgresShiftSheetRepository } from "./modules/shifts/shift-sheet.repos
 import { ShiftSheetService } from "./modules/shifts/shift-sheet.service.js";
 import { PostgresSubmissionRepository } from "./modules/submissions/submission.repository.js";
 import { SubmissionService } from "./modules/submissions/submission.service.js";
+import { publishedFormCache } from "./modules/submissions/form-cache.js";
+import { FormDraftService } from "./modules/submissions/form-draft.service.js";
 import { QuestionsRepository } from "./modules/questions/questions.repository.js";
 import { QuestionsService } from "./modules/questions/questions.service.js";
+import { RedisCacheService } from "./cache/cache.service.js";
+import { NodeRedisClient } from "./cache/redis.client.js";
+import { SecurityRateLimiter } from "./security/rate-limiter.js";
+import { OmbudsmanRepository } from "./modules/ombudsman/ombudsman.repository.js";
+import { OmbudsmanService } from "./modules/ombudsman/ombudsman.service.js";
 import {
   logServerShutdownTimedOut,
   logServerStarted,
@@ -45,7 +54,11 @@ function closeServer(server: Server): Promise<void> {
 
 async function startServer(): Promise<void> {
   const config = loadConfig();
+  publishedFormCache.setTracing(config.NODE_ENV === "development" && config.PERFORMANCE_MEASUREMENTS);
   const database = createDatabase(config);
+  const redis = config.CACHE_ENABLED || config.SECURITY_REDIS_ENABLED ? new NodeRedisClient(config) : undefined;
+  const cache = new RedisCacheService(redis, config.CACHE_ENABLED, config.CACHE_QUESTIONS_TTL_SECONDS);
+  const securityRateLimiter = new SecurityRateLimiter(redis, config.SECURITY_REDIS_ENABLED, config.JWT_SECRET);
   const clock = new SystemClock();
   const healthService = new HealthService(new HealthRepository(database.client));
 
@@ -57,6 +70,10 @@ async function startServer(): Promise<void> {
     process.exitCode = 1;
     return;
   }
+
+  if (redis) void redis.connect().catch(() => {
+    process.stderr.write(`${JSON.stringify({ level: "warn", event: "cache.redis_unavailable" })}\n`);
+  });
 
   const authService = new AuthService(
     new PostgresAuthRepository(database.client),
@@ -73,10 +90,14 @@ async function startServer(): Promise<void> {
     ),
     auditService: new AuditService(new AuditRepository(database.client)),
     healthService,
+    analyticsService: new AnalyticsService(new AnalyticsRepository(database.client)),
     contentService: new ContentService(new ContentRepository(database.client)),
     shiftSheetService: new ShiftSheetService(new PostgresShiftSheetRepository(database.client), clock.now.bind(clock)),
-    submissionService: new SubmissionService(new PostgresSubmissionRepository(database.client), clock),
-    questionsService: new QuestionsService(new QuestionsRepository(database.client)),
+    submissionService: new SubmissionService(new PostgresSubmissionRepository(database.client, config.NODE_ENV === "development" && config.PERFORMANCE_MEASUREMENTS), clock, undefined, config.NODE_ENV === "development" && config.PERFORMANCE_MEASUREMENTS),
+    formDraftService: new FormDraftService(database.client, cache),
+    questionsService: new QuestionsService(new QuestionsRepository(database.client), cache),
+    securityRateLimiter,
+    ombudsmanService: new OmbudsmanService(new OmbudsmanRepository(database.client), clock),
   });
   const server = app.listen(config.PORT, () => logServerStarted(config.PORT));
 
@@ -99,6 +120,8 @@ async function startServer(): Promise<void> {
 
     try {
       await closeServer(server);
+      if(config.PERFORMANCE_MEASUREMENTS) process.stdout.write(JSON.stringify({level:"info",event:"cache.metrics",...cache.metrics()})+"\n");
+      await redis?.close();
       await database.close();
       logServerStopped();
     } catch (error) {

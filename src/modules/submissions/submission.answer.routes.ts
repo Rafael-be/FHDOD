@@ -1,20 +1,23 @@
 import { Router } from "express";
 import { z } from "zod";
 import type { SubmissionService } from "./submission.service.js";
-import { submissionPublicLimiter } from "./submission.public-limiter.js";
+import { rateLimitByIp } from "../../security/rate-limit.middleware.js";
+import type { SecurityRateLimiter } from "../../security/rate-limiter.js";
+import { surveyEvent } from "../../shared/performance.js";
 
-const input = z.object({ sessionQuestionId: z.coerce.number().int().positive(), status: z.enum(["answered", "skipped"]), score: z.number().int().nullable() });
+const input = z.object({ questionId: z.number().int().positive(), questionVersionId: z.number().int().positive(), status: z.enum(["answered", "skipped"]), score: z.number().int().nullable() });
+const sessionId = z.string().uuid();
 
-export function submissionAnswerRoutes(service: SubmissionService): Router {
+export function submissionAnswerRoutes(service: SubmissionService, limiter?: SecurityRateLimiter, limit = 180): Router {
   const router = Router();
-  router.use(submissionPublicLimiter);
+  if (limiter) router.use("/public/submissions/:sessionId/answers", rateLimitByIp(limiter, "submission-public", { limit, windowSeconds: 60 }, "SUBMISSION_RATE_LIMITED", "Muitas solicitações. Aguarde um momento."));
   router.post("/public/submissions/:sessionId/answers", async (request, response, next) => {
     try {
       const token = request.get("x-session-capability");
       if (!token) { response.status(403).json({ error: { code: "SUBMISSION_CAPABILITY_INVALID", message: "Capability de sessão ausente." } }); return; }
       const body = input.parse(request.body);
-      response.json({ data: await service.answer(request.params.sessionId, token, body) });
-    } catch (error) { next(error); }
+      response.json({ data: await service.answer(sessionId.parse(request.params.sessionId), token, body) });
+    } catch (error) { surveyEvent((error as { code?: string }).code === "SUBMISSION_EXPIRED" ? "SESSION_EXPIRED" : "ANSWER_REJECTED", "submission.answer", (error as { code?: string }).code ?? "VALIDATION_FAILED"); next(error); }
   });
   return router;
 }

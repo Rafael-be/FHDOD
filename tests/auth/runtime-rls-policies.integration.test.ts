@@ -26,10 +26,14 @@ integration("runtime RLS policies", () => {
           where schemaname = 'public' and policyname like 'fhdod_api_%'
           order by tablename, cmd
         `;
-        expect(policies).toHaveLength(53);
+        // 0014/0015 add ten policies; 0017 adds two legacy SELECT policies.
+        expect(policies).toHaveLength(77);
         expect(policies.every((policy) => policy.roles.includes("fhdod_api"))).toBe(true);
-        expect(policies.some((policy) => policy.cmd === "ALL" || policy.cmd === "DELETE")).toBe(false);
+        expect(policies.some((policy) => policy.cmd === "ALL" || (policy.cmd === "DELETE" &&
+          !["submission_form_drafts", "submission_form_draft_questions"].includes(policy.tablename)))).toBe(false);
         expect(policies).toEqual(expect.arrayContaining([
+          expect.objectContaining({ tablename: "submission_session_questions", cmd: "SELECT" }),
+          expect.objectContaining({ tablename: "submission_answers", cmd: "SELECT" }),
           expect.objectContaining({ tablename: "users", cmd: "SELECT" }),
           expect.objectContaining({ tablename: "users", cmd: "INSERT" }),
           expect.objectContaining({ tablename: "users", cmd: "UPDATE" }),
@@ -39,6 +43,11 @@ integration("runtime RLS policies", () => {
           expect.objectContaining({ tablename: "audit_logs", cmd: "INSERT" }),
           expect.objectContaining({ tablename: "content_page_versions", cmd: "INSERT" }),
           expect.objectContaining({ tablename: "sector_shift_ranges", cmd: "SELECT" }),
+          expect.objectContaining({ tablename: "sector_shift_days", cmd: "SELECT" }),
+          expect.objectContaining({ tablename: "sector_shift_days", cmd: "INSERT" }),
+          expect.objectContaining({ tablename: "ombudsman_tickets", cmd: "SELECT" }),
+          expect.objectContaining({ tablename: "ombudsman_tickets", cmd: "INSERT" }),
+          expect.objectContaining({ tablename: "ombudsman_tickets", cmd: "UPDATE" }),
           expect.objectContaining({ tablename: "questions", cmd: "SELECT" }),
           expect.objectContaining({ tablename: "questions", cmd: "INSERT" }),
           expect.objectContaining({ tablename: "questions", cmd: "UPDATE" }),
@@ -47,6 +56,16 @@ integration("runtime RLS policies", () => {
           expect.objectContaining({ tablename: "sector_nps_assignments", cmd: "UPDATE" }),
           expect.objectContaining({ tablename: "submission_sessions", cmd: "INSERT" }),
           expect.objectContaining({ tablename: "submission_answers", cmd: "UPDATE" }),
+          expect.objectContaining({ tablename: "submission_form_versions", cmd: "SELECT" }),
+          expect.objectContaining({ tablename: "submission_form_versions", cmd: "INSERT" }),
+          expect.objectContaining({ tablename: "submission_form_questions", cmd: "SELECT" }),
+          expect.objectContaining({ tablename: "submission_form_questions", cmd: "INSERT" }),
+          expect.objectContaining({ tablename: "submission_form_answers", cmd: "SELECT" }),
+          expect.objectContaining({ tablename: "submission_form_answers", cmd: "INSERT" }),
+          expect.objectContaining({ tablename: "submission_form_answers", cmd: "UPDATE" }),
+          expect.objectContaining({ tablename: "submission_form_drafts", cmd: "DELETE" }),
+          expect.objectContaining({ tablename: "submission_form_draft_questions", cmd: "INSERT" }),
+          expect.objectContaining({ tablename: "sector_current_forms", cmd: "UPDATE" }),
         ]));
 
         throw new Error(rollbackMarker);

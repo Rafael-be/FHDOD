@@ -3,19 +3,31 @@ import postgres from "postgres";
 import { randomUUID } from "node:crypto";
 import { jest } from "@jest/globals";
 import { QuestionsRepository } from "../../src/modules/questions/questions.repository.js";
+import { QuestionsService } from "../../src/modules/questions/questions.service.js";
 import { testDatabaseUrl, usesIsolatedDatabase } from "../helpers/database.js";
+import type { AuthIdentity } from "../../src/modules/auth/auth.service.js";
 
 const testUrl = testDatabaseUrl();
 const describeIntegration = usesIsolatedDatabase(testUrl, process.env.DATABASE_URL) ? describe : describe.skip;
+const superuser: AuthIdentity = { userId: 1, sessionId: "questions-integration", role: "superuser", mustChangePassword: false };
 
 jest.setTimeout(15_000);
+
+// Keep each rollback fixture independent of a pre-existing global NPS in the local copy.
+function isolatedTransaction<T>(sql: postgres.Sql, work: (tx: postgres.Sql) => Promise<T>): Promise<T> {
+  return sql.begin(async (tx) => {
+    await tx`update questions set deleted_at=now() where is_nps=true and scope='all_sectors' and deleted_at is null`;
+    return work(tx as unknown as postgres.Sql);
+  }) as Promise<T>;
+}
+
 
 describeIntegration("QuestionsRepository PostgreSQL integration", () => {
   it("creates a version, reorders it and rolls back the complete transaction", async () => {
     const sql = postgres(testUrl!, { max: 1 });
     const suffix = randomUUID().slice(0, 8);
     try {
-      await expect(sql.begin(async (tx) => {
+      await expect(isolatedTransaction(sql, async (tx) => {
         const repository = new QuestionsRepository(tx as unknown as postgres.Sql);
         const [actor] = await tx<{ id: number }[]>`
           insert into users(role_id,full_name,email,password_hash,created_at,updated_at)
@@ -66,7 +78,7 @@ describeIntegration("QuestionsRepository PostgreSQL integration", () => {
     const sql = postgres(testUrl!, { max: 1 });
     const suffix = randomUUID().slice(0, 8);
     try {
-      await expect(sql.begin(async (tx) => {
+      await expect(isolatedTransaction(sql, async (tx) => {
         const repository = new QuestionsRepository(tx as unknown as postgres.Sql);
         const [actor] = await tx<{ id: number }[]>`
           insert into users(role_id,full_name,email,password_hash,created_at,updated_at)
@@ -95,7 +107,7 @@ describeIntegration("QuestionsRepository PostgreSQL integration", () => {
     const sql = postgres(testUrl!, { max: 1 });
     const suffix = randomUUID().slice(0, 8);
     try {
-      await expect(sql.begin(async (tx) => {
+      await expect(isolatedTransaction(sql, async (tx) => {
         const repository = new QuestionsRepository(tx as unknown as postgres.Sql);
         const [actor] = await tx<{ id: number }[]>`
           insert into users(role_id,full_name,email,password_hash,created_at,updated_at)
@@ -133,11 +145,50 @@ describeIntegration("QuestionsRepository PostgreSQL integration", () => {
     }
   });
 
+  it("keeps common positions unique when questions are reactivated after a reorder", async () => {
+    const sql = postgres(testUrl!, { max: 1 });
+    const suffix = randomUUID().slice(0, 8);
+    try {
+      await expect(isolatedTransaction(sql, async (tx) => {
+        const repository = new QuestionsRepository(tx as unknown as postgres.Sql);
+        const [actor] = await tx<{ id: number }[]>`
+          insert into users(role_id,full_name,email,password_hash,created_at,updated_at)
+          select id,${`Reactivation ordering ${suffix}`},${`reactivation-ordering-${suffix}@test.invalid`},'hash',now(),now()
+          from roles where code='superuser' returning id`;
+        const [sector] = await tx<{ id: number }[]>`
+          insert into sectors(code,name,created_at,updated_at)
+          values(${`reactivation-ordering-${suffix}`},'Reactivation ordering',now(),now()) returning id`;
+        const serviceRepository = Object.assign(repository, {
+          transaction: async <T>(work: (nested: QuestionsRepository) => Promise<T>) => work(repository),
+        });
+        const service = new QuestionsService(serviceRepository);
+        const identity = { ...superuser, userId: actor!.id };
+
+        const local = await repository.createSector(sector!.id, "Local", actor!.id);
+        const standard = await repository.createStandard("Padrão", "selected_sectors", [sector!.id], actor!.id);
+        await service.setDeleted(identity, local.id, true);
+        await repository.reorderSectorQuestions(sector!.id, [standard.id]);
+        await expect(service.setDeleted(identity, local.id, false)).rejects.toMatchObject({ code: "QUESTION_ORDER_CONFLICT" });
+
+        await service.setDeleted(identity, standard.id, true);
+        const first = await repository.createSector(sector!.id, "Local inicial", actor!.id);
+        await repository.reorderSectorQuestions(sector!.id, [first.id]);
+        const tail = await repository.createSector(sector!.id, "Local final", actor!.id);
+        await repository.reorderSectorQuestions(sector!.id, [first.id, tail.id]);
+        await service.setDeleted(identity, standard.id, false);
+        expect((await repository.listEffective(sector!.id, false)).map((item) => item.displayOrder)).toEqual([1, 2, 3]);
+        throw new Error("ROLLBACK_TEST");
+      })).rejects.toThrow("ROLLBACK_TEST");
+    } finally {
+      await sql.end({ timeout: 5 });
+    }
+  });
+
   it("rejects incompatible direct links while accepting valid standard and NPS links", async () => {
     const sql = postgres(testUrl!, { max: 1 });
     const suffix = randomUUID().slice(0, 8);
     try {
-      await expect(sql.begin(async (tx) => {
+      await expect(isolatedTransaction(sql, async (tx) => {
         const repository = new QuestionsRepository(tx as unknown as postgres.Sql);
         const [actor] = await tx<{ id: number }[]>`
           insert into users(role_id,full_name,email,password_hash,created_at,updated_at)
@@ -168,7 +219,7 @@ describeIntegration("QuestionsRepository PostgreSQL integration", () => {
     const sql = postgres(testUrl!, { max: 1 });
     const suffix = randomUUID().slice(0, 8);
     try {
-      await expect(sql.begin(async (tx) => {
+      await expect(isolatedTransaction(sql, async (tx) => {
         const repository = new QuestionsRepository(tx as unknown as postgres.Sql);
         const [actor] = await tx<{ id: number }[]>`
           insert into users(role_id,full_name,email,password_hash,created_at,updated_at)
@@ -189,7 +240,7 @@ describeIntegration("QuestionsRepository PostgreSQL integration", () => {
     const sql = postgres(testUrl!, { max: 1 });
     const suffix = randomUUID().slice(0, 8);
     try {
-      await expect(sql.begin(async (tx) => {
+      await expect(isolatedTransaction(sql, async (tx) => {
         const repository = new QuestionsRepository(tx as unknown as postgres.Sql);
         const [actor] = await tx<{ id: number }[]>`
           insert into users(role_id,full_name,email,password_hash,created_at,updated_at)
@@ -199,7 +250,7 @@ describeIntegration("QuestionsRepository PostgreSQL integration", () => {
         await expect(repository.createNps("Segundo NPS global", "all_sectors", [], actor!.id)).rejects.toMatchObject({ code: "23505" });
         return nps;
       })).rejects.toMatchObject({ code: "23505" });
-      await expect(sql.begin(async (tx) => {
+      await expect(isolatedTransaction(sql, async (tx) => {
         const repository = new QuestionsRepository(tx as unknown as postgres.Sql);
         const [actor] = await tx<{ id: number }[]>`
           insert into users(role_id,full_name,email,password_hash,created_at,updated_at)
@@ -221,7 +272,7 @@ describeIntegration("QuestionsRepository PostgreSQL integration", () => {
     const sql = postgres(testUrl!, { max: 1 });
     const suffix = randomUUID().slice(0, 8);
     try {
-      await expect(sql.begin(async (tx) => {
+      await expect(isolatedTransaction(sql, async (tx) => {
         const repository = new QuestionsRepository(tx as unknown as postgres.Sql);
         const [actor] = await tx<{ id: number }[]>`
           insert into users(role_id,full_name,email,password_hash,created_at,updated_at)
@@ -249,7 +300,7 @@ describeIntegration("QuestionsRepository PostgreSQL integration", () => {
     const sql = postgres(testUrl!, { max: 1 });
     const suffix = randomUUID().slice(0, 8);
     try {
-      await expect(sql.begin(async (tx) => {
+      await expect(isolatedTransaction(sql, async (tx) => {
         const repository = new QuestionsRepository(tx as unknown as postgres.Sql);
         const [actor] = await tx<{ id: number }[]>`insert into users(role_id,full_name,email,password_hash,created_at,updated_at) select id,${`Catalogue ${suffix}`},${`catalogue-${suffix}@test.invalid`},'hash',now(),now() from roles where code='superuser' returning id`;
         const [sector] = await tx<{ id: number }[]>`insert into sectors(code,name,created_at,updated_at) values(${`catalogue-${suffix}`},'Catalogue',now(),now()) returning id`;

@@ -2,7 +2,7 @@ import type { NextFunction, Request, Response } from "express";
 import { ZodError } from "zod";
 import { logInternalError, logRequestRejection, logValidationFailure } from "./logger.js";
 
-export class DomainError extends Error { constructor(public readonly code: string, message: string, public readonly status = 400) { super(message); } }
+export class DomainError extends Error { constructor(public readonly code: string, message: string, public readonly status = 400, public readonly details?: unknown) { super(message); } }
 export const forbidden = (message = "Você não possui permissão para esta operação.") => new DomainError("FORBIDDEN", message, 403);
 export const notFound = (message = "Recurso não encontrado.") => new DomainError("NOT_FOUND", message, 404);
 /** Converts unmatched HTTP routes to the API's standard error envelope. */
@@ -13,7 +13,7 @@ function bodyParserError(error: unknown, type: "entity.parse.failed" | "entity.t
 }
 
 export function errorHandler(error: unknown, request: Request, response: Response, _next: NextFunction): void {
-  if (error instanceof DomainError) { logRequestRejection(error.code, error.status, request); response.status(error.status).json({ error: { code: error.code, message: error.message } }); return; }
+  if (error instanceof DomainError) { logRequestRejection(error.code, error.status, request); response.status(error.status).json({ error: { code: error.code, message: error.message, ...(error.details === undefined ? {} : { details: error.details }) } }); return; }
   if (bodyParserError(error, "entity.parse.failed")) {
     logRequestRejection("INVALID_JSON", 400, request);
     response.status(400).json({ error: { code: "INVALID_JSON", message: "JSON inválido." } });

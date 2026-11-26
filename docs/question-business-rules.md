@@ -10,7 +10,7 @@
 
 `question_sector_assignments` guarda o setor, a posição e o estado do vínculo de uma pergunta padrão. A posição é independente por setor, mas a sequência comum combina perguntas padrão e setoriais. Inclusões calculam `MAX(display_order) + 1` nessa sequência e usam inserção em lote; NPS não participa.
 
-Ao criar um setor, perguntas padrão globais ativas são herdadas em ordem determinística, com posições iniciando em 1. O NPS global continua dinâmico e não recebe vínculo comum.
+Ao criar um setor, perguntas padrão globais ativas são herdadas em ordem determinística, com posições iniciando em 1. O NPS global continua dinâmico e não recebe vínculo comum. A tabela `sector_nps_assignments` é reservada a overrides ativos `selected_sectors` com fonte `specific`; linhas encerradas anteriores a essa regra permanecem somente como histórico, não podem ser alteradas nem reativadas e não autorizam novos vínculos encerrados equivalentes.
 
 Reordenar um setor recebe a sequência completa de perguntas comuns ativas elegíveis desse setor e altera somente esse setor. O NPS é excluído da reordenação comum. Criação, reativação de vínculo e reordenação usam o mesmo lock transacional por setor.
 

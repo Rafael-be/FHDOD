@@ -42,5 +42,5 @@ export async function listEffectiveQuestions(
         )
       )
     ) ${deleted}
-    order by q.is_nps, case when q.question_kind='sector' then 0 else 1 end, "displayOrder", q.id`;
+    order by q.is_nps, "displayOrder", q.id`;
 }

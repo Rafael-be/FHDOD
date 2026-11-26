@@ -50,6 +50,83 @@
       "when": 1793903993237,
       "tag": "0006_enforce_question_link_integrity",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793990400000,
+      "tag": "0007_enforce_nps_scope_integrity",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1795291200000,
+      "tag": "0008_shift_sheets_without_employees",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1795377600000,
+      "tag": "0009_ombudsman_tickets",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1795377601000,
+      "tag": "0010_published_submission_forms",
+      "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1795377602000,
+      "tag": "0011_allow_form_republication",
+      "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1795377603000,
+      "tag": "0012_restrict_form_mutation",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1795377604000,
+      "tag": "0013_persist_submission_capabilities",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1795377605000,
+      "tag": "0014_submission_form_drafts",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1795377606000,
+      "tag": "0015_sector_current_forms",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1795377607000,
+      "tag": "0016_validate_current_form",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1795377608000,
+      "tag": "0017_analytics_legacy_reads",
+      "breakpoints": true
     }
   ]
 }

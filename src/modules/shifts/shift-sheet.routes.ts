@@ -5,7 +5,19 @@ import type { ShiftSheetService } from "./shift-sheet.service.js";
 
 export function shiftSheetRoutes(service: ShiftSheetService, auth: AuthService): Router {
   const router = Router();
-  router.use(requireRole("superuser"));
+  router.use("/shift-sheets", requireRole("superuser"));
+  router.get("/shift-sheets/template", async (_request, response, next) => {
+    try {
+      const csv = await service.template();
+      response.status(200).type("text/csv; charset=utf-8").set("Content-Disposition", "attachment; filename=modelo-horarios.csv").send(Buffer.from(csv));
+    } catch (error) { next(error); }
+  });
+  router.get("/shift-sheets/current/export", async (_request, response, next) => {
+    try {
+      const csv = await service.download();
+      response.status(200).type("text/csv; charset=utf-8").set("Content-Disposition", "attachment; filename=planilha-horarios.csv").send(Buffer.from(csv));
+    } catch (error) { next(error); }
+  });
   router.get("/shift-sheets", async (_request, response, next) => {
     try {
       const csv = await service.download();

@@ -9,11 +9,13 @@ export interface QuestionRow {
   displayOrder: number;
   deletedAt: Date | null;
   versionNumber: number;
+  questionVersionId?: number;
   text: string;
   npsSource?: "global" | "specific";
 }
 
 export interface CatalogQuestion extends QuestionRow {
+  questionVersionId: number;
   associations: Array<{ sectorId: number; source: "global" | "selected" | "specific"; active: boolean }>;
   total: number;
 }
@@ -65,7 +67,7 @@ export class QuestionsRepository {
     return this.sql<QuestionRow[]>`
       select q.id,q.question_kind as "questionKind",q.scope,q.sector_id as "sectorId",q.is_nps as "isNps",
         case when q.is_nps then 2147483647 else coalesce(a.display_order,q.display_order) end as "displayOrder",
-        q.deleted_at as "deletedAt",v.version_number as "versionNumber",v.text,
+        q.deleted_at as "deletedAt",v.version_number as "versionNumber",v.id as "questionVersionId",v.text,
         case when q.is_nps and override.id is not null then 'specific'
              when q.is_nps and global_nps.id is not null then 'global' end as "npsSource"
       from questions q join question_versions v on v.question_id=q.id and v.is_current=true
@@ -89,7 +91,7 @@ export class QuestionsRepository {
       or (q.is_nps=false and exists(select 1 from question_sector_assignments a where a.question_id=q.id and a.sector_id=${input.sectorId} and a.ended_at is null))
     )`;
     return this.sql<CatalogQuestion[]>`
-      select q.id,q.question_kind as "questionKind",q.scope,q.sector_id as "sectorId",q.is_nps as "isNps",q.display_order as "displayOrder",q.deleted_at as "deletedAt",v.version_number as "versionNumber",v.text,
+      select q.id,q.question_kind as "questionKind",q.scope,q.sector_id as "sectorId",q.is_nps as "isNps",q.display_order as "displayOrder",q.deleted_at as "deletedAt",v.version_number as "versionNumber",v.id as "questionVersionId",v.text,
         coalesce(assoc.items,'[]'::jsonb) as associations, count(*) over()::int as total
       from questions q join question_versions v on v.question_id=q.id and v.is_current=true
       left join lateral (
@@ -107,7 +109,7 @@ export class QuestionsRepository {
 
   async catalogQuestion(id: number): Promise<CatalogQuestion | null> {
     const direct = await this.sql<CatalogQuestion[]>`
-      select q.id,q.question_kind as "questionKind",q.scope,q.sector_id as "sectorId",q.is_nps as "isNps",q.display_order as "displayOrder",q.deleted_at as "deletedAt",v.version_number as "versionNumber",v.text,
+      select q.id,q.question_kind as "questionKind",q.scope,q.sector_id as "sectorId",q.is_nps as "isNps",q.display_order as "displayOrder",q.deleted_at as "deletedAt",v.version_number as "versionNumber",v.id as "questionVersionId",v.text,
         coalesce(assoc.items,'[]'::jsonb) as associations, 1::int as total
       from questions q join question_versions v on v.question_id=q.id and v.is_current=true
       left join lateral (select jsonb_agg(jsonb_build_object('sectorId',x.sector_id,'source',x.assignment_source,'active',x.ended_at is null) order by x.sector_id,x.assigned_at desc) as items from (
@@ -223,12 +225,16 @@ export class QuestionsRepository {
     }
   }
 
+  async lockSectorQuestionOrder(sectorId: number): Promise<void> {
+    await this.sql`select pg_advisory_xact_lock(912004, ${sectorId})`;
+  }
+
   async reorderStandardQuestions(sectorId: number, ids: number[]): Promise<void> {
     await this.reorderSectorQuestions(sectorId, ids);
   }
 
   async createSector(sectorId: number, text: string, actorId: number): Promise<QuestionRow> {
-    await this.sql`select pg_advisory_xact_lock(912004, ${sectorId})`;
+    await this.lockSectorQuestionOrder(sectorId);
     const rows = await this.sql<QuestionRow[]>`
       insert into questions(question_kind,scope,sector_id,is_nps,display_order,created_by_user_id)
       select 'sector','sector_only',${sectorId},false,greatest(coalesce(max(local.display_order),0),coalesce((select max(a.display_order) from question_sector_assignments a where a.sector_id=${sectorId}),0))+1,${actorId}
@@ -278,6 +284,49 @@ export class QuestionsRepository {
   }
 
   async reactivateScoped(question: QuestionRow): Promise<void> {
+    if (question.isNps) {
+      await this.sql`update questions set deleted_at=null,updated_at=now() where id=${question.id} and deleted_at is not null`;
+      return;
+    }
+
+    const assignments = await this.sql<{ id: number; sectorId: number; displayOrder: number }[]>`
+      select id,sector_id as "sectorId",display_order as "displayOrder"
+      from question_sector_assignments
+      where question_id=${question.id} and ended_at is null
+      order by sector_id,id`;
+    for (const assignment of assignments) {
+      await this.sql`select pg_advisory_xact_lock(912004, ${assignment.sectorId})`;
+      const conflict = await this.sql<{ present: boolean }[]>`
+        select exists(
+          select 1
+          from questions q
+          where q.question_kind='sector' and q.sector_id=${assignment.sectorId}
+            and q.deleted_at is null and q.display_order=${assignment.displayOrder}
+          union all
+          select 1
+          from question_sector_assignments a
+          join questions q on q.id=a.question_id
+          where a.sector_id=${assignment.sectorId} and a.ended_at is null
+            and a.question_id<>${question.id} and a.display_order=${assignment.displayOrder}
+            and q.question_kind='standard' and q.is_nps=false and q.deleted_at is null
+        ) as present`;
+      if (conflict[0]?.present) {
+        const next = await this.sql<{ displayOrder: number }[]>`
+          select coalesce(max(display_order),0)+1 as "displayOrder"
+          from (
+            select q.display_order
+            from questions q
+            where q.question_kind='sector' and q.sector_id=${assignment.sectorId} and q.deleted_at is null
+            union all
+            select a.display_order
+            from question_sector_assignments a
+            join questions q on q.id=a.question_id
+            where a.sector_id=${assignment.sectorId} and a.ended_at is null
+              and q.question_kind='standard' and q.is_nps=false and q.deleted_at is null
+          ) common_questions`;
+        await this.sql`update question_sector_assignments set display_order=${next[0]!.displayOrder} where id=${assignment.id}`;
+      }
+    }
     await this.sql`update questions set deleted_at=null,updated_at=now() where id=${question.id} and deleted_at is not null`;
   }
 
@@ -354,8 +403,19 @@ export class QuestionsRepository {
   async hasActiveOrderConflict(question: QuestionRow): Promise<boolean> {
     if (question.sectorId === null) return false;
     const rows = await this.sql<{ exists: boolean }[]>`
-      select exists(select 1 from questions where question_kind='sector' and sector_id=${question.sectorId}
-        and display_order=${question.displayOrder} and deleted_at is null and id <> ${question.id}) as exists`;
+      select exists(
+        select 1
+        from questions
+        where question_kind='sector' and sector_id=${question.sectorId}
+          and display_order=${question.displayOrder} and deleted_at is null and id <> ${question.id}
+        union all
+        select 1
+        from question_sector_assignments a
+        join questions q on q.id=a.question_id
+        where a.sector_id=${question.sectorId} and a.ended_at is null
+          and a.display_order=${question.displayOrder}
+          and q.question_kind='standard' and q.is_nps=false and q.deleted_at is null
+      ) as exists`;
     return rows[0]?.exists ?? false;
   }
 

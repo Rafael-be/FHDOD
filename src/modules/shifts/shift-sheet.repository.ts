@@ -4,74 +4,67 @@ import type { ShiftSectorReference, ShiftSheetDownloadRow, ShiftSheetRepository 
 
 export class PostgresShiftSheetRepository implements ShiftSheetRepository {
   constructor(private readonly sql: postgres.Sql) {}
-
   async sectors(): Promise<ShiftSectorReference[]> {
-    return this.sql<ShiftSectorReference[]>`
-      select code, name, (deleted_at is null) as active
-      from sectors
-      order by code
-    `;
+    return this.sql<ShiftSectorReference[]>`select code, name, (deleted_at is null) as active from sectors order by code`;
   }
-
   async transaction<T>(work: (repository: ShiftSheetRepository) => Promise<T>): Promise<T> {
-    return this.sql.begin(async (transaction) => work(new PostgresShiftSheetRepository(transaction as unknown as postgres.Sql))) as Promise<T>;
+    return this.sql.begin(async (tx) => {
+      await tx`select pg_advisory_xact_lock(72481561)`;
+      return work(new PostgresShiftSheetRepository(tx as unknown as postgres.Sql));
+    }) as Promise<T>;
   }
-
   async replaceCurrentSheet(rows: ParsedShiftSheet["rows"], importedAt: Date): Promise<{ versionId: number }> {
     const versionRows = await this.sql<{ id: number }[]>`
-      insert into shift_sheet_versions (version_number, uploaded_at, valid_from, is_current)
-      select coalesce(max(version_number), 0) + 1, ${importedAt.toISOString()}, ${importedAt.toISOString()}, false
-      from shift_sheet_versions
-      returning id
-    `;
+      insert into shift_sheet_versions (version_number, uploaded_at, valid_from, is_current, csv_format)
+      select coalesce(max(version_number), 0) + 1, ${importedAt.toISOString()}, ${importedAt.toISOString()}, false, 2
+      from shift_sheet_versions returning id`;
     const versionId = versionRows[0]!.id;
     const sectors = await this.sql<{ id: number; code: string }[]>`select id, code from sectors where deleted_at is null`;
     const sectorIds = new Map(sectors.map((sector) => [sector.code, sector.id]));
-    const rangeIds = new Map<string, number>();
-
+    const days = new Set<string>();
+    const daySectorIds: number[] = [], dayNumbers: number[] = [], dayClosed: boolean[] = [];
+    const rangeSectorIds: number[] = [], rangeNames: string[] = [], rangeStarts: string[] = [], rangeEnds: string[] = [], rangeDays: number[] = [];
     for (const row of rows) {
       const sectorId = sectorIds.get(row.codigo_setor);
       if (!sectorId) throw new Error(`Setor não encontrado durante persistência: ${row.codigo_setor}`);
-      const key = `${row.codigo_setor}:${row.nome_turno}:${row.startsAt}:${row.endsAt}`;
-      let rangeId = rangeIds.get(key);
-      if (!rangeId) {
-        const inserted = await this.sql<{ id: number }[]>`
-          insert into sector_shift_ranges (shift_sheet_version_id, sector_id, shift_name, starts_at, ends_at)
-          values (${versionId}, ${sectorId}, ${row.nome_turno}, ${`${String(Math.floor(row.startsAt / 60)).padStart(2, "0")}:${String(row.startsAt % 60).padStart(2, "0")}`}, ${`${String(Math.floor(row.endsAt / 60)).padStart(2, "0")}:${String(row.endsAt % 60).padStart(2, "0")}`})
-          returning id
-        `;
-        rangeId = inserted[0]!.id;
-        rangeIds.set(key, rangeId);
+      const key = `${sectorId}:${row.dayOfWeek}`;
+      if (!days.has(key)) {
+        daySectorIds.push(sectorId); dayNumbers.push(row.dayOfWeek); dayClosed.push(row.closed);
+        days.add(key);
       }
-      await this.sql`
-        insert into employee_shift_assignments (shift_sheet_version_id, sector_id, shift_range_id, employee_code, employee_name, day_of_week)
-        values (${versionId}, ${sectorId}, ${rangeId}, ${row.codigo_funcionario}, ${row.nome_funcionario}, ${row.dayOfWeek})
-      `;
+      if (!row.closed) {
+        rangeSectorIds.push(sectorId); rangeNames.push(row.nome_turno);
+        rangeStarts.push(row.hora_inicio); rangeEnds.push(row.hora_fim); rangeDays.push(row.dayOfWeek);
+      }
     }
+    await this.sql`insert into sector_shift_days(shift_sheet_version_id,sector_id,day_of_week,is_closed)
+      select ${versionId}, d.sector_id,d.day_of_week,d.is_closed
+      from unnest(${daySectorIds}::integer[],${dayNumbers}::integer[],${this.sql.array(dayClosed, 16)}::boolean[])
+        as d(sector_id,day_of_week,is_closed)`;
+    if (rangeSectorIds.length) await this.sql`insert into sector_shift_ranges(shift_sheet_version_id,sector_id,shift_name,starts_at,ends_at,day_of_week)
+      select ${versionId},r.sector_id,r.shift_name,r.starts_at,r.ends_at,r.day_of_week
+      from unnest(${rangeSectorIds}::integer[],${rangeNames}::text[],${rangeStarts}::time[],${rangeEnds}::time[],${rangeDays}::integer[])
+        as r(sector_id,shift_name,starts_at,ends_at,day_of_week)`;
     await this.sql`update shift_sheet_versions set is_current = false where is_current = true`;
     await this.sql`update shift_sheet_versions set is_current = true where id = ${versionId}`;
     return { versionId };
   }
-
-  async recordUploadAttempt(userId: number, result: "accepted" | "rejected", versionId: number | null, issues: { line?: number; sectorCode?: string; reason: string }[]): Promise<void> {
-    await this.sql`
-      insert into shift_upload_attempts (uploaded_by_user_id, attempted_at, result, resulting_version_id, validation_errors)
-      values (${userId}, now(), ${result}, ${versionId}, ${JSON.stringify(issues)})
-    `;
+  async recordUploadAttempt(userId: number, result: "accepted" | "rejected", versionId: number | null, issues: { line?: number; field?: string; sectorCode?: string; reason: string }[]): Promise<void> {
+    await this.sql`insert into shift_upload_attempts (uploaded_by_user_id, attempted_at, result, resulting_version_id, validation_errors)
+      values (${userId}, now(), ${result}, ${versionId}, ${JSON.stringify(issues)})`;
   }
-
   async currentSheetRows(): Promise<ShiftSheetDownloadRow[]> {
     return this.sql<ShiftSheetDownloadRow[]>`
-      select s.code as codigo_setor, s.name as nome_setor, r.shift_name as nome_turno,
-             to_char(r.starts_at, 'HH24:MI') as hora_inicio, to_char(r.ends_at, 'HH24:MI') as hora_fim,
-             a.employee_code as codigo_funcionario, a.employee_name as nome_funcionario,
-             a.day_of_week as dia_semana_iso
+      select s.code as codigo_setor, s.name as nome_setor,
+        case when d.is_closed then 'FECHADO' else r.shift_name end as nome_turno,
+        case when d.is_closed then '00:00' else to_char(r.starts_at, 'HH24:MI') end as hora_inicio,
+        case when d.is_closed then '00:00' else to_char(r.ends_at, 'HH24:MI') end as hora_fim,
+        d.day_of_week as dia_semana_iso
       from shift_sheet_versions v
-      join sector_shift_ranges r on r.shift_sheet_version_id = v.id
-      join sectors s on s.id = r.sector_id and s.deleted_at is null
-      join employee_shift_assignments a on a.shift_range_id = r.id and a.shift_sheet_version_id = v.id
-      where v.is_current = true
-      order by s.code, a.day_of_week, r.starts_at, a.employee_code, a.employee_name
-    `;
+      join sector_shift_days d on d.shift_sheet_version_id = v.id
+      join sectors s on s.id = d.sector_id
+      left join sector_shift_ranges r on r.shift_sheet_version_id = v.id and r.sector_id = d.sector_id and r.day_of_week = d.day_of_week
+      where v.is_current = true and v.csv_format = 2
+      order by s.code, d.day_of_week, r.starts_at, r.id`;
   }
 }
