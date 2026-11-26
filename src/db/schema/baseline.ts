@@ -886,3 +886,13 @@ export const hourlyAnswerSummaries = pgTable("hourly_answer_summaries", {
 		}).onDelete("restrict"),
 	primaryKey({ columns: [table.hourBucket, table.sectorId, table.shiftRangeId, table.questionId, table.questionVersionId], name: "hourly_answer_summaries_pkey"}),
 ]).enableRLS();
+
+export const tvWallConfiguration = pgTable("tv_wall_configuration", {
+  id: integer().primaryKey(),
+  settings: jsonb().notNull(),
+}, table => [
+  check("tv_wall_configuration_id_check", sql`${table.id} = 1`),
+  check("tv_wall_configuration_settings_check", sql`jsonb_typeof(${table.settings}) = 'object'`),
+  pgPolicy("fhdod_api_tv_wall_select", { for: "select", to: ["fhdod_api"], using: sql`id = 1` }),
+  pgPolicy("fhdod_api_tv_wall_update", { for: "update", to: ["fhdod_api"], using: sql`id = 1`, withCheck: sql`id = 1` }),
+]).enableRLS();

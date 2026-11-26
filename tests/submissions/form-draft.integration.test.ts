@@ -70,7 +70,7 @@ integration("persistent form drafts on isolated PostgreSQL", () => {
     const service = new FormDraftService(sql);
     try {
       const [state] = await sql<{ db: string; ledger: number }[]>`select current_database() as db,(select count(*)::int from drizzle.__drizzle_migrations) as ledger`;
-      expect(state).toEqual({ db: "fhdod_test", ledger: 18 });
+      expect(state).toEqual({ db: "fhdod_test", ledger: 19 });
       const [before] = await sql<{ versions: number; sessions: number; answers: number }[]>`
         select (select count(*)::int from submission_form_versions) versions,
                (select count(*)::int from submission_sessions) sessions,

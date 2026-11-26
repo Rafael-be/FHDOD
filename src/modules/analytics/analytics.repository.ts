@@ -15,7 +15,7 @@ export class AnalyticsRepository {
     return this.sql`
       with candidates as materialized (
         select id, sector_id, form_version_id, status, started_at, ended_at, expires_at, shift_range_id
-        from submission_sessions s where started_at>=${filter.from}::timestamptz and started_at<${filter.to}::timestamptz
+        from submission_sessions s where started_at>=${filter.from}::text::timestamptz and started_at<${filter.to}::text::timestamptz
           and (${filter.sectorId ?? null}::int is null or s.sector_id=${filter.sectorId ?? null})
           and (${filter.shiftRangeId ?? null}::int is null or s.shift_range_id=${filter.shiftRangeId ?? null})
           and (${scope === null} or s.sector_id=any(${scope ?? []}::int[]))
@@ -34,6 +34,30 @@ export class AnalyticsRepository {
         select * from candidates s where exists (
           select 1 from answers a where a.session_id=s.id and a.status='answered')
       )`;
+  }
+  async wallMetrics(filter: AnalyticsFilter, sectors: number[]) {
+    const [row] = await this.sql<{
+      completionRate: number | null; nps: number | null;
+      npsGroups: { promoters: number; passives: number; detractors: number } | null;
+    }[]>`
+      ${this.cohort(filter, sectors)}, completion as (
+        select count(*) as n, count(*) filter(where status='complete') as done from sessions
+      ), groups as (
+        select case when score>=9 then 'promoters' when score>=7 then 'passives' else 'detractors' end as category,
+          count(*) as n, count(distinct session_id) as participants
+        from answers where is_nps and status='answered' group by 1
+      ), ratings as (
+        select min(participants)>=10 as visible, sum(n) as total,
+          coalesce(sum(n) filter(where category='promoters'),0) as promoters,
+          coalesce(sum(n) filter(where category='passives'),0) as passives,
+          coalesce(sum(n) filter(where category='detractors'),0) as detractors from groups
+      ) select case when n>=10 and (done=0 or done>=10) and (n=done or n-done>=10)
+          then round(100.0*done/n)::float8 end as "completionRate",
+        case when visible then round(100.0*(promoters-detractors)/total)::float8 end as nps,
+        case when visible then jsonb_build_object('promoters',round(100.0*promoters/total),
+          'passives',round(100.0*passives/total),'detractors',round(100.0*detractors/total)) end as "npsGroups"
+        from completion cross join ratings`;
+    return row!;
   }
   async globalQuestions(filter: AnalyticsFilter, allowed: number[] | null, questionId?: number) {
     const scope = this.sectorScope(filter, allowed);

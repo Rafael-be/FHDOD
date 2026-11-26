@@ -1,3 +1,5 @@
+import { publicWallRoutes, wallConfigRoutes } from "./modules/analytics/tv-wall.routes.js";
+import type { TvWallService } from "./modules/analytics/tv-wall.service.js";
 import type { AnalyticsService } from "./modules/analytics/analytics.service.js";
 import { analyticsRoutes } from "./modules/analytics/analytics.routes.js";
 import express from "express";
@@ -37,6 +39,7 @@ import type { OmbudsmanService } from "./modules/ombudsman/ombudsman.service.js"
 import { ombudsmanRoutes } from "./modules/ombudsman/ombudsman.routes.js";
 
 export interface AppDependencies {
+  tvWallService?: TvWallService;
   analyticsService?: AnalyticsService;
   authService: AuthService;
   adminService?: AdminService;
@@ -104,6 +107,7 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
   if (submissionService) { app.use("/api", submissionRoutes(submissionService, securityRateLimiter, config.RATE_LIMIT_SUBMISSION_PER_IP)); app.use("/api", submissionAnswerRoutes(submissionService, securityRateLimiter, config.RATE_LIMIT_SUBMISSION_PER_IP)); app.use("/api", submissionRestartRoutes(submissionService, securityRateLimiter, config.RATE_LIMIT_SUBMISSION_PER_IP)); }
   if (contentService) app.use("/api", contentRoutes(contentService, authService));
   if (ombudsmanService) app.use("/api", ombudsmanRoutes(ombudsmanService, authService, securityRateLimiter, config.RATE_LIMIT_SUBMISSION_PER_IP));
+  if (dependencies.tvWallService) app.use("/api", publicWallRoutes(dependencies.tvWallService));
   // Public routers terminate above; administrative modules share one authentication boundary.
   app.use("/api", authenticate(authService));
   if (adminService) {
@@ -116,6 +120,7 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
   if (auditService) app.use("/api", auditRoutes(auditService));
   if (questionsService) app.use("/api", questionsRoutes(questionsService, authService));
   if (formDraftService) app.use("/api", formDraftRoutes(formDraftService, authService));
+  if (dependencies.tvWallService) app.use("/api", wallConfigRoutes(dependencies.tvWallService, authService));
   if (dependencies.analyticsService) app.use("/api", analyticsRoutes(dependencies.analyticsService));
   app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openapiDocument, { explorer: false }));
   app.use(notFoundHandler);

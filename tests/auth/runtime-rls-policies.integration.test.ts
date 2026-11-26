@@ -27,7 +27,7 @@ integration("runtime RLS policies", () => {
           order by tablename, cmd
         `;
         // 0014/0015 add ten policies; 0017 adds two legacy SELECT policies.
-        expect(policies).toHaveLength(77);
+        expect(policies).toHaveLength(79);
         expect(policies.every((policy) => policy.roles.includes("fhdod_api"))).toBe(true);
         expect(policies.some((policy) => policy.cmd === "ALL" || (policy.cmd === "DELETE" &&
           !["submission_form_drafts", "submission_form_draft_questions"].includes(policy.tablename)))).toBe(false);

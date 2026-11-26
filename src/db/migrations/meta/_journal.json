@@ -127,6 +127,13 @@
       "when": 1795377608000,
       "tag": "0017_analytics_legacy_reads",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1795377609000,
+      "tag": "0018_tv_wall_configuration",
+      "breakpoints": true
     }
   ]
 }

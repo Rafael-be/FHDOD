@@ -1,3 +1,4 @@
+import { TvWallService } from "../../src/modules/analytics/tv-wall.service.js";
 import postgres from "postgres";
 import { AnalyticsRepository } from "../../src/modules/analytics/analytics.repository.js";
 import { AnalyticsService } from "../../src/modules/analytics/analytics.service.js";
@@ -85,6 +86,20 @@ integration("analytics on disposable PostgreSQL", () => {
         expect(pooled.nps).toMatchObject({ responses: 20, value: score <= 6 ? -90 : score <= 8 ? -85 : -80 });
         await expect(service.dashboard({ userId:user!.id, sessionId:'test',role:'sector_manager',mustChangePassword:false },multiple))
           .rejects.toMatchObject({ code:'FORBIDDEN' });
+        const tv = new TvWallService(db, repo);
+        const settings = { periodDays: 1, refreshSeconds: 30, sectorIds: [other!.id], indicators: ["npsGroups", "completionRate", "nps"] as ("npsGroups" | "completionRate" | "nps")[] };
+        expect(await tv.configure(settings)).toEqual(settings);
+        const nextDay = new Date("2050-01-02T03:00:00Z");
+        expect(await tv.display(nextDay)).toEqual({refreshSeconds:30,periodDays:1,indicators:[
+          {id:"npsGroups",value:{promoters:0,passives:0,detractors:100}},{id:"completionRate",value:100},{id:"nps",value:-100},
+        ]});
+        // A second process updates the singleton while the display cache is warm.
+        await new TvWallService(db,repo).configure({...settings,sectorIds:[other!.id,sector!.id]});
+        expect((await tv.display(nextDay)).indicators.every(item => item.value===null)).toBe(true);
+        expect((await tv.display(new Date("2050-01-02T02:59:59Z"))).indicators.every(item => item.value===null)).toBe(true);
+        await expect(tv.configure({...settings,sectorIds:[2147483647]})).rejects.toMatchObject({code:"TV_WALL_SECTOR_INVALID"});
+        await tv.configure({...settings,indicators:[],sectorIds:[]});
+        expect(await tv.display(nextDay)).toEqual({refreshSeconds:30,periodDays:1,indicators:[]});
         throw rollback;
       })).rejects.toBe(rollback);
     } finally { await sql.end({ timeout: 5 }); }
