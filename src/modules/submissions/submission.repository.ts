@@ -18,7 +18,7 @@ export function timestampToIso(value: DatabaseTimestamp): string { return new Da
 
 export interface SubmissionRepository {
   transaction<T>(work: (repository: SubmissionRepository) => Promise<T>): Promise<T>;
-  currentForm?(sectorId: number): Promise<{ formVersionId: number; questions: SubmissionQuestion[] }>;
+  currentForm?(sectorId: number): Promise<{ sectorName: string; formVersionId: number; questions: SubmissionQuestion[] }>;
   lockAttempt?(attemptId: string): Promise<void>;
   firstAttempt?(attemptId: string): Promise<{ sectorId: number; formVersionId: number; capabilityHash: Buffer; answer: { questionId: number; questionVersionId: number; status: string; score: number | null }; expiresAt: string; status: string } | null>;
   createSessionSnapshot(input: SubmissionStart, expectedFormVersionId?: number): Promise<{ session: { id: string; sectorId: number; formVersionId: number; expiresAt: string; shiftSheetVersionId: number | null; shiftRangeId: number | null }; questions: SubmissionQuestion[] }>;
@@ -62,8 +62,8 @@ export class PostgresSubmissionRepository implements SubmissionRepository {
     return { ...rows[0], expiresAt: timestampToIso(rows[0].expiresAt), answer: answers[0] };
   }
   async currentForm(sectorId: number) {
-    const rows = await this.sql<{ formVersionId: number | null }[]>`
-      select c.form_version_id as "formVersionId"
+    const rows = await this.sql<{ sectorName: string; formVersionId: number | null }[]>`
+      select s.name as "sectorName", c.form_version_id as "formVersionId"
       from sectors s left join sector_current_forms c on c.sector_id=s.id
       where s.id=${sectorId} and s.deleted_at is null limit 1`;
     if (!rows[0]) throw new DomainError("SECTOR_NOT_FOUND", "Setor inexistente ou inativo.", 404);
@@ -72,7 +72,7 @@ export class PostgresSubmissionRepository implements SubmissionRepository {
     const questions = await publishedFormCache.get(this.sql, formVersionId);
     if (questions.filter((q) => q.isNps).length !== 1 || !questions.some((q) => q.questionKind === "standard" && !q.isNps))
       throw new DomainError("FORM_INCOMPLETE", "Formulário publicado incompleto.", 409);
-    return { formVersionId, questions };
+    return { sectorName: rows[0].sectorName, formVersionId, questions };
   }
   async transaction<T>(work: (repository: SubmissionRepository) => Promise<T>): Promise<T> {
     if (typeof (this.sql as unknown as { begin?: unknown }).begin !== "function") return work(this);

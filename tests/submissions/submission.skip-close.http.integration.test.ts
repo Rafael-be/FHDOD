@@ -28,7 +28,24 @@ integration("public skip and voluntary close through HTTP", () => {
       });
       const client = request(app);
       const sector = `/api/public/sectors/${fixture.sectorId}`;
-      const { body } = await client.get(sector + "/current-form").expect(200);
+      const path = sector + "/current-form";
+      const { body, headers } = await client.get(path).expect(200);
+      expect(body.data.sectorName).toBe("Own fixture");
+      expect(Object.keys(body.data).sort()).toEqual(["formVersionId","questions","sectorId","sectorName"]);
+      await client.get(path).set("If-None-Match",headers.etag).expect(304);
+      const owner = postgres(adminUrl!,{max:1});
+      try {
+        await owner`update sectors set name='Pronto Atendimento' where id=${fixture.sectorId}`;
+        const renamed = await client.get(path).set("If-None-Match",headers.etag).expect(200);
+        expect(renamed.body.data).toEqual({...body.data,sectorName:"Pronto Atendimento"});
+        expect(renamed.headers.etag).not.toBe(headers.etag);
+        await client.get(path).set("If-None-Match",renamed.headers.etag).expect(304);
+        await owner`delete from sector_current_forms where sector_id=${fixture.otherSectorId}`;
+        await client.get(`/api/public/sectors/${fixture.otherSectorId}/current-form`).expect(409)
+          .expect(({body})=>expect(body.error.code).toBe("FORM_NOT_PUBLISHED"));
+        await client.get("/api/public/sectors/2147483647/current-form").expect(404)
+          .expect(({body})=>expect(body.error.code).toBe("SECTOR_NOT_FOUND"));
+      } finally { await owner.end(); }
       const [optional, required, nps] = body.data.questions;
       expect(optional.required).toBe(false);
       const skip = {questionId:optional.questionId,questionVersionId:optional.questionVersionId,status:"skipped",score:null};

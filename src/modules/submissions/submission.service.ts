@@ -23,9 +23,10 @@ export class SubmissionService {
     if (!this.repository.currentForm) throw new Error("Consulta de formulário vigente indisponível.");
     const form = await measurePerformance(this.trace, "submission.current_form", "resolve", () => this.repository.currentForm!(sectorId));
     const questions = form.questions.map((question) => ({ ...question, required: question.isNps || question.questionKind === "standard", options: question.isNps ? Array.from({ length: 11 }, (_, score) => score) : [1, 2, 3, 4, 5], minScore: question.isNps ? 0 : 1, maxScore: question.isNps ? 10 : 5 }));
-    const etag = `"${createHash("sha256").update(JSON.stringify({ sectorId, formVersionId: form.formVersionId, questions })).digest("hex")}"`;
+    const representation = { sectorId, sectorName: form.sectorName, formVersionId: form.formVersionId, questions };
+    const etag = `"${createHash("sha256").update(JSON.stringify(representation)).digest("hex")}"`;
     surveyEvent("CURRENT_FORM_RESOLVED", "submission.current_form");
-    return { sectorId, formVersionId: form.formVersionId, questions, etag };
+    return { ...representation, etag };
   }
 
   async startWithFirstAnswer(sectorId: number, formVersionId: number, attemptId: string, token: string, answer: SubmissionAnswerInput) {
