@@ -27,7 +27,7 @@ export class TvWallService {
 
   async configure(settings: Settings): Promise<Settings> {
     const [saved] = await this.sql`
-      update tv_wall_configuration set settings=${this.sql.json(settings)}
+      update tv_wall_configuration set settings=${JSON.stringify(settings)}::text::jsonb
       where id=1 and (select count(*) from sectors where deleted_at is null and id=any(${settings.sectorIds}::int[]))=${settings.sectorIds.length}
       returning settings`;
     if (!saved) throw new DomainError("TV_WALL_SECTOR_INVALID", "Seleção contém um setor inválido ou inativo.", 400);
