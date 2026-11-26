@@ -77,6 +77,22 @@ describeIntegration("anonymous submissions integration", () => {
         ]);
         expect(report.unclassifiedCompleted).toBe(0);
         expect(report.questions).toContainEqual(expect.objectContaining({question_id:sectorItem.questionId,responses:1,skipped:2,mean:3}));
+        const analytics = new AnalyticsRepository(tx as unknown as postgres.Sql);
+        const range = { sectorId, from:"2026-01-01T00:00:00Z", to:"2026-01-02T00:00:00Z" };
+        const global = await analytics.globalQuestions(range, [sectorId], standardItem.questionId);
+        expect(global).toEqual([expect.objectContaining({
+          questionId: standardItem.questionId, questionVersionId: standardItem.questionVersionId,
+          publishedSectorIds:[sectorId], responses:2, mean:5, distribution:[{score:5,responses:2,percentage:100}],
+          sectors:[{sectorId,responses:2,mean:5,distribution:[{score:5,responses:2,percentage:100}]}],
+        })]);
+        expect(await analytics.globalQuestions(range, [])).toEqual([]);
+        expect(await analytics.globalQuestions({...range, to:range.from}, null)).toEqual([
+          expect.objectContaining({publishedSectorIds:[sectorId], responses:0, mean:null, distribution:[], sectors:[]}),
+        ]);
+        await tx`delete from sector_current_forms where sector_id=${sectorId}`;
+        expect(await analytics.globalQuestions(range, null)).toEqual([
+          expect.objectContaining({questionId:standardItem.questionId, publishedSectorIds:[], responses:2}),
+        ]);
         throw new Error("ROLLBACK_SUBMISSION_FIXTURE");
       })).rejects.toThrow("ROLLBACK_SUBMISSION_FIXTURE");
     } finally { await sql.end({ timeout: 5 }); }

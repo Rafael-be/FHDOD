@@ -18,5 +18,12 @@ export function analyticsRoutes(service: AnalyticsService): Router {
     try { res.set("Cache-Control", "no-store").json({ data: await service.dashboard(req.identity!, analyticsQuery.parse(req.query)) }); }
     catch (error) { next(error); }
   });
+  router.get("/analytics/global-questions", requireRole("superuser", "sector_manager"), async (req, res, next) => {
+    try {
+      const filter = analyticsQuery.parse(req.query);
+      const questionId = z.coerce.number().int().positive().optional().parse(req.query.questionId);
+      res.set("Cache-Control", "no-store").json({ data: await service.globalQuestions(req.identity!, filter, questionId) });
+    } catch (error) { next(error); }
+  });
   return router;
 }

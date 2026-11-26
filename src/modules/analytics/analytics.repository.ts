@@ -35,6 +35,48 @@ export class AnalyticsRepository {
           select 1 from answers a where a.session_id=s.id and a.status='answered')
       )`;
   }
+  async globalQuestions(filter: AnalyticsFilter, allowed: number[] | null, questionId?: number) {
+    const scope = this.sectorScope(filter, allowed);
+    const rows = await this.sql`
+      ${this.cohort(filter, scope)}, published as (
+        select c.sector_id, q.question_id, q.question_version_id, q.is_nps, q.text
+        from sector_current_forms c join sectors s on s.id=c.sector_id and s.deleted_at is null
+        join submission_form_questions q on q.form_version_id=c.form_version_id
+        join questions catalog on catalog.id=q.question_id and catalog.scope='all_sectors'
+        where (${scope === null} or c.sector_id=any(${scope ?? []}::int[]))
+          and (${filter.sectorId ?? null}::int is null or c.sector_id=${filter.sectorId ?? null})
+          and (${questionId ?? null}::int is null or q.question_id=${questionId ?? null})
+      ), bins as (
+        select a.question_id, a.question_version_id, a.is_nps, a.sector_id, a.score, count(*) as n
+        from answers a join questions catalog on catalog.id=a.question_id and catalog.scope='all_sectors'
+        where a.status='answered' and (${questionId ?? null}::int is null or a.question_id=${questionId ?? null})
+        group by grouping sets (
+          (a.question_id,a.question_version_id,a.is_nps,a.sector_id,a.score),
+          (a.question_id,a.question_version_id,a.is_nps,a.score))
+      ), fractions as (
+        select *, 100.0*n/sum(n) over (partition by question_id,question_version_id,is_nps,sector_id) as percentage from bins
+      ), results as (
+        select question_id,question_version_id,is_nps,sector_id,sum(n) as responses,sum(score*n)/sum(n) as mean,
+          jsonb_agg(jsonb_build_object('score',score,'responses',n,'percentage',percentage) order by score) as distribution
+        from fractions group by question_id,question_version_id,is_nps,sector_id
+      ), availability as (
+        select question_id,question_version_id,is_nps,max(text) as text,array_agg(sector_id order by sector_id) as sectors
+        from published group by question_id,question_version_id,is_nps
+      ), comparisons as (
+        select question_id,question_version_id,is_nps,jsonb_agg(jsonb_build_object(
+          'sectorId',sector_id,'responses',responses,'mean',mean,'distribution',distribution) order by sector_id) as sectors
+        from results where sector_id is not null group by question_id,question_version_id,is_nps
+      ), totals as (select * from results where sector_id is null)
+      select v.question_id as "questionId",v.id as "questionVersionId",is_nps as "isNps",
+        coalesce(p.text,v.text) as text,coalesce(p.sectors,'{}'::int[]) as "publishedSectorIds",
+        coalesce(t.responses,0)::int as responses,t.mean::float8 as mean,coalesce(t.distribution,'[]'::jsonb) as distribution,
+        coalesce(c.sectors,'[]'::jsonb) as sectors
+      from availability p full join totals t using(question_id,question_version_id,is_nps)
+      left join comparisons c using(question_id,question_version_id,is_nps)
+      join question_versions v on v.id=coalesce(p.question_version_id,t.question_version_id)
+      order by 1,2,3`;
+    return rows;
+  }
   async dashboard(filter: AnalyticsFilter, allowed: number[] | null): Promise<Record<string, unknown>> {
     const scope = this.sectorScope(filter, allowed);
     const [row] = await this.sql<{ data: Record<string, unknown> }[]>`
