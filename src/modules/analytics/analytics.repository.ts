@@ -44,7 +44,20 @@ export class AnalyticsRepository {
           and (${filter.sectorId ?? null}::int is null or t.sector_id=${filter.sectorId ?? null})
           and (${filter.shiftRangeId ?? null}::int is null or t.shift_range_id=${filter.shiftRangeId ?? null})
           and (${scope === null} or t.sector_id=any(${scope ?? []}::int[]))
+      ), shift_counts as (
+        select shift_range_id, count(*) as completed from sessions where status='complete' group by shift_range_id
+      ), shift_rows as (
+        select r.id, r.shift_name as name, r.sector_id, coalesce(c.completed,0) as completed
+        from sector_shift_ranges r join shift_sheet_versions v on v.id=r.shift_sheet_version_id
+        left join shift_counts c on c.shift_range_id=r.id
+        where (v.is_current or c.completed is not null)
+          and (${scope === null} or r.sector_id=any(${scope ?? []}::int[]))
+          and (${filter.sectorId ?? null}::int is null or r.sector_id=${filter.sectorId ?? null})
+          and (${filter.shiftRangeId ?? null}::int is null or r.id=${filter.shiftRangeId ?? null})
       ) select jsonb_build_object(
+        'shifts',coalesce((select jsonb_agg(x order by id) from (
+          select *,100.0*completed/nullif(sum(completed) over (),0) as percentage from shift_rows) x),'[]'::jsonb),
+        'unclassifiedCompleted',coalesce((select completed from shift_counts where shift_range_id is null),0),
         'sessions',(select jsonb_build_object('started',count(*),'complete',count(*) filter(where status='complete'),
           'incomplete',count(*) filter(where status='incomplete'),'closedIncomplete',count(*) filter(where status='incomplete' and ended_at is not null),
           'inProgress',count(*) filter(where status='incomplete' and ended_at is null and expires_at>=statement_timestamp()),

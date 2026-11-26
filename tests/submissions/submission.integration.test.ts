@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { AnalyticsRepository } from "../../src/modules/analytics/analytics.repository.js";
 import postgres from "postgres";
 import { SubmissionService } from "../../src/modules/submissions/submission.service.js";
 import { PostgresSubmissionRepository } from "../../src/modules/submissions/submission.repository.js";
@@ -56,6 +57,26 @@ describeIntegration("anonymous submissions integration", () => {
           where a.session_id = ${withoutOptionalAnswer.capability.sessionId} and q.question_kind = 'sector'
         `;
         expect(optionalAnswers[0]!.count).toBe(1);
+        const sectorId = sector[0]!.id;
+        const partial = await service.start(sectorId, 4, "09:00");
+        const partialAnswer = { ...sectorItem, status: "answered" as const, score: 3 };
+        await service.answer(partial.session.id, partial.capability.token, partialAnswer);
+        for (let retry = 0; retry < 2; retry++)
+          await expect(service.close(partial.session.id, partial.capability.token)).resolves.toEqual({ sessionId: partial.session.id, status: "closed" });
+        await expect(service.answer(partial.session.id, partial.capability.token, { ...standardItem, status:"answered", score:5 }))
+          .rejects.toMatchObject({ code: "SUBMISSION_CLOSED" });
+        await tx`insert into sector_shift_ranges (shift_sheet_version_id,sector_id,shift_name,starts_at,ends_at,day_of_week)
+          values (${version[0]!.id},${sectorId},'Noite','20:00','07:00',4)`;
+        const report = await new AnalyticsRepository(tx as unknown as postgres.Sql).dashboard({
+          sectorId, from: "2026-01-01T00:00:00Z", to: "2026-01-02T00:00:00Z",
+        }, null);
+        expect(report.sessions).toMatchObject({ started:3, complete:2, incomplete:1, endedOrExpired:1 });
+        expect(report.shifts).toEqual([
+          expect.objectContaining({ name:"Dia", completed:2, percentage:100 }),
+          expect.objectContaining({ name:"Noite", completed:0, percentage:0 }),
+        ]);
+        expect(report.unclassifiedCompleted).toBe(0);
+        expect(report.questions).toContainEqual(expect.objectContaining({question_id:sectorItem.questionId,responses:1,skipped:2,mean:3}));
         throw new Error("ROLLBACK_SUBMISSION_FIXTURE");
       })).rejects.toThrow("ROLLBACK_SUBMISSION_FIXTURE");
     } finally { await sql.end({ timeout: 5 }); }

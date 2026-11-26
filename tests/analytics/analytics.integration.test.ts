@@ -73,6 +73,8 @@ integration("analytics on disposable PostgreSQL", () => {
         const multiple = { from: filter.from, to: filter.to, sectorIds: [sector!.id, other!.id] };
         const pooled = await repo.dashboard(multiple, null);
         expect(pooled.sessions).toMatchObject({ started: 20, complete: 18, incomplete: 2, completionRate: 90, nonCompletionRate: 10 });
+        expect(pooled.unclassifiedCompleted).toBe(18);
+        expect(pooled.shifts).toEqual([]);
         expect(pooled.nps).toMatchObject({ responses: 20, value: score <= 6 ? -90 : score <= 8 ? -85 : -80 });
         await expect(service.dashboard({ userId:user!.id, sessionId:'test',role:'sector_manager',mustChangePassword:false },multiple))
           .rejects.toMatchObject({ code:'FORBIDDEN' });
