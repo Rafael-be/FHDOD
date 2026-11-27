@@ -61,6 +61,6 @@ export const analyticsPaths = {
   },
   "/api/public/tv-wall": { get: {
     summary:"Exibe somente indicadores públicos habilitados e protegidos por limiar amostral",
-    responses:{"200":{description:"data contém periodDays, refreshSeconds e indicators (id, value). Valores suprimidos são null. Sem parâmetros ou credenciais."},"400":invalid},
+    responses:{"200":{description:"data contém periodDays, refreshSeconds e indicators (id, value). Valores suprimidos são null. Sem parâmetros ou credenciais."},"400":invalid,"429":{description:"TV_WALL_RATE_LIMITED"}},
   } },
 };

@@ -4,6 +4,7 @@ import { createApp } from "../../src/app.js";
 import type { AppConfig } from "../../src/config/env.js";
 import type { AuthService } from "../../src/modules/auth/auth.service.js";
 import type { TvWallService } from "../../src/modules/analytics/tv-wall.service.js";
+import { SecurityRateLimiter } from "../../src/security/rate-limiter.js";
 
 const settings = { indicators:["nps"],sectorIds:[2],periodDays:7,refreshSeconds:60 };
 const display = { indicators:[{id:"nps",value:null}],periodDays:7,refreshSeconds:60 };
@@ -28,4 +29,22 @@ it("restricts configuration writes to a superuser with CSRF and an explicit vali
     await client.put("/api/tv-wall/config").set("Cookie","access_token=x").set("x-csrf-token","csrf").send({...settings,...changes}).expect(400);
   expect(wall.configure).not.toHaveBeenCalled();
   await client.put("/api/tv-wall/config").set("Cookie","access_token=x").set("x-csrf-token","csrf").send(settings).expect(200,{data:settings});
+});
+
+it("rate limits the public wall per client and recovers after the window", async () => {
+  let now = 1_000;
+  const limiter = new SecurityRateLimiter(undefined, false, "12345678901234567890123456789012", () => now);
+  const limited = createApp({ NODE_ENV: "test", RATE_LIMIT_TV_WALL_PER_IP: 2 } as AppConfig, {
+    authService: ({ authenticate: async () => ({ role: "superuser", mustChangePassword: false }) } as unknown) as AuthService,
+    tvWallService: wall as unknown as TvWallService,
+    securityRateLimiter: limiter,
+  });
+  await request(limited).get("/api/public/tv-wall").expect(200);
+  await request(limited).get("/api/public/tv-wall").expect(200);
+  await request(limited).get("/api/public/tv-wall").expect(429).expect(({ body, headers }) => {
+    expect(body.error.code).toBe("TV_WALL_RATE_LIMITED");
+    expect(headers["retry-after"]).toBeDefined();
+  });
+  now += 61_000;
+  await request(limited).get("/api/public/tv-wall").expect(200);
 });

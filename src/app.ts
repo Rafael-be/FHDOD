@@ -107,7 +107,12 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
   if (submissionService) { app.use("/api", submissionRoutes(submissionService, securityRateLimiter, config.RATE_LIMIT_SUBMISSION_PER_IP)); app.use("/api", submissionAnswerRoutes(submissionService, securityRateLimiter, config.RATE_LIMIT_SUBMISSION_PER_IP)); app.use("/api", submissionRestartRoutes(submissionService, securityRateLimiter, config.RATE_LIMIT_SUBMISSION_PER_IP)); }
   if (contentService) app.use("/api", contentRoutes(contentService, authService));
   if (ombudsmanService) app.use("/api", ombudsmanRoutes(ombudsmanService, authService, securityRateLimiter, config.RATE_LIMIT_SUBMISSION_PER_IP));
-  if (dependencies.tvWallService) app.use("/api", publicWallRoutes(dependencies.tvWallService));
+  if (dependencies.tvWallService) {
+    const publicWallMiddleware = securityRateLimiter
+      ? rateLimitByIp(securityRateLimiter, "tv-wall-public", { limit: config.RATE_LIMIT_TV_WALL_PER_IP ?? 120, windowSeconds: 60 }, "TV_WALL_RATE_LIMITED", "Muitas solicitações ao TV Wall. Aguarde um momento.")
+      : undefined;
+    app.use("/api", publicWallRoutes(dependencies.tvWallService, publicWallMiddleware));
+  }
   // Public routers terminate above; administrative modules share one authentication boundary.
   app.use("/api", authenticate(authService));
   if (adminService) {

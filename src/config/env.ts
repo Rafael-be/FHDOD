@@ -17,6 +17,7 @@ const runtimeConfigSchema = z.object({
   RATE_LIMIT_LOGIN_PER_IP: z.coerce.number().int().min(5).max(500).default(30),
   RATE_LIMIT_ADMIN_PER_IP: z.coerce.number().int().min(10).max(2_000).default(300),
   RATE_LIMIT_SUBMISSION_PER_IP: z.coerce.number().int().min(30).max(2_000).default(180),
+  RATE_LIMIT_TV_WALL_PER_IP: z.coerce.number().int().min(30).max(2_000).default(120),
   LOGIN_FAILURE_LIMIT_PER_IP: z.coerce.number().int().min(3).max(50).default(5),
   LOGIN_FAILURE_LIMIT_PER_IDENTIFIER: z.coerce.number().int().min(3).max(50).default(5),
   LOGIN_BLOCK_BASE_SECONDS: z.coerce.number().int().min(1).max(300).default(1),

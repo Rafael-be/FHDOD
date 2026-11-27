@@ -31,6 +31,8 @@ A leitura da TV consulta a configuração a cada requisição. O resultado agreg
 
 Cada indicador público considera somente os setores configurados e os últimos `periodDays` dias **completos** de São Paulo. O dia em curso fica fora. A amostra mínima adotada para esta entrega é **10 sessões distintas** por grupo não vazio. A conclusão considera completos e incompletos e exige pelo menos 10 sessões no total. O NPS e sua distribuição exigem pelo menos 10 participantes em cada faixa NPS não vazia. Qualquer falha de limiar suprime o indicador inteiro. O cliente recebe `null` tanto para supressão como para ausência de dados. Os resultados numéricos públicos são arredondados a inteiro. O payload público contém apenas os valores autorizados, sem contagens brutas, listas de setores, textos ou identificadores de sessão.
 
+O endpoint público do TV Wall usa o limitador compartilhado `tv-wall-public`, com padrão de 120 requisições por minuto por IP e configuração por `RATE_LIMIT_TV_WALL_PER_IP` (30–2000). Redis é usado quando habilitado; indisponibilidade do Redis usa o fallback local existente. O excesso retorna 429 `TV_WALL_RATE_LIMITED`.
+
 As consultas filtram o período e o escopo antes da agregação. As chaves de snapshot e os caminhos mutuamente exclusivos de histórico evitam multiplicar avaliações. A consulta de perguntas globais roda apenas quando solicitada e a TV usa uma consulta própria sem Ouvidoria. Na amostra local de 338 sessões, o mês de maior volume tinha 323. Uma execução de `EXPLAIN (ANALYZE, BUFFERS)` mediu 0,85 ms no dashboard, 0,38 ms em perguntas globais e 0,18 ms nos agregados da TV, excluindo planejamento e rede. Essas medições descrevem um banco pequeno e aquecido. Não foram adicionados índices.
 
 ## Validação e entrega local
