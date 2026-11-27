@@ -27,7 +27,7 @@ describe("configuration boundaries", () => {
     expect(loadMigrationConfig({
       ...runtimeEnvironment,
       DATABASE_URL_MIGRATIONS: "postgres://admin:pass@localhost/fhdod",
-    })).toEqual({ DATABASE_URL_MIGRATIONS: "postgres://admin:pass@localhost/fhdod" });
+    })).toEqual({ DATABASE_URL_MIGRATIONS: "postgres://admin:pass@localhost/fhdod", MIGRATIONS_ALLOW_EMPTY_LEDGER: false });
   });
 
   it("accepts only the dedicated maintenance role for audit retention", () => {

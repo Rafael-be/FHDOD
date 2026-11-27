@@ -42,6 +42,9 @@ jobs:
           node-version: 22
           cache: npm
 
+      - name: Install report validation tools
+        run: sudo apt-get update && sudo apt-get install -y poppler-utils
+
       - name: Install dependencies
         run: npm ci
 
@@ -56,7 +59,7 @@ jobs:
             -c "ALTER DATABASE fhdod_test SET fhdod.disposable = 'true'"
           psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 5432 -U postgres -d fhdod_test \
             -f src/db/bootstrap/FHDOD.sql
-          npm run migrate
+          MIGRATIONS_ALLOW_EMPTY_LEDGER=true npm run migrate
           psql -v ON_ERROR_STOP=1 -h 127.0.0.1 -p 5432 -U postgres -d fhdod_test \
             -f scripts/audit-retention/provision-role.sql \
             -f scripts/audit-retention/install-purge-function.sql

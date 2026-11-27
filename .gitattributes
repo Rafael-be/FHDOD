@@ -1,0 +1,3 @@
+src/db/migrations/*.sql text eol=lf
+src/db/migrations/**/*.sql text eol=lf
+src/db/migrations/meta/*.json text eol=lf

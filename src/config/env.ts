@@ -26,6 +26,7 @@ const runtimeConfigSchema = z.object({
 
 const migrationConfigSchema = z.object({
   DATABASE_URL_MIGRATIONS: z.string().url(),
+  MIGRATIONS_ALLOW_EMPTY_LEDGER: z.enum(["true", "false"]).default("false").transform((value) => value === "true"),
 });
 
 const auditRetentionConfigSchema = z.object({
