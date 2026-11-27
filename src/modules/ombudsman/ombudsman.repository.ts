@@ -39,7 +39,9 @@ export class OmbudsmanRepository {
             or (coalesce(r.day_of_week,a.day_of_week)=${time.previousDayOfWeek} and ${time.localTime}::time<r.ends_at)))
         )`;
       if (matches.length>1) throw new DomainError("SHIFT_AMBIGUOUS", "Há mais de um turno vigente para o horário informado.", 409);
-      const version = matches[0]?.versionId ?? (await tx<{ id: number }[]>`select id from shift_sheet_versions where is_current=true limit 1`)[0]?.id ?? null;
+      // A ticket may be created outside an active shift. In that case do not
+      // invent a version from another sector; both shift references remain null.
+      const version = matches[0]?.versionId ?? null;
       const rows = await tx<{ id: number; status: TicketStatus }[]>`
         insert into ombudsman_tickets (sector_id,shift_sheet_version_id,shift_range_id,occurred_at,ticket_type,body,phone_normalized,accepted_policy_version_id,policy_accepted_at,created_at,updated_at)
         values (${input.sectorId},${version},${matches[0]?.id ?? null},${now.toISOString()},${input.ticketType},${input.body},${input.phone ?? null},${policy[0].id},${now.toISOString()},${now.toISOString()},${now.toISOString()})

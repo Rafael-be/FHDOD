@@ -41,21 +41,39 @@ integration("published form answer concurrency", () => {
       firstAttemptId = randomUUID();
       const firstCapability = randomBytes(32).toString("base64url");
       const firstInput = { questionId: commonId, questionVersionId: question.questionVersionId, status: "answered" as const, score: 5 };
-      const firstResults = await Promise.all([0, 1].map(() => service.startWithFirstAnswer(sectorId, formVersionId, firstAttemptId, firstCapability, firstInput)));
+      const skip = { ...firstInput, status: "skipped" as const, score: null };
+      const firstResults = await Promise.all([0, 1].map(() => service.startWithFirstAnswer(sectorId, formVersionId, firstAttemptId, firstCapability, skip)));
       expect(firstResults.map((item) => item.replayed).sort()).toEqual([false, true]);
       expect((await admin<{ count: number }[]>`select count(*)::int as count from submission_form_answers where session_id=${firstAttemptId}`)[0]!.count).toBe(1);
-      const results = await Promise.allSettled([1, 5].map((score) => service.answer(sessionId, started.capability.token, {
-        questionId: commonId, questionVersionId: question.questionVersionId, status: "answered", score,
-      })));
+      expect(firstResults.every(result => !result.answer.answered)).toBe(true);
+      await expect(service.answer(firstAttemptId, firstCapability, firstInput)).rejects.toMatchObject({ code: "ANSWER_ALREADY_CONFIRMED" });
+      const required = started.questions.find(item => item.questionId === standardId)!;
+      await expect(service.answer(firstAttemptId, firstCapability, { ...skip, ...required })).rejects.toMatchObject({ code: "QUESTION_NOT_SKIPPABLE" });
+      await service.answer(firstAttemptId, firstCapability, { ...firstInput, ...required });
+      const final = { ...firstInput, ...started.questions.find(item => item.isNps)!, score: 10 };
+      const race = await Promise.allSettled([
+        service.close(firstAttemptId, firstCapability),
+        service.answer(firstAttemptId, firstCapability, final),
+      ]);
+      expect(race.filter(item => item.status === "fulfilled")).toHaveLength(1);
+      if (race[0]!.status === "fulfilled") {
+        expect(race[1]).toMatchObject({ reason: { code: "SUBMISSION_CLOSED" } });
+        await expect(service.close(firstAttemptId, firstCapability)).resolves.toEqual({ sessionId: firstAttemptId, status: "closed" });
+        expect(await admin`select status from submission_sessions where id=${firstAttemptId}`).toMatchObject([{ status: "incomplete" }]);
+      } else {
+        expect(race[0]).toMatchObject({ reason: { code: "SUBMISSION_COMPLETED" } });
+      }
+      const results = await Promise.allSettled([skip, firstInput].map(input => service.answer(sessionId, started.capability.token, input)));
       expect(results).toHaveLength(2);
       expect(results.filter((item) => item.status === "fulfilled")).toHaveLength(1);
       expect(results.filter((item) => item.status === "rejected")).toHaveLength(1);
-      const answers = await admin<{ count: number; score: number }[]>`
+      const answers = await admin<{ count: number; score: number | null }[]>`
         select count(*)::int as count, max(score)::int as score
         from submission_form_answers where session_id=${sessionId} and question_id=${commonId}`;
       expect(answers[0]!.count).toBe(1);
-      expect([1, 5]).toContain(answers[0]!.score);
+      expect(answers[0]!.score).toBe(results[0]!.status === "fulfilled" ? null : 5);
       await admin`update submission_sessions set expires_at=now()-interval '1 second' where id=${sessionId}`;
+      await expect(service.close(sessionId, started.capability.token)).rejects.toMatchObject({ code: "SUBMISSION_EXPIRED" });
       expect(await new PostgresSubmissionRepository(runtime).reconcileExpired(new Date())).toBeGreaterThanOrEqual(1);
       expect((await admin<{ ended: boolean }[]>`select ended_at is not null as ended from submission_sessions where id=${sessionId}`)[0]!.ended).toBe(true);
     } finally {

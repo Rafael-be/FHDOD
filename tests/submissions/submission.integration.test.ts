@@ -1,4 +1,5 @@
 import "dotenv/config";
+import { AnalyticsRepository } from "../../src/modules/analytics/analytics.repository.js";
 import postgres from "postgres";
 import { SubmissionService } from "../../src/modules/submissions/submission.service.js";
 import { PostgresSubmissionRepository } from "../../src/modules/submissions/submission.repository.js";
@@ -56,6 +57,61 @@ describeIntegration("anonymous submissions integration", () => {
           where a.session_id = ${withoutOptionalAnswer.capability.sessionId} and q.question_kind = 'sector'
         `;
         expect(optionalAnswers[0]!.count).toBe(1);
+        const sectorId = sector[0]!.id;
+        const partial = await service.start(sectorId, 4, "09:00");
+        const partialAnswer = { ...sectorItem, status: "answered" as const, score: 3 };
+        await service.answer(partial.session.id, partial.capability.token, partialAnswer);
+        for (let retry = 0; retry < 2; retry++)
+          await expect(service.close(partial.session.id, partial.capability.token)).resolves.toEqual({ sessionId: partial.session.id, status: "closed" });
+        await expect(service.answer(partial.session.id, partial.capability.token, { ...standardItem, status:"answered", score:5 }))
+          .rejects.toMatchObject({ code: "SUBMISSION_CLOSED" });
+        await tx`insert into sector_shift_ranges (shift_sheet_version_id,sector_id,shift_name,starts_at,ends_at,day_of_week)
+          values (${version[0]!.id},${sectorId},'Noite','20:00','07:00',4)`;
+        const skippedOnly = await service.start(sectorId, 4, "09:00");
+        const skip = { ...sectorItem, status:"skipped" as const, score:null };
+        await service.answer(skippedOnly.session.id, skippedOnly.capability.token, skip);
+        await expect(service.answer(skippedOnly.session.id, skippedOnly.capability.token, skip)).resolves.toMatchObject({answered:false,replayed:true});
+        await expect(service.close(skippedOnly.session.id, partial.capability.token)).rejects.toMatchObject({code:"SUBMISSION_CAPABILITY_INVALID"});
+        await service.close(skippedOnly.session.id, skippedOnly.capability.token);
+        const report = await new AnalyticsRepository(tx as unknown as postgres.Sql).dashboard({
+          sectorId, from: "2026-01-01T00:00:00Z", to: "2026-01-02T00:00:00Z",
+        }, null);
+        expect(report.sessions).toMatchObject({ started:4, complete:2, incomplete:2, endedOrExpired:2 });
+        expect(report.shifts).toEqual([
+          expect.objectContaining({ name:"Dia", completed:2, percentage:100 }),
+          expect.objectContaining({ name:"Noite", completed:0, percentage:0 }),
+        ]);
+        expect(report.unclassifiedCompleted).toBe(0);
+        expect(report.questions).toContainEqual(expect.objectContaining({question_id:sectorItem.questionId,responses:1,skipped:3,mean:3}));
+        const analytics = new AnalyticsRepository(tx as unknown as postgres.Sql);
+        const range = { sectorId, from:"2026-01-01T00:00:00Z", to:"2026-01-02T00:00:00Z" };
+        const global = await analytics.globalQuestions(range, [sectorId], standardItem.questionId);
+        expect(global).toEqual([expect.objectContaining({
+          questionId: standardItem.questionId, questionVersionId: standardItem.questionVersionId,
+          publishedSectorIds:[sectorId], responses:2, mean:5, distribution:[{score:5,responses:2,percentage:100}],
+          sectors:[{sectorId,responses:2,mean:5,distribution:[{score:5,responses:2,percentage:100}]}],
+        })]);
+        expect(await analytics.globalQuestions(range, [])).toEqual([]);
+        expect(await analytics.globalQuestions({...range, to:range.from}, null)).toEqual([
+          expect.objectContaining({publishedSectorIds:[sectorId], responses:0, mean:null, distribution:[], sectors:[]}),
+        ]);
+        const pinned = await service.start(sectorId, 4, "09:00");
+        await tx`update question_versions set is_current=false where question_id=${standardItem.questionId}`;
+        await tx`insert into question_versions(question_id,version_number,text,is_current,created_by_user_id)
+          values (${standardItem.questionId},2,'Nova redação',true,${user[0]!.id})`;
+        await publishEffectiveForm(tx as unknown as postgres.Sql,sectorId,user[0]!.id);
+        // The next published version must not affect either skipping or answering the old snapshot.
+        await service.answer(pinned.session.id,pinned.capability.token,skip);
+        await service.answer(pinned.session.id,pinned.capability.token,{...standardItem,status:"answered",score:4});
+        const versions = await analytics.globalQuestions(range, null, standardItem.questionId);
+        expect(versions).toEqual([
+          expect.objectContaining({questionVersionId:standardItem.questionVersionId,publishedSectorIds:[],responses:3}),
+          expect.objectContaining({text:"Nova redação",publishedSectorIds:[sectorId],responses:0}),
+        ]);
+        await tx`delete from sector_current_forms where sector_id=${sectorId}`;
+        expect(await analytics.globalQuestions(range, null)).toEqual([
+          expect.objectContaining({questionId:standardItem.questionId, publishedSectorIds:[], responses:3}),
+        ]);
         throw new Error("ROLLBACK_SUBMISSION_FIXTURE");
       })).rejects.toThrow("ROLLBACK_SUBMISSION_FIXTURE");
     } finally { await sql.end({ timeout: 5 }); }

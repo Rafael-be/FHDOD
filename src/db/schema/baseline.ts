@@ -366,7 +366,7 @@ export const submissionSessions = pgTable("submission_sessions", {
 	unique("submission_session_form_pair_uq").on(table.id, table.formVersionId),
 	check("submission_sessions_refresh_count_check", sql`refresh_count BETWEEN 0 AND 3`),
 	foreignKey({
-			columns: [table.sectorId, table.shiftSheetVersionId, table.shiftRangeId],
+			columns: [table.shiftRangeId, table.shiftSheetVersionId, table.sectorId],
 			foreignColumns: [sectorShiftRanges.id, sectorShiftRanges.shiftSheetVersionId, sectorShiftRanges.sectorId],
 			name: "submission_session_shift_fk"
 		}).onDelete("restrict"),
@@ -532,7 +532,7 @@ export const ombudsmanTickets = pgTable("ombudsman_tickets", {
 			name: "ombudsman_tickets_accepted_policy_version_id_fkey"
 		}).onDelete("restrict"),
 	foreignKey({
-			columns: [table.sectorId, table.shiftSheetVersionId, table.shiftRangeId],
+			columns: [table.shiftRangeId, table.shiftSheetVersionId, table.sectorId],
 			foreignColumns: [sectorShiftRanges.id, sectorShiftRanges.shiftSheetVersionId, sectorShiftRanges.sectorId],
 			name: "ombudsman_ticket_shift_fk"
 		}).onDelete("restrict"),
@@ -885,4 +885,14 @@ export const hourlyAnswerSummaries = pgTable("hourly_answer_summaries", {
 			name: "hourly_answer_summary_version_fk"
 		}).onDelete("restrict"),
 	primaryKey({ columns: [table.hourBucket, table.sectorId, table.shiftRangeId, table.questionId, table.questionVersionId], name: "hourly_answer_summaries_pkey"}),
+]).enableRLS();
+
+export const tvWallConfiguration = pgTable("tv_wall_configuration", {
+  id: integer().primaryKey(),
+  settings: jsonb().notNull(),
+}, table => [
+  check("tv_wall_configuration_id_check", sql`${table.id} = 1`),
+  check("tv_wall_configuration_settings_check", sql`jsonb_typeof(${table.settings}) = 'object'`),
+  pgPolicy("fhdod_api_tv_wall_select", { for: "select", to: ["fhdod_api"], using: sql`id = 1` }),
+  pgPolicy("fhdod_api_tv_wall_update", { for: "update", to: ["fhdod_api"], using: sql`id = 1`, withCheck: sql`id = 1` }),
 ]).enableRLS();

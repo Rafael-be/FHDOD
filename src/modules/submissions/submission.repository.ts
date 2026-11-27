@@ -18,15 +18,15 @@ export function timestampToIso(value: DatabaseTimestamp): string { return new Da
 
 export interface SubmissionRepository {
   transaction<T>(work: (repository: SubmissionRepository) => Promise<T>): Promise<T>;
-  currentForm?(sectorId: number): Promise<{ formVersionId: number; questions: SubmissionQuestion[] }>;
+  currentForm?(sectorId: number): Promise<{ sectorName: string; formVersionId: number; questions: SubmissionQuestion[] }>;
   lockAttempt?(attemptId: string): Promise<void>;
   firstAttempt?(attemptId: string): Promise<{ sectorId: number; formVersionId: number; capabilityHash: Buffer; answer: { questionId: number; questionVersionId: number; status: string; score: number | null }; expiresAt: string; status: string } | null>;
   createSessionSnapshot(input: SubmissionStart, expectedFormVersionId?: number): Promise<{ session: { id: string; sectorId: number; formVersionId: number; expiresAt: string; shiftSheetVersionId: number | null; shiftRangeId: number | null }; questions: SubmissionQuestion[] }>;
   capabilityHash?(sessionId: string): Promise<Buffer | null>;
   saveAnswer(sessionId: string, input: SubmissionAnswerInput, now: Date, first?: boolean, confirmedAt?: () => Date): Promise<{ sessionId: string; status: "incomplete" | "complete"; answered: boolean; expiresAt: string; replayed?: boolean }>;
-  endSession(sessionId: string, now: Date): Promise<{ sectorId: number }>;
-  refreshSession?(sessionId: string, now: Date): Promise<{ expiresAt: string; refreshesUsed: number; refreshesRemaining: number }>;
-  closeSession?(sessionId: string, now: Date): Promise<{ sessionId: string; status: "closed" }>;
+  endSession(sessionId: string, now: Date, confirmedAt?: () => Date): Promise<{ sectorId: number }>;
+  refreshSession?(sessionId: string, now: Date, confirmedAt?: () => Date): Promise<{ expiresAt: string; refreshesUsed: number; refreshesRemaining: number }>;
+  closeSession?(sessionId: string, now: Date, confirmedAt?: () => Date): Promise<{ sessionId: string; status: "closed" }>;
   reconcileExpired?(now: Date): Promise<number>;
   expireSession?(sessionId: string, now: Date): Promise<boolean>;
 }
@@ -62,8 +62,8 @@ export class PostgresSubmissionRepository implements SubmissionRepository {
     return { ...rows[0], expiresAt: timestampToIso(rows[0].expiresAt), answer: answers[0] };
   }
   async currentForm(sectorId: number) {
-    const rows = await this.sql<{ formVersionId: number | null }[]>`
-      select c.form_version_id as "formVersionId"
+    const rows = await this.sql<{ sectorName: string; formVersionId: number | null }[]>`
+      select s.name as "sectorName", c.form_version_id as "formVersionId"
       from sectors s left join sector_current_forms c on c.sector_id=s.id
       where s.id=${sectorId} and s.deleted_at is null limit 1`;
     if (!rows[0]) throw new DomainError("SECTOR_NOT_FOUND", "Setor inexistente ou inativo.", 404);
@@ -72,7 +72,7 @@ export class PostgresSubmissionRepository implements SubmissionRepository {
     const questions = await publishedFormCache.get(this.sql, formVersionId);
     if (questions.filter((q) => q.isNps).length !== 1 || !questions.some((q) => q.questionKind === "standard" && !q.isNps))
       throw new DomainError("FORM_INCOMPLETE", "Formulário publicado incompleto.", 409);
-    return { formVersionId, questions };
+    return { sectorName: rows[0].sectorName, formVersionId, questions };
   }
   async transaction<T>(work: (repository: SubmissionRepository) => Promise<T>): Promise<T> {
     if (typeof (this.sql as unknown as { begin?: unknown }).begin !== "function") return work(this);
@@ -151,7 +151,7 @@ export class PostgresSubmissionRepository implements SubmissionRepository {
     const question = questions
       .find((q) => q.questionId === input.questionId && q.questionVersionId === input.questionVersionId);
     if (!question) throw new DomainError("SUBMISSION_QUESTION_NOT_FOUND", "Pergunta ou versão não pertence ao formulário.", 404);
-    if (input.status === "skipped" && question.questionKind !== "sector")
+    if (input.status === "skipped" && (question.isNps || question.questionKind !== "sector"))
       throw new DomainError("QUESTION_NOT_SKIPPABLE", "Somente perguntas de setor podem ser puladas.", 400);
     if (input.status === "answered" && (input.score === null || input.score < (question.isNps ? 0 : 1) || input.score > (question.isNps ? 10 : 5)))
       throw new DomainError("INVALID_ANSWER_SCORE", "Nota fora da escala da pergunta.", 400);
@@ -183,8 +183,9 @@ export class PostgresSubmissionRepository implements SubmissionRepository {
     if (complete) await this.sql`update submission_sessions set status='complete', ended_at=${now.toISOString()} where id=${sessionId}`;
     return { sessionId, status: complete ? "complete" as const : "incomplete" as const, answered: input.status === "answered", expiresAt, replayed: false };
   }
-  async refreshSession(sessionId: string, now: Date) {
+  async refreshSession(sessionId: string, now: Date, confirmedAt?: () => Date) {
     const session = await this.lockSession(sessionId);
+    now = confirmedAt?.() ?? now;
     this.assertActive(session, now);
     if (session.refreshCount >= 3) throw new DomainError("SUBMISSION_REFRESH_LIMIT", "Limite de três renovações atingido.", 409);
     const expiresAt = new Date(now.getTime() + SUBMISSION_EXTENSION_MS).toISOString();
@@ -192,13 +193,21 @@ export class PostgresSubmissionRepository implements SubmissionRepository {
     await this.sql`update submission_sessions set refresh_count=${refreshesUsed}, expires_at=${expiresAt}, last_activity_at=${now.toISOString()} where id=${sessionId}`;
     return { expiresAt, refreshesUsed, refreshesRemaining: 3 - refreshesUsed };
   }
-  async closeSession(sessionId: string, now: Date) {
+  async closeSession(sessionId: string, now: Date, confirmedAt?: () => Date) {
     const session = await this.lockSession(sessionId);
+    if (session.status === "complete")
+      throw new DomainError("SUBMISSION_COMPLETED", "Sessão já concluída.", 409);
+    now = confirmedAt?.() ?? now;
+    // A previously closed session can be retried even after its original deadline.
+    const effectiveEnd = session.endedAt ?? now;
+    if (timestampToMillis(effectiveEnd) > timestampToMillis(session.expiresAt!))
+      throw new DomainError("SUBMISSION_EXPIRED", "Sessão expirada.", 410);
     if (!session.endedAt) await this.sql`update submission_sessions set ended_at=${now.toISOString()} where id=${sessionId}`;
     return { sessionId, status: "closed" as const };
   }
-  async endSession(sessionId: string, now: Date): Promise<{ sectorId: number }> {
+  async endSession(sessionId: string, now: Date, confirmedAt?: () => Date): Promise<{ sectorId: number }> {
     const session = await this.lockSession(sessionId);
+    now = confirmedAt?.() ?? now;
     this.assertActive(session, now);
     await this.sql`update submission_sessions set ended_at=${now.toISOString()} where id=${sessionId}`;
     return { sectorId: session.sectorId };

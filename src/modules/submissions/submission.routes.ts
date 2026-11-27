@@ -22,7 +22,7 @@ export function submissionRoutes(service: SubmissionService, limiter?: SecurityR
       response.set("Cache-Control", "public, max-age=0, must-revalidate");
       response.set("ETag", form.etag);
       if (request.get("if-none-match")?.split(",").map((part) => part.trim()).includes(form.etag)) { response.status(304).end(); return; }
-      response.json({ data: { sectorId: form.sectorId, formVersionId: form.formVersionId, questions: form.questions } });
+      response.json({ data: { sectorId: form.sectorId, sectorName: form.sectorName, formVersionId: form.formVersionId, questions: form.questions } });
     } catch (error) { surveyEvent("ANSWER_REJECTED", "submission.current_form", (error as { code?: string }).code ?? "VALIDATION_FAILED"); next(error); }
   });
   if (limiter) router.use("/public/sectors/:sectorId/submissions", rateLimitByIp(limiter, "submission-public", { limit, windowSeconds: 60 }, "SUBMISSION_RATE_LIMITED", "Muitas solicitações. Aguarde um momento."));

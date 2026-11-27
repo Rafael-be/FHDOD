@@ -127,6 +127,20 @@
       "when": 1795377608000,
       "tag": "0017_analytics_legacy_reads",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1795377609000,
+      "tag": "0018_tv_wall_configuration",
+      "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1795377610000,
+      "tag": "0019_fix_ombudsman_shift_reference",
+      "breakpoints": true
     }
   ]
 }

@@ -41,6 +41,7 @@ describe("ombudsman HTTP contract",()=>{
     expect(admin.updateStatus).not.toHaveBeenCalled();
     const manager=fixture("sector_manager");
     await request(manager.app).get("/api/ombudsman/tickets").set("Cookie","access_token=x").expect(403);
+    await request(manager.app).get("/api/ombudsman/tickets/42").set("Cookie","access_token=x").expect(403);
     await request(manager.app).patch("/api/ombudsman/tickets/42/status").set("Cookie","access_token=x").set("x-csrf-token","csrf").send({status:"resolved"}).expect(403);
     const listed=await request(admin.app).get("/api/ombudsman/tickets?page=1").set("Cookie","access_token=x").expect(200);
     expect(listed.body.data.total).toBe(1);

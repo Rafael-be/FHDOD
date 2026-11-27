@@ -22,10 +22,11 @@ export class SubmissionService {
     surveyEvent("CURRENT_FORM_REQUEST", "submission.current_form");
     if (!this.repository.currentForm) throw new Error("Consulta de formulário vigente indisponível.");
     const form = await measurePerformance(this.trace, "submission.current_form", "resolve", () => this.repository.currentForm!(sectorId));
-    const questions = form.questions.map((question) => ({ ...question, required: question.questionKind === "standard", options: question.isNps ? Array.from({ length: 11 }, (_, score) => score) : [1, 2, 3, 4, 5], minScore: question.isNps ? 0 : 1, maxScore: question.isNps ? 10 : 5 }));
-    const etag = `"${createHash("sha256").update(JSON.stringify({ sectorId, formVersionId: form.formVersionId, questions })).digest("hex")}"`;
+    const questions = form.questions.map((question) => ({ ...question, required: question.isNps || question.questionKind === "standard", options: question.isNps ? Array.from({ length: 11 }, (_, score) => score) : [1, 2, 3, 4, 5], minScore: question.isNps ? 0 : 1, maxScore: question.isNps ? 10 : 5 }));
+    const representation = { sectorId, sectorName: form.sectorName, formVersionId: form.formVersionId, questions };
+    const etag = `"${createHash("sha256").update(JSON.stringify(representation)).digest("hex")}"`;
     surveyEvent("CURRENT_FORM_RESOLVED", "submission.current_form");
-    return { sectorId, formVersionId: form.formVersionId, questions, etag };
+    return { ...representation, etag };
   }
 
   async startWithFirstAnswer(sectorId: number, formVersionId: number, attemptId: string, token: string, answer: SubmissionAnswerInput) {
@@ -120,7 +121,7 @@ export class SubmissionService {
 
   async restart(sessionId: string, token: string) {
     if (!await this.authorize(sessionId, token)) throw new DomainError("SUBMISSION_CAPABILITY_INVALID", "Capability de sessão inválida.", 403);
-    const { sectorId } = await this.repository.transaction((repository) => repository.endSession(sessionId, this.clock.now()));
+    const { sectorId } = await this.repository.transaction((repository) => repository.endSession(sessionId, this.clock.now(), () => this.clock.now()));
     this.testCapabilities.delete(sessionId);
     return this.currentForm(sectorId);
   }
@@ -128,15 +129,15 @@ export class SubmissionService {
   async refresh(sessionId: string, token: string) {
     if (!await this.authorize(sessionId, token)) throw new DomainError("SUBMISSION_CAPABILITY_INVALID", "Capability de sessão inválida.", 403);
     const now = this.clock.now();
-    try { return await this.repository.transaction((repository) => repository.refreshSession!(sessionId, now)); }
+    try { return await this.repository.transaction((repository) => repository.refreshSession!(sessionId, now, () => this.clock.now())); }
     catch (error) {
-      if (error instanceof DomainError && error.code === "SUBMISSION_EXPIRED") await this.repository.expireSession?.(sessionId, now);
+      if (error instanceof DomainError && error.code === "SUBMISSION_EXPIRED") await this.repository.expireSession?.(sessionId, this.clock.now());
       throw error;
     }
   }
 
   async close(sessionId: string, token: string) {
     if (!await this.authorize(sessionId, token)) throw new DomainError("SUBMISSION_CAPABILITY_INVALID", "Capability de sessão inválida.", 403);
-    return this.repository.transaction((repository) => repository.closeSession!(sessionId, this.clock.now()));
+    return this.repository.transaction((repository) => repository.closeSession!(sessionId, this.clock.now(), () => this.clock.now()));
   }
 }

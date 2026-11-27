@@ -4,6 +4,13 @@ import { resolve } from "node:path";
 
 const migrationsDirectory = resolve(process.cwd(), "src/db/migrations");
 
+// SQL line endings are transport formatting, not migration content. Git stores
+// these files with LF; normalize CRLF checkouts before comparing the immutable
+// content hash so the same integrity test behaves identically on Windows and CI.
+function canonicalMigrationText(sql: string): string {
+  return sql.replace(/\r\n/g, "\n");
+}
+
 const preservedHashes: Record<string, string> = {
   "0000_enforce_runtime_rls_policies": "b642fb03d4c9b7a6058adc35f89d55faae427dfea122ad19d9e1d058997dde73",
   "0001_add_questions_runtime_rls": "2fd073c471546c8dc202f4ad12b6f49082e49844b6e256030416351791221dc1",
@@ -33,14 +40,14 @@ describe("Drizzle migration inventory", () => {
 
     expect(journal.entries[13]).toMatchObject({ idx: 13, tag: "0013_persist_submission_capabilities" });
     expect(journal.entries.map((entry) => entry.tag).slice(14)).toEqual([
-      "0014_submission_form_drafts", "0015_sector_current_forms", "0016_validate_current_form", "0017_analytics_legacy_reads",
+      "0014_submission_form_drafts", "0015_sector_current_forms", "0016_validate_current_form", "0017_analytics_legacy_reads", "0018_tv_wall_configuration", "0019_fix_ombudsman_shift_reference",
     ]);
   });
 
   it("preserves hashes already recorded or pending in the approved sequence", async () => {
     for (const [tag, expectedHash] of Object.entries(preservedHashes)) {
       const sql = await readFile(resolve(migrationsDirectory, `${tag}.sql`), "utf8");
-      expect(createHash("sha256").update(sql).digest("hex")).toBe(expectedHash);
+      expect(createHash("sha256").update(canonicalMigrationText(sql)).digest("hex")).toBe(expectedHash);
     }
   });
 

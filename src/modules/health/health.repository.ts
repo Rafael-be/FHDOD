@@ -9,7 +9,7 @@ export class HealthRepository {
       select required.object from unnest(array[
         'public.submission_form_versions','public.submission_form_questions','public.submission_form_answers',
         'public.submission_form_drafts','public.submission_form_draft_questions','public.sector_current_forms',
-        'public.sector_shift_days'
+        'public.sector_shift_days','public.tv_wall_configuration'
       ]) as required(object) where to_regclass(required.object) is null
       union all
       select 'public.submission_sessions.capability_hash' where not exists (
@@ -27,6 +27,8 @@ export class HealthRepository {
       and has_table_privilege(current_user,'public.submission_form_drafts','UPDATE')
       and has_table_privilege(current_user,'public.submission_form_drafts','DELETE')
       and has_table_privilege(current_user,'public.submission_session_questions','SELECT')
+      and has_column_privilege(current_user,'public.tv_wall_configuration','settings','UPDATE')
+      and has_table_privilege(current_user,'public.tv_wall_configuration','SELECT')
       and has_table_privilege(current_user,'public.submission_answers','SELECT') as allowed`;
     if (!access?.allowed) throw new DomainError('DATABASE_SCHEMA_NOT_READY','Permissões de runtime incompletas. Confira bootstrap e migrations do banco configurado.',503);
     return true;
