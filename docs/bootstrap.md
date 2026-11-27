@@ -59,6 +59,13 @@ Em novembro de 2026, o Supabase principal está confirmado até
 permanece pendente de aplicação remota. Não execute bootstrap, seed ou migrations
 futuras nele sem procedimento operacional aprovado.
 
+## Segurança das migrations
+
+O mecanismo valida o prefixo histórico antes de qualquer DDL, recusa SQL
+materializado em CRLF e usa advisory lock em conexão administrativa reservada.
+Para diagnóstico sem DDL, execute `npm run migrate:check`. Consulte
+[migration-safety.md](migration-safety.md) para o procedimento Windows e Supabase.
+
 ## Credenciais por operação
 
 O servidor HTTP valida e usa somente `DATABASE_URL`, que deve apontar para a role

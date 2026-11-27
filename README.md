@@ -138,6 +138,13 @@ O comando separado `npm run seed:demo` exige conexão administrativa loopback ex
 
 O novo endpoint de agregados é `GET /api/analytics/dashboard`. Fórmulas, filtros, autorização e limites estão em [analytics](docs/analytics.md). A migration 0017 acrescenta somente leitura do histórico legado para a role runtime; deve seguir as migrations anteriores pelo comando oficial.
 
+## Segurança das migrations
+
+O mecanismo exige arquivos SQL em LF, valida o prefixo histórico antes de
+qualquer DDL e coordena execuções com advisory lock. Use `npm run migrate:check`
+para uma verificação somente leitura. O procedimento Windows/Supabase está em
+[docs/migration-safety.md](docs/migration-safety.md).
+
 ## Desenvolvimento local seguro e prontidão do schema
 
 `npm run dev` usa o arquivo ignorado `.env.development.local`, que precisa definir explicitamente DATABASE_URL (role fhdod_api) e DATABASE_URL_MIGRATIONS no mesmo PostgreSQL loopback, banco fhdod_test. As demais configurações locais podem sobrescrever os valores de `.env`; o arquivo original não é alterado. `npm run dev:configured` é a opção explícita para usar a configuração existente. Os comandos HTTP não executam migrations automaticamente.
