@@ -109,9 +109,6 @@ export class AnalyticsRepository {
       ), answers as materialized (
         select * from raw_answers where status='skipped' or
           (status='answered' and score between (case when is_nps then 0 else 1 end) and (case when is_nps then 10 else 5 end))
-      ), sessions as (
-        select * from candidates s where exists (
-          select 1 from answers a where a.session_id=s.id and a.status='answered')
       )`;
   }
   async wallMetrics(filter: AnalyticsFilter, sectors: number[]) {
@@ -120,7 +117,7 @@ export class AnalyticsRepository {
       npsGroups: { promoters: number; passives: number; detractors: number } | null;
     }[]>`
       ${this.cohort(filter, sectors)}, completion as (
-        select count(*) as n, count(*) filter(where status='complete') as done from sessions
+        select count(*) as n, count(*) filter(where status='complete') as done from candidates
       ), groups as (
         select case when score>=9 then 'promoters' when score>=7 then 'passives' else 'detractors' end as category,
           count(*) as n, count(distinct session_id) as participants
@@ -190,7 +187,7 @@ export class AnalyticsRepository {
           and (${filter.shiftRangeId ?? null}::int is null or t.shift_range_id=${filter.shiftRangeId ?? null})
           and (${scope === null} or t.sector_id=any(${scope ?? []}::int[]))
       ), shift_counts as (
-        select shift_range_id, count(*) as completed from sessions where status='complete' group by shift_range_id
+        select shift_range_id, count(*) as completed from candidates where status='complete' group by shift_range_id
       ), shift_rows as (
         select r.id, r.shift_name as name, r.sector_id, coalesce(c.completed,0) as completed
         from sector_shift_ranges r join shift_sheet_versions v on v.id=r.shift_sheet_version_id
@@ -209,7 +206,7 @@ export class AnalyticsRepository {
           'endedOrExpired',count(*) filter(where status='incomplete' and (ended_at is not null or expires_at<statement_timestamp())),
           'unknownDeadline',count(*) filter(where status='incomplete' and ended_at is null and expires_at is null),
           'completionRate',100.0*count(*) filter(where status='complete')/nullif(count(*),0),
-          'nonCompletionRate',100.0*count(*) filter(where status='incomplete')/nullif(count(*),0)) from sessions),
+          'nonCompletionRate',100.0*count(*) filter(where status='incomplete')/nullif(count(*),0)) from candidates),
         'nps',(select jsonb_build_object('responses',count(*),'detractors',count(*) filter(where score<=6),
           'passives',count(*) filter(where score between 7 and 8),'promoters',count(*) filter(where score>=9),
           'value',100.0*(count(*) filter(where score>=9)-count(*) filter(where score<=6))/nullif(count(*),0)) from answers where is_nps and status='answered'),
@@ -221,9 +218,9 @@ export class AnalyticsRepository {
           select is_nps,score,count(*) as responses from answers where status='answered' group by is_nps,score) x),'[]'::jsonb),
         'daily',coalesce((select jsonb_agg(x order by day) from (
           select (started_at at time zone 'America/Sao_Paulo')::date as day,count(*) as started,
-            count(*) filter(where status='complete') as complete from sessions group by day) x),'[]'::jsonb),
+            count(*) filter(where status='complete') as complete from candidates group by day) x),'[]'::jsonb),
         'sectors',coalesce((select jsonb_agg(x order by sector_id) from (
-          select sector_id,count(*) as started,count(*) filter(where status='complete') as complete from sessions group by sector_id) x),'[]'::jsonb),
+          select sector_id,count(*) as started,count(*) filter(where status='complete') as complete from candidates group by sector_id) x),'[]'::jsonb),
         'ombudsman',coalesce((select jsonb_agg(x order by sector_id,ticket_type,status) from (
           select sector_id,ticket_type,status,count(*) as tickets from tickets group by sector_id,ticket_type,status) x),'[]'::jsonb),
         'dailyAnswers',coalesce((select jsonb_agg(x order by day) from (

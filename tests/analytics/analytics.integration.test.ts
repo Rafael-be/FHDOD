@@ -165,4 +165,50 @@ integration("analytics on disposable PostgreSQL", () => {
       })).rejects.toBe(rollback);
     } finally { await sql.end({ timeout: 5 }); }
   });
+
+  it("counts skipped-only sessions in participation metrics without treating them as ratings", async () => {
+    await assertDisposableTestDatabase(url!, runtime!);
+    const sql = postgres(url!, { max: 1 });
+    const rollback = new Error("rollback");
+    try {
+      await expect(sql.begin(async tx => {
+        const db = tx as unknown as postgres.Sql;
+        const [user] = await db<{ id: number }[]>`insert into users(role_id,full_name,email,password_hash)
+          select id,'Skipped analytics fixture',${`analytics-skipped-${crypto.randomUUID()}@test.invalid`},'not-a-login-hash' from roles where code='superuser' returning id`;
+        const [sector] = await db<{ id: number }[]>`insert into sectors(code,name) values (${crypto.randomUUID()},'Skipped analytics fixture') returning id`;
+        const [form] = await db<{ id: number }[]>`insert into submission_form_versions(sector_id,version_number,fingerprint) values (${sector!.id},1,${crypto.randomUUID()}) returning id`;
+        const [common] = await db<{ id: number }[]>`insert into questions(question_kind,scope,is_nps,display_order,created_by_user_id)
+          values ('standard','selected_sectors',false,1,${user!.id}) returning id`;
+        const [commonVersion] = await db<{ id: number }[]>`insert into question_versions(question_id,version_number,text,is_current,created_by_user_id)
+          values (${common!.id},1,'Common',true,${user!.id}) returning id`;
+        const [optional] = await db<{ id: number }[]>`insert into questions(question_kind,scope,is_nps,display_order,created_by_user_id)
+          values ('sector','selected_sectors',false,2,${user!.id}) returning id`;
+        const [optionalVersion] = await db<{ id: number }[]>`insert into question_versions(question_id,version_number,text,is_current,created_by_user_id)
+          values (${optional!.id},1,'Optional',true,${user!.id}) returning id`;
+        for (const [question, version, position, kind] of [[common!.id, commonVersion!.id, 1, 'standard'], [optional!.id, optionalVersion!.id, 2, 'sector']])
+          await db`insert into submission_form_questions(form_version_id,question_id,question_version_id,position,question_kind,is_nps,text)
+            values (${form!.id},${question},${version},${position},${kind},false,'Fixture')`;
+        const [rated] = await db<{ id: string }[]>`insert into submission_sessions(sector_id,form_version_id,started_at,last_activity_at,status,capability_hash)
+          values (${sector!.id},${form!.id},'2051-01-01T03:00:00Z','2051-01-01T03:00:00Z','incomplete',decode(repeat('11',32),'hex')) returning id`;
+        await db`insert into submission_form_answers(session_id,form_version_id,question_id,question_version_id,status,score)
+          values (${rated!.id},${form!.id},${common!.id},${commonVersion!.id},'answered',4)`;
+        const [skipped] = await db<{ id: string }[]>`insert into submission_sessions(sector_id,form_version_id,started_at,last_activity_at,status,capability_hash)
+          values (${sector!.id},${form!.id},'2051-01-01T03:01:00Z','2051-01-01T03:01:00Z','incomplete',decode(repeat('12',32),'hex')) returning id`;
+        await db`insert into submission_form_answers(session_id,form_version_id,question_id,question_version_id,status,score)
+          values (${skipped!.id},${form!.id},${optional!.id},${optionalVersion!.id},'skipped',null)`;
+        await db`set local role fhdod_api`;
+        const repo = new AnalyticsRepository(db);
+        const filter = { from: '2051-01-01T03:00:00Z', to: '2051-01-01T04:00:00Z', sectorId: sector!.id };
+        await expect(repo.dashboard(filter, null)).resolves.toMatchObject({
+          sessions: { started: 2, complete: 0, incomplete: 2, completionRate: 0, nonCompletionRate: 100 },
+          nps: { responses: 0, value: null },
+        });
+        await expect(repo.heatmap(filter, null)).resolves.toEqual([expect.objectContaining({
+          sectorId: sector!.id, started: 2, completed: 0, responses: 1, npsResponses: 0,
+          satisfactionMean: 4, npsMean: null, completionRate: 0,
+        })]);
+        throw rollback;
+      })).rejects.toBe(rollback);
+    } finally { await sql.end({ timeout: 5 }); }
+  });
 });
