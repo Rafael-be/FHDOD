@@ -41,13 +41,13 @@ describe("migration preflight", () => {
     expect(MIGRATION_LOCK_KEY).toBe(7_083_408_465n);
   });
 
-  it("rejects CRLF before the migrator can execute DDL", () => {
+  it("normalizes CRLF to the canonical hash used by the migrator", () => {
     const folder = mkdtempSync(join(tmpdir(), "fhdod-migration-preflight-"));
     try {
       mkdirSync(join(folder, "meta"));
       writeFileSync(join(folder, "meta", "_journal.json"), JSON.stringify({ entries: [{ idx: 0, tag: "0000_first", when: 10 }] }));
       writeFileSync(join(folder, "0000_first.sql"), "select 1;\r\n");
-      expect(() => loadMigrationInventory(folder)).toThrow("não está em LF");
+      expect(loadMigrationInventory(folder)[0]!.hash).toBe(canonicalMigrationHash("select 1;\n"));
     } finally {
       rmSync(folder, { recursive: true, force: true });
     }

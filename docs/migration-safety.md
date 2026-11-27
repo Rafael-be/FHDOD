@@ -21,8 +21,10 @@ git ls-files 'src/db/migrations/*.sql' | while IFS= read -r file; do
 done
 ```
 
-O migrador interrompe antes de qualquer DDL se encontrar CRLF ou CR isolado.
-Não altere `core.autocrlf` globalmente nem normalize o repositório inteiro.
+O migrador prepara uma cópia temporária LF e usa essa mesma cópia para o
+preflight e para o Drizzle. Assim, CRLF residual em um checkout antigo não muda
+o hash nem a representação executada. Não altere `core.autocrlf` globalmente
+nem normalize o repositório inteiro.
 
 ## Preflight e concorrência
 

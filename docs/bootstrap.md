@@ -61,8 +61,8 @@ futuras nele sem procedimento operacional aprovado.
 
 ## Segurança das migrations
 
-O mecanismo valida o prefixo histórico antes de qualquer DDL, recusa SQL
-materializado em CRLF e usa advisory lock em conexão administrativa reservada.
+O mecanismo valida o prefixo histórico antes de qualquer DDL, prepara uma cópia
+temporária LF das migrations e usa advisory lock em conexão administrativa reservada.
 Para diagnóstico sem DDL, execute `npm run migrate:check`. Consulte
 [migration-safety.md](migration-safety.md) para o procedimento Windows e Supabase.
 

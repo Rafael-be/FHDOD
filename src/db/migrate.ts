@@ -1,6 +1,7 @@
 import "dotenv/config";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { cpSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { drizzle } from "drizzle-orm/postgres-js";
@@ -57,11 +58,27 @@ export function loadMigrationInventory(folder = migrationsFolder): MigrationEntr
   assertJournal(journal);
   return journal.entries.map((entry) => {
     const raw = readFileSync(resolve(folder, `${entry.tag}.sql`));
-    if (raw.includes(Buffer.from([13, 10])) || raw.includes(Buffer.from([13]))) {
-      throw new Error(`Migration ${entry.tag} não está em LF canônico; execução interrompida.`);
-    }
-    return { idx: entry.idx, tag: entry.tag, folderMillis: entry.when, hash: sha256(raw) };
+    return { idx: entry.idx, tag: entry.tag, folderMillis: entry.when, hash: canonicalMigrationHash(raw) };
   });
+}
+
+function canonicalizeTree(folder: string): void {
+  for (const name of readdirSync(folder)) {
+    const path = resolve(folder, name);
+    if (statSync(path).isDirectory()) {
+      canonicalizeTree(path);
+    } else if (/\.(sql|json)$/i.test(name)) {
+      const text = readFileSync(path, "utf8").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+      writeFileSync(path, text, "utf8");
+    }
+  }
+}
+
+export function prepareCanonicalMigrationFolder(source = migrationsFolder): { folder: string; cleanup: () => void } {
+  const folder = mkdtempSync(resolve(tmpdir(), "fhdod-migrations-"));
+  cpSync(source, folder, { recursive: true });
+  canonicalizeTree(folder);
+  return { folder, cleanup: () => rmSync(folder, { recursive: true, force: true }) };
 }
 
 function validateLedgerShape(actual: LedgerEntry[]): void {
@@ -162,34 +179,39 @@ export async function inspectMigrations(sql: MigrationSql, expected = loadMigrat
 
 export async function runMigrations(): Promise<void> {
   const config = loadMigrationConfig();
-  const expected = loadMigrationInventory();
-  const client = postgres(config.DATABASE_URL_MIGRATIONS, { max: 1 });
-  const reserved = await client.reserve();
-  const session = prepareReservedSession(client, reserved);
-  let locked = false;
+  const canonical = prepareCanonicalMigrationFolder();
   try {
-    await acquireMigrationLock(session);
-    locked = true;
-    const ledger = await readMigrationLedger(session);
-    if (!ledger.exists) {
-      if (!config.MIGRATIONS_ALLOW_EMPTY_LEDGER) {
-        throw new Error("Ledger Drizzle inexistente; migração interrompida antes de qualquer DDL.");
-      }
-    } else {
-      assertMigrationPrefix(expected, ledger.entries);
-    }
-    await migrate(drizzle(session), { migrationsFolder });
-    const finalLedger = await readMigrationLedger(session);
-    if (!finalLedger.exists) throw new Error("Ledger Drizzle não foi criado pelo migrador.");
-    assertMigrationLedger(expected, finalLedger.entries);
-    console.log(`Migrations confirmadas no ledger: ${finalLedger.entries.length}.`);
-  } finally {
+    const expected = loadMigrationInventory(canonical.folder);
+    const client = postgres(config.DATABASE_URL_MIGRATIONS, { max: 1 });
+    const reserved = await client.reserve();
+    const session = prepareReservedSession(client, reserved);
+    let locked = false;
     try {
-      if (locked) await releaseMigrationLock(session);
+      await acquireMigrationLock(session);
+      locked = true;
+      const ledger = await readMigrationLedger(session);
+      if (!ledger.exists) {
+        if (!config.MIGRATIONS_ALLOW_EMPTY_LEDGER) {
+          throw new Error("Ledger Drizzle inexistente; migração interrompida antes de qualquer DDL.");
+        }
+      } else {
+        assertMigrationPrefix(expected, ledger.entries);
+      }
+      await migrate(drizzle(session), { migrationsFolder: canonical.folder });
+      const finalLedger = await readMigrationLedger(session);
+      if (!finalLedger.exists) throw new Error("Ledger Drizzle não foi criado pelo migrador.");
+      assertMigrationLedger(expected, finalLedger.entries);
+      console.log(`Migrations confirmadas no ledger: ${finalLedger.entries.length}.`);
     } finally {
-      reserved.release();
-      await client.end({ timeout: 5 });
+      try {
+        if (locked) await releaseMigrationLock(session);
+      } finally {
+        reserved.release();
+        await client.end({ timeout: 5 });
+      }
     }
+  } finally {
+    canonical.cleanup();
   }
 }
 
