@@ -118,7 +118,7 @@ integration("analytics on disposable PostgreSQL", () => {
         ]));
         expect((await repo.criticalQuestions(multiple,null,3,1)).map(row => row.sectorId)).toEqual([other!.id,sector!.id]);
         expect((await repo.criticalQuestions({...multiple,sectorIds:undefined,sectorId:other!.id},null,5,1)).map(row => row.sectorId)).toEqual([other!.id]);
-        expect(pooled.sessions).toMatchObject({ started: 20, complete: 18, incomplete: 2, completionRate: 90, nonCompletionRate: 10 });
+        expect(pooled.sessions).toMatchObject({ started: 21, complete: 18, incomplete: 3, completionRate: expect.closeTo(1800 / 21), nonCompletionRate: expect.closeTo(300 / 21) });
         expect(pooled.unclassifiedCompleted).toBe(18);
         expect(pooled.shifts).toEqual([]);
         expect(pooled.nps).toMatchObject({ responses: 20, value: score <= 6 ? -90 : score <= 8 ? -85 : -80 });
@@ -129,7 +129,7 @@ integration("analytics on disposable PostgreSQL", () => {
         expect(await tv.configure(settings)).toEqual(settings);
         const nextDay = new Date("2050-01-02T03:00:00Z");
         expect(await tv.display(nextDay)).toEqual({refreshSeconds:30,periodDays:1,indicators:[
-          {id:"npsGroups",value:{promoters:0,passives:0,detractors:100}},{id:"completionRate",value:100},{id:"nps",value:-100},
+          {id:"npsGroups",value:{promoters:0,passives:0,detractors:100}},{id:"completionRate",value:null},{id:"nps",value:-100},
         ]});
         // A second process updates the singleton while the display cache is warm.
         await new TvWallService(db,repo).configure({...settings,sectorIds:[other!.id,sector!.id]});
@@ -181,8 +181,8 @@ integration("analytics on disposable PostgreSQL", () => {
           values ('standard','selected_sectors',false,1,${user!.id}) returning id`;
         const [commonVersion] = await db<{ id: number }[]>`insert into question_versions(question_id,version_number,text,is_current,created_by_user_id)
           values (${common!.id},1,'Common',true,${user!.id}) returning id`;
-        const [optional] = await db<{ id: number }[]>`insert into questions(question_kind,scope,is_nps,display_order,created_by_user_id)
-          values ('sector','selected_sectors',false,2,${user!.id}) returning id`;
+        const [optional] = await db<{ id: number }[]>`insert into questions(question_kind,scope,sector_id,is_nps,display_order,created_by_user_id)
+          values ('sector','sector_only',${sector!.id},false,2,${user!.id}) returning id`;
         const [optionalVersion] = await db<{ id: number }[]>`insert into question_versions(question_id,version_number,text,is_current,created_by_user_id)
           values (${optional!.id},1,'Optional',true,${user!.id}) returning id`;
         for (const [question, version, position, kind] of [[common!.id, commonVersion!.id, 1, 'standard'], [optional!.id, optionalVersion!.id, 2, 'sector']])

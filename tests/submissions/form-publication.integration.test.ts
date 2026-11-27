@@ -25,7 +25,7 @@ integration("manual form publication on disposable PostgreSQL", () => {
       if (prior.draftStatus === "drafting") await service.discard(manager(), fixture.sectorId, prior.revision);
       const initial = await service.get(manager(), fixture.sectorId);
       const [ledger] = await sql<{ count: number }[]>`select count(*)::int count from drizzle.__drizzle_migrations`;
-      expect(ledger.count).toBe(19);
+      expect(ledger.count).toBe(20);
       await expect(service.publish(manager(), fixture.sectorId, 0)).rejects.toMatchObject({ code: "DRAFT_CONFLICT" });
       const incomplete = initial.items.filter((item) => !item.isNps);
       await expect(service.save(manager(), fixture.sectorId, 0, incomplete)).resolves.toMatchObject({ revision: 1 });

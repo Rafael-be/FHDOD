@@ -76,7 +76,7 @@ describeIntegration("anonymous submissions integration", () => {
         const report = await new AnalyticsRepository(tx as unknown as postgres.Sql).dashboard({
           sectorId, from: "2026-01-01T00:00:00Z", to: "2026-01-02T00:00:00Z",
         }, null);
-        expect(report.sessions).toMatchObject({ started:3, complete:2, incomplete:1, endedOrExpired:1 });
+        expect(report.sessions).toMatchObject({ started:4, complete:2, incomplete:2, endedOrExpired:2 });
         expect(report.shifts).toEqual([
           expect.objectContaining({ name:"Dia", completed:2, percentage:100 }),
           expect.objectContaining({ name:"Noite", completed:0, percentage:0 }),
