@@ -2,6 +2,9 @@ import { TvWallService } from "../../src/modules/analytics/tv-wall.service.js";
 import postgres from "postgres";
 import { AnalyticsRepository } from "../../src/modules/analytics/analytics.repository.js";
 import { AnalyticsService } from "../../src/modules/analytics/analytics.service.js";
+import { ReportsRepository } from "../../src/modules/reports/reports.repository.js";
+import { ReportsService } from "../../src/modules/reports/reports.service.js";
+import { reportRequest } from "../../src/modules/reports/reports.schemas.js";
 import { assertDisposableTestDatabase, testDatabaseUrl, usesIsolatedDatabase } from "../helpers/database.js";
 
 const url = testDatabaseUrl(), runtime = process.env.DATABASE_URL;
@@ -67,6 +70,14 @@ integration("analytics on disposable PostgreSQL", () => {
         expect((await repo.dashboard({ ...filter, to: filter.from }, null)).nps).toMatchObject({ responses: 0, value: null });
         expect((await repo.dashboard(filter, [])).sessions).toMatchObject({ started: 0 });
         const service = new AnalyticsService(repo);
+        const reports = new ReportsService(new ReportsRepository(db),service,repo);
+        const admin = {userId:user!.id,sessionId:'test',role:'superuser' as const,mustChangePassword:false};
+        const report = await reports.preview(admin,{type:'sector',...filter});
+        expect(report.indicators).toMatchObject({started:1,completed:0,completionRate:0,satisfactionMean:5,npsMean:score});
+        expect(report.tables.questions).toEqual([expect.objectContaining({questionId:ids[0],responses:1,mean:5})]);
+        const ombudsman = await reports.preview(admin,{type:'ombudsman',...filter});
+        expect(ombudsman.indicators).toMatchObject({total:1,compliments:1,resolved:0,resolutionPercentage:0});
+        expect(JSON.stringify(ombudsman)).not.toContain('Fixture');
         await expect(service.dashboard({ userId:user!.id,sessionId:'test',role:'sector_manager',mustChangePassword:false },filter)).rejects.toMatchObject({ code:'FORBIDDEN' });
         const manager = { userId:user!.id,sessionId:'test',role:'sector_manager' as const,mustChangePassword:false };
         await expect(service.heatmap(manager,filter)).rejects.toMatchObject({code:'FORBIDDEN'});
@@ -161,6 +172,27 @@ integration("analytics on disposable PostgreSQL", () => {
         expect(await repo.heatmap(historicalFilter,null)).toEqual([expect.objectContaining({
           sectorId:sector!.id,responses:2,satisfactionMean:3,started:3,
         })]);
+        await db`reset role`;
+        await db`insert into submission_sessions(sector_id,form_version_id,started_at,last_activity_at,capability_hash)
+          values (${sector!.id},${form!.id},'2050-01-02T02:59:59Z','2050-01-02T02:59:59Z',decode(repeat('06',32),'hex')),
+                 (${sector!.id},${form!.id},'2050-01-02T03:00:00Z','2050-01-02T03:00:00Z',decode(repeat('07',32),'hex'))`;
+        await db`set local role fhdod_api`;
+        const day=reportRequest.parse({type:'sector',sectorId:sector!.id,from:'2050-01-01',to:'2050-01-01'});
+        const dayReport=await reports.preview(admin,day);
+        expect(dayReport.indicators).toMatchObject({started:3,completed:0,incomplete:3,satisfactionMean:5});
+        expect(dayReport.tables.evolution).toEqual([expect.objectContaining({day:'2050-01-01',started:3})]);
+        const general=await reports.preview(admin,reportRequest.parse({type:'general',from:'2050-01-01',to:'2050-01-01'}));
+        expect(general.indicators.started).toBe(22);
+        const questions=await reports.preview(admin,reportRequest.parse({type:'questions',sectorId:sector!.id,from:'2050-01-01',to:'2050-01-01'}));
+        expect(questions.tables.questions).toEqual([expect.objectContaining({responses:1,mean:5})]);
+        const tickets=await reports.preview(admin,reportRequest.parse({type:'ombudsman',from:'2050-01-01',to:'2050-01-01'}));
+        expect(tickets.indicators.total).toBe(1);
+        const empty=await reports.preview(admin,reportRequest.parse({type:'sector',sectorId:sector!.id,from:'2051-01-01',to:'2051-01-01'}));
+        expect(empty.indicators).toMatchObject({started:0,completed:0,completionRate:null,satisfactionMean:null});
+        expect(empty.warnings).toContain('Não há pesquisas iniciadas no período selecionado.');
+        await expect(reports.preview(manager,day)).rejects.toMatchObject({code:'FORBIDDEN'});
+        await expect(reports.preview(manager,reportRequest.parse({type:'ombudsman',from:'2050-01-01',to:'2050-01-01'})))
+          .rejects.toMatchObject({code:'FORBIDDEN'});
         throw rollback;
       })).rejects.toBe(rollback);
     } finally { await sql.end({ timeout: 5 }); }

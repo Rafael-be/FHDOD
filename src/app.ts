@@ -37,6 +37,8 @@ import type { SecurityRateLimiter } from "./security/rate-limiter.js";
 import { rateLimitByIp } from "./security/rate-limit.middleware.js";
 import type { OmbudsmanService } from "./modules/ombudsman/ombudsman.service.js";
 import { ombudsmanRoutes } from "./modules/ombudsman/ombudsman.routes.js";
+import type { ReportsService } from "./modules/reports/reports.service.js";
+import { reportsRoutes } from "./modules/reports/reports.routes.js";
 
 export interface AppDependencies {
   tvWallService?: TvWallService;
@@ -52,6 +54,7 @@ export interface AppDependencies {
   questionsService?: QuestionsService;
   securityRateLimiter?: SecurityRateLimiter;
   ombudsmanService?: OmbudsmanService;
+  reportsService?: ReportsService;
 }
 
 function validateRuntimeDependencies(
@@ -127,6 +130,7 @@ export function createApp(config: AppConfig, dependencies: AppDependencies) {
   if (formDraftService) app.use("/api", formDraftRoutes(formDraftService, authService));
   if (dependencies.tvWallService) app.use("/api", wallConfigRoutes(dependencies.tvWallService, authService));
   if (dependencies.analyticsService) app.use("/api", analyticsRoutes(dependencies.analyticsService));
+  if (dependencies.reportsService) app.use("/api", reportsRoutes(dependencies.reportsService, authService));
   app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openapiDocument, { explorer: false }));
   app.use(notFoundHandler);
   app.use(errorHandler);
