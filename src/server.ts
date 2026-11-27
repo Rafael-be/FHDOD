@@ -30,6 +30,8 @@ import { NodeRedisClient } from "./cache/redis.client.js";
 import { SecurityRateLimiter } from "./security/rate-limiter.js";
 import { OmbudsmanRepository } from "./modules/ombudsman/ombudsman.repository.js";
 import { OmbudsmanService } from "./modules/ombudsman/ombudsman.service.js";
+import { ReportsRepository } from "./modules/reports/reports.repository.js";
+import { ReportsService } from "./modules/reports/reports.service.js";
 import {
   logServerShutdownTimedOut,
   logServerStarted,
@@ -93,6 +95,7 @@ async function startServer(): Promise<void> {
     auditService: new AuditService(new AuditRepository(database.client)),
     healthService,
     analyticsService: new AnalyticsService(analytics),
+    reportsService: new ReportsService(new ReportsRepository(database.client),new AnalyticsService(analytics),analytics),
     tvWallService: new TvWallService(database.client, analytics),
     contentService: new ContentService(new ContentRepository(database.client)),
     shiftSheetService: new ShiftSheetService(new PostgresShiftSheetRepository(database.client), clock.now.bind(clock)),
